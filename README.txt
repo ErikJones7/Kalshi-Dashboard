@@ -42,6 +42,12 @@ KALSHI ACCOUNT AND LIVE BETTING (optional)
 MAC / LINUX
   Double-click "Kalshi Dashboard.command" (needs Python 3). Updating works the same way.
 
+PRICES
+  A real bet is only placed when its price is at or below what the model thinks it is worth (minus 1 cent). The "Pay up to N cents extra"
+  box on Auto mode and Timed bets lets it pay a little more so more bets go through (default 1; 0 is the strictest). A refused bet says
+  why in the activity log. On Timed bets, a coin whose leftover is too small to bet (under $1) after a loss goes to $0 and the
+  leftover returns to your cash.
+
 KEEPING GOING
   If something in the page ever fails, it is caught and the page keeps running; a "problems caught" note appears next to the build number
   (click it to copy the details). Price feeds that go silent reconnect on their own, and requests that never answer time out.

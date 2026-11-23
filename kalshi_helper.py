@@ -39,7 +39,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-24w"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-24x"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -1077,6 +1077,7 @@ def budget_set_many(items):
     if not isinstance(items, list) or not items or len(items) > 40:
         raise ValueError("Nothing to set.")
     plan = {}
+    sweeps = set()
     for it in items:
         src, key = it.get("src"), str(it.get("key") or "*")
         if src not in ("auto", "sim"):
@@ -1085,6 +1086,9 @@ def budget_set_many(items):
             key = "*"
         elif not re.match(r"^[A-Z0-9]{2,12}$", key):
             raise ValueError("Unknown coin.")
+        if it.get("sweep"):
+            sweeps.add((src, key))
+            continue
         t = round(float(it.get("alloc")), 2)
         if not (0 <= t <= 1000000):
             raise ValueError("That amount isn't valid.")
@@ -1117,6 +1121,10 @@ def budget_set_many(items):
                 bud.setdefault(src, {})[key] = {"start": t, "since": time.time()}
         else:
             bud.get(src, {}).pop(key, None)
+    for (src, key) in sweeps:      # leftover too small to bet: bank goes to exactly $0 (the wins/losses record stays) and the money is back in cash
+        cur = stats.get(src, {}).get(key)
+        if cur and cur["open"] <= 1e-9 and cur["bank"] < 1.0:
+            bud[src][key]["start"] = round(-cur["net"], 4)
     save_settings(cfg)
     acct_cache["data"] = None
     return budget_stats(env)
@@ -1272,10 +1280,12 @@ def _place_order(body):
         fee = est_fee(count, price)
         cost = count * price / 100.0 + fee
         row["est_cost"] = round(cost, 4)
+        avail_cap = None
         if row["src"] in ("sim", "auto"):
             bk = budget_stats(env).get(row["src"], {}).get(sym_of(ticker) if row["src"] == "sim" else "*")
             if not bk or bk["bank"] <= 0:
                 raise TradeError("No real money is allocated to this (or it is all gone). Allocate some first.")
+            avail_cap = bk["avail"]
             if cost > bk["avail"] + 1e-9:
                 raise TradeError("This bet would cost about $%.2f but only $%.2f is left in its real bankroll." % (cost, max(bk["avail"], 0)))
         if row["src"] == "manual":       # a hand-placed bet can only use cash that no mode has allocated
@@ -1311,6 +1321,8 @@ def _place_order(body):
             new = max(1, min(99, maxp, live + int(max(0, min(slack or 0, 5)))))
             if new != price:
                 budget = cost
+                if row["src"] == "sim" and avail_cap:          # a Timed bet uses its whole bankroll, so a price that moved up may use all of it
+                    budget = max(budget, avail_cap)
                 price = new
                 row["price_cents"] = price
                 while count > 1 and count * price / 100.0 + est_fee(count, price) > budget + 1e-9:

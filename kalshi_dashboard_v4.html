@@ -158,7 +158,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-24w</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-24x</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -194,6 +194,7 @@ body{transition:margin-left .14s ease-out}
     <div class="simctl">
       <label title="Real money set aside for this. It goes up and down with its wins and losses. Type a new amount to add money or send some back to your cash.">Allocated $ <input type="number" id="autoRealStart" min="0" step="0.01" style="width:90px"></label><button id="autoRealSet">Set</button>
       <label>Max bet <input type="number" id="autoCap" min="1" max="100" step="1">%</label>
+      <label title="A bet is only placed when its price is at or below what the model thinks it is worth, minus 1¢. This lets it pay that many cents more, so more bets go through. 0 is the strictest.">Pay up to <input type="number" id="autoOver" min="0" max="10" step="1" style="width:56px">¢ extra</label>
       <button id="autoRealHist">View real bet history</button>
     </div>
   </div>
@@ -214,6 +215,7 @@ body{transition:margin-left .14s ease-out}
     <div class="simctl">
       <label>Bet at <input type="number" id="simAt" min="5" max="300" step="5">s left</label>
       <label>Min confidence <input type="number" id="simMin" min="50" max="99.9" step="1">%</label>
+      <label title="A bet is only placed when its price is at or below what the model thinks it is worth, minus 1¢. This lets it pay that many cents more, so more bets go through. 0 is the strictest.">Pay up to <input type="number" id="simOver" min="0" max="10" step="1" style="width:56px">¢ extra</label>
       <label title="Total real money for all coins. It is split evenly across every coin when you press Split evenly (or Enter).">Total $ for all coins <input type="number" id="simRealAll" min="0" step="0.01" style="width:90px"></label><button id="simRealAllB">Split evenly</button>
       <button id="simRealHist">View real bet history</button>
     </div>
@@ -1502,7 +1504,7 @@ let acct={info:null,sum:null,orders:[],bud:{},err:"",busy:false}, lv={armed:null
 // real-money mirrors: in memory only, so they are always OFF after a restart and have to be switched on on purpose
 let real={sim:false,auto:false,autoView:true,simView:true,events:[],evT:[],autoLast:null,q:Promise.resolve()};
 let liveRes={};
-const HELPER_EXPECT="2026-11-24w";      // the helper build this page needs (changes only when the helper program itself changes)
+const HELPER_EXPECT="2026-11-24x";      // the helper build this page needs (changes only when the helper program itself changes)
 const staleMsg="The helper program that is running is older than this page. Fully close it (Ctrl+Shift+Esc, end pythonw.exe / python.exe) and reopen the dashboard from its icon, or some real-money controls won't work right.";
 const oldHelper="The helper that is running is an older version that doesn't know about Kalshi accounts. Fully close it and reopen the dashboard from its icon: press Ctrl+Shift+Esc, open the Details tab, end every pythonw.exe (or python.exe) entry, then double-click the Kalshi Dashboard icon.";
 const acctNeed="Open the dashboard from its icon (the address starts with http://127.0.0.1) to use your Kalshi account.";
@@ -1524,9 +1526,17 @@ async function acctRefresh(full){
     else acct.sum=null;
     acct.orders=await aget("/account/orders");for(const r of acct.orders)if(r.res)liveRes[r.ticker]=r.res;
     acct.bud=(await aget("/account/budget")).budget||{};
-    releaseDropped();
+    releaseDropped();sweepDust();
   }catch(e){acct.err=e.message||"Couldn't reach your account.";if(!acct.info)acct.sum=null}
   acct.busy=false;renderAcctMenu();if($("kaw").style.display!=="none")renderKa();if($("rhw").style.display!=="none")renderRH();
+}
+let dustBusy=false;
+async function sweepDust(){      // a coin that lost most of its money can't bet the few cents left, so those go back to cash and it shows $0
+  if(dustBusy||!acct.bud||!acct.bud.sim)return;
+  const ks=Object.keys(acct.bud.sim).filter(k=>{const b=acct.bud.sim[k];return b.bank>0&&b.bank<1&&b.avail<1&&!(b.open>0)&&b.w+b.l>0});
+  if(!ks.length)return;dustBusy=true;
+  try{const d=await apost("/account/config",{budgets:ks.map(k=>({src:"sim",key:k,sweep:true}))});if(d.ok){const was=ks.map(k=>k+" "+money(acct.bud.sim[k].bank));acct.bud=d.budget||acct.bud;realEvent("Timed bets: leftover too small to bet went back to your cash ("+was.join(", ")+")")}}
+  catch(e){}finally{dustBusy=false}
 }
 let dropBusy=false;
 async function releaseDropped(){      // money allocated to a coin that is no longer tracked goes back to cash (once nothing is open on it)
@@ -1643,7 +1653,7 @@ function realMirror(src,sym,side,stake,meta){
   const note=(t,x)=>{realEvent(tag+": "+t);if(au)real.autoLast=Object.assign({t:Date.now(),win:winStart,sym,side,text:sym+" "+side+": "+t},x||{})};
   if(!realReady()){note("not placed (account not ready)");return}
   real.q=real.q.then(async()=>{       // one at a time, each with the freshest quote
-    const maxPx=meta.p>0?Math.floor(meta.p*100-1):null,pl=lvPlan(sym,side,stake,{cushion:3,max:maxPx});      // pay up to 3¢ over the live ask, but never more than its estimated chance minus 1¢
+    const maxPx=meta.p>0?Math.min(99,Math.floor(meta.p*100-1)+overpay(src)):null,pl=lvPlan(sym,side,stake,{cushion:3,max:maxPx});      // pay up to 3¢ over the live ask, but never more than its estimated chance minus 1¢
     if(pl.err){note("not placed ("+pl.err+")");return}
     note("placing "+pl.count+" contracts, paying up to "+pl.price+"¢ each (about "+money(pl.cost)+")",{tk:pl.ticker,price:pl.price,pending:true});
     try{
@@ -1690,6 +1700,8 @@ $("autoOnBtn").onclick=async()=>{      // a number typed in the box but not yet 
     if(v>=0&&Math.abs(v-(b?b.bank:0))>=0.005&&!(await realAlloc("sim",s,v,el,b?money2(b.bank):0,true)))break}
   realSwitch("sim",!real.sim)};
 const money2=v=>Math.round(v*100)/100;
+const overpay=src=>{const v=ls.get(src==="auto"?"k15overA":"k15overT",1);return Number.isFinite(+v)?Math.max(0,Math.min(10,Math.round(+v))):1};      // cents above "what it is worth" that a real bet may pay
+for(const [id,k] of [["autoOver","k15overA"],["simOver","k15overT"]]){const el=$(id);el.value=overpay(k==="k15overA"?"auto":"sim");el.onchange=()=>{const v=Math.max(0,Math.min(10,Math.round(parseFloat(el.value))));if(Number.isFinite(v)){ls.set(k,v);el.value=v}else el.value=overpay(k==="k15overA"?"auto":"sim")}}
 $("autoRealStart").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();$("autoRealSet").click()}};
 $("autoRealSet").onclick=()=>{const el=$("autoRealStart"),b=budOf("auto","*");realAlloc("auto","*",parseFloat(el.value),el,b?money2(b.bank):0)};
 $("simRealAll").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();$("simRealAllB").click()}};
