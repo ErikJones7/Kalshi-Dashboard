@@ -158,7 +158,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-25b</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-25c</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1667,17 +1667,26 @@ function autoRetry(x,stake,wS,wEnd,n){      // the real order was refused only b
     const o=await realMirror("auto",x.sym,x.side,st,{w:wEnd,p:conf,retry:n});
     if(o==="retry")autoRetry(x,stake,wS,wEnd,n+1)}),3000);
 }
+const mxc=c=>"×"+(100/Math.max(1,+c)).toFixed(2);      // a price in cents shown as the payout multiplier it gives
+function multTxt(t){      // Auto mode talks in payout multipliers, not prices
+  return String(t)
+    .replace(/The price is now (\d+)¢, above the (\d+)¢ this bet is worth/,(m,a,b)=>"The payout is now "+mxc(a)+", below the "+mxc(b)+" this bet needs")
+    .replace(/Kalshi's price \((\d+)¢\) is above the (\d+)¢ this bet is worth/,(m,a,b)=>"Kalshi's payout ("+mxc(a)+") is below the "+mxc(b)+" this bet needs")
+    .replace(/Nothing is for sale at (\d+)¢ or better/,(m,a)=>"Nothing is for sale at a payout of "+mxc(a)+" or better")
+    .replace(/The price moved up to (\d+)¢/,(m,a)=>"The payout dropped to "+mxc(a))
+    .replace(/; best bids on the other side: [^)]*/,"")
+    .replace(/(market ask|other side's bid|order book|ask|bid) (\d+)¢/g,(m,k,c)=>k+" "+mxc(c))}
 function realMirror(src,sym,side,stake,meta){
   const tag=(src==="auto"?"Auto":"Timed bet")+" "+sym+" "+side,au=src==="auto";
-  const note=(t,x)=>{realEvent(tag+": "+t);if(au)real.autoLast=Object.assign({t:Date.now(),win:winStart,sym,side,text:sym+" "+side+": "+t},x||{})};
+  const note=(t,x)=>{if(au)t=multTxt(t);realEvent(tag+": "+t);if(au)real.autoLast=Object.assign({t:Date.now(),win:winStart,sym,side,text:sym+" "+side+": "+t},x||{})};
   if(!realReady()){note("not placed (account not ready)");return Promise.resolve("stop")}
   const job=real.q.then(async()=>{       // one at a time, each with the freshest quote
     const maxPx=meta.p>0?Math.min(99,Math.floor(meta.p*100-1)+overpay(src)):null,pl=lvPlan(sym,side,stake,{cushion:3,max:maxPx});      // pay up to 3¢ over the live ask, but never more than its estimated chance minus 1¢
     if(pl.err){const rt=/stale|is above the|No price available/.test(pl.err);note("not placed ("+pl.err+")"+(au&&rt&&!meta.retry?", will keep looking":""));return rt?"retry":"stop"}
-    note("placing "+pl.count+" contracts, paying up to "+pl.price+"¢ each (about "+money(pl.cost)+")",{tk:pl.ticker,price:pl.price,pending:true});
+    note("placing "+pl.count+" contracts"+(au?", paying out at least "+mxc(pl.price)+" each":", paying up to "+pl.price+"¢ each")+" (about "+money(pl.cost)+")",{tk:pl.ticker,price:pl.price,pending:true});
     try{
       const d=await apost("/account/order",{ticker:pl.ticker,side:pl.side,count:pl.count,price:pl.price,max_price:maxPx,slack:3,src,w:meta.w,sym,conf:meta.p});
-      if(d.ok&&d.filled){note("bought "+d.fill_count+" contracts for "+money(d.cost)+" (limit "+pl.price+"¢)",{tk:pl.ticker,price:pl.price,bought:true,cost:d.cost,fc:d.fill_count});if(au){real.autoBet=true;
+      if(d.ok&&d.filled){note("bought "+d.fill_count+" contracts for "+money(d.cost)+(au?" ("+(d.fill_count>0&&d.cost>0?"×"+(d.fill_count/d.cost).toFixed(2)+" payout":"")+")":" (limit "+pl.price+"¢)"),{tk:pl.ticker,price:pl.price,bought:true,cost:d.cost,fc:d.fill_count});if(au){real.autoBet=true;
           const bet={sym,side,stake:d.cost,mult:d.fill_count>0&&d.cost>0?d.fill_count/d.cost:null,conf:meta.p,real:true,fc:d.fill_count,avg:d.avg_cents!=null?d.avg_cents:null},key=meta.w;
           if(curAutoAlert&&curAutoAlert.real&&curAutoAlert.w===key)curAutoAlert.bets.push(bet);else curAutoAlert={w:key,tau:Math.max(0,meta.w-Date.now()/1000),real:true,bets:[bet]};
           autoNewFlag=true}
