@@ -144,7 +144,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-23x</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-23y</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1445,16 +1445,17 @@ $("avw").addEventListener("click",e=>{if(e.target.id==="avw")$("avw").style.disp
 /* ============================ Kalshi account + live betting ============================ */
 const escH=v=>String(v==null?"":v).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 let acct={info:null,sum:null,orders:[],err:"",busy:false}, lv={armed:null,msg:"",sel:null};
+const oldHelper="The helper that is running is an older version that doesn't know about Kalshi accounts. Fully close it and reopen the dashboard from its icon: press Ctrl+Shift+Esc, open the Details tab, end every pythonw.exe (or python.exe) entry, then double-click the Kalshi Dashboard icon.";
 const acctNeed="Open the dashboard from its icon (the address starts with http://127.0.0.1) to use your Kalshi account.";
 async function aget(p){
   if(!hBase&&!(await findHelper()))throw new Error("The helper isn't connected. Open the dashboard from its icon.");
-  const r=await fetch(hBase+p,{cache:"no-store"});if(r.status===403)throw new Error(acctNeed);if(!r.ok)throw new Error("HTTP "+r.status);return r.json();
+  const r=await fetch(hBase+p,{cache:"no-store"});if(r.status===403)throw new Error(acctNeed);if(r.status===404)throw new Error(oldHelper);if(!r.ok)throw new Error("HTTP "+r.status);return r.json();
 }
 async function apost(p,o){
   if(!hBase&&!(await findHelper()))throw new Error("The helper isn't connected. Open the dashboard from its icon.");
   const r=await fetch(hBase+p,{method:"POST",headers:{"X-Kalshi":"1","Content-Type":"text/plain"},body:JSON.stringify(o||{})});
   let d={};try{d=await r.json()}catch(e){}
-  if(r.status===403)throw new Error(d.error||acctNeed);return d;
+  if(r.status===403)throw new Error(d.error||acctNeed);if(r.status===404)throw new Error(oldHelper);return d;
 }
 async function acctRefresh(full){
   if(acct.busy)return;acct.busy=true;
