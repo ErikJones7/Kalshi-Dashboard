@@ -141,7 +141,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-23r</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-23s</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1251,16 +1251,18 @@ function renderSim(){
   if(key!==simKey){simKey=key;
     $("simTbl").innerHTML='<tr><th>Coin</th><th>Start $</th>'+SIM_CP.map(()=>'<th class="gs">Bankroll</th><th>Wins / losses</th><th>Net</th><th>Open bet</th>').join("")+"</tr>"+
       syms.map(s=>`<tr><td>${s}</td><td><input type="number" min="0" step="10" id="ss_${s}"></td>`+SIM_CP.map(cp=>`<td class="gs" id="sb_${s}_${cp}"></td><td id="sw_${s}_${cp}"></td><td id="sn_${s}_${cp}"></td><td class="dim" id="so_${s}_${cp}"></td>`).join("")+"</tr>").join("")+
-      `<tr class="tot"><td>All</td><td></td>`+SIM_CP.map(cp=>`<td class="gs" id="tb_${cp}"></td><td id="tw_${cp}"></td><td id="tn_${cp}"></td><td></td>`).join("")+"</tr>";
+      `<tr class="tot"><td>All</td><td id="ts_all"></td>`+SIM_CP.map(cp=>`<td class="gs" id="tb_${cp}"></td><td id="tw_${cp}"></td><td id="tn_${cp}"></td><td class="dim" id="to_${cp}"></td>`).join("")+"</tr>";
     syms.forEach(s=>{$("ss_"+s).onchange=e=>{const v=parseFloat(e.target.value);if(v>=0){resetSimCoin(s,v);simSave();saveToHelper()}else e.target.value=simStart(s)}});
   }
-  const tot={};SIM_CP.forEach(cp=>tot[cp]={b:0,w:0,l:0,n:0});
-  for(const s of syms){const inp=$("ss_"+s);if(inp&&document.activeElement!==inp)inp.value=simStart(s);
+  const tot={};SIM_CP.forEach(cp=>tot[cp]={b:0,w:0,l:0,n:0});let startTot=0;
+  for(const s of syms){const inp=$("ss_"+s);if(inp&&document.activeElement!==inp)inp.value=simStart(s);startTot+=simStart(s)||0;
     for(const cp of SIM_CP){const t=simTr(s,cp),ob=pendSim.find(b=>b.sym===s),T_=tot[cp];T_.b+=t.bank;T_.w+=t.w;T_.l+=t.l;T_.n+=t.net;
       setT($("sb_"+s+"_"+cp),$$(t.bank));setT($("sw_"+s+"_"+cp),t.w+" / "+t.l);
       const nn=$("sn_"+s+"_"+cp);setT(nn,$$(t.net));setC(nn,t.net>0?"hit":t.net<0?"miss":"");
       setT($("so_"+s+"_"+cp),ob?`${ob.side} ${$$(ob.stake)} @ ${mx(ob.mult)}`:simWait.has(s+"|"+cp)?"Waiting":"–")}}
-  for(const cp of SIM_CP){setT($("tb_"+cp),$$(tot[cp].b));setT($("tw_"+cp),tot[cp].w+" / "+tot[cp].l);const e=$("tn_"+cp);setT(e,$$(tot[cp].n));setC(e,tot[cp].n>0?"hit":tot[cp].n<0?"miss":"")}
+  setT($("ts_all"),$$(startTot));
+  const openAll=pendSim.filter(b=>syms.includes(b.sym)),openStake=openAll.reduce((t,b)=>t+b.stake,0);
+  for(const cp of SIM_CP){setT($("to_"+cp),openAll.length?openAll.length+" open · "+$$(openStake):simWait.size?"Waiting":"–");setT($("tb_"+cp),$$(tot[cp].b));setT($("tw_"+cp),tot[cp].w+" / "+tot[cp].l);const e=$("tn_"+cp);setT(e,$$(tot[cp].n));setC(e,tot[cp].n>0?"hit":tot[cp].n<0?"miss":"")}
 }
 try{if(localStorage.getItem("k15tblopen")==="0")$("tblBox").open=false}catch(e){}
 $("tblBox").addEventListener("toggle",()=>{try{localStorage.setItem("k15tblopen",$("tblBox").open?"1":"0")}catch(e){}});
