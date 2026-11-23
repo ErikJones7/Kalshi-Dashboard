@@ -67,6 +67,12 @@ canvas{width:100%;height:340px;display:block}
 .sigrow.fin{border-color:var(--ac);box-shadow:0 6px 20px rgba(0,0,0,.35),inset 0 0 0 999px var(--finbg)}
 .sigrow.pick{border-color:#f5b942;box-shadow:0 6px 20px rgba(0,0,0,.35),inset 0 0 0 999px rgba(245,185,66,.12)}
 .swbtn{margin-top:4px;padding:5px 12px;font-size:13px;font-weight:600;border-radius:8px;background:var(--sel);color:#fff;border-color:var(--sel)}
+.sigrow{transition:transform .14s ease-out,opacity .14s ease-out,height .14s ease-out,margin .14s ease-out,padding .14s ease-out;overflow:hidden}
+.sigrow.enter{animation:sigIn .14s ease-out}
+.sigrow.leaving{transform:translateX(-115%);opacity:0;border-width:0}
+@keyframes sigIn{from{transform:translateX(-115%);opacity:0}to{transform:none;opacity:1}}
+body{transition:margin-left .14s ease-out}
+@media (max-width:1800px) and (min-width:760px){body.sigpad{margin-left:324px;margin-right:12px}}
 .sigrow b{font-size:15px}.sigrow .big{font-size:20px;font-weight:700}
 .sigrow .x{position:absolute;top:4px;right:6px;padding:0 7px;font-size:16px;line-height:20px;border-radius:6px}
 .top2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px;margin-bottom:12px}
@@ -125,7 +131,7 @@ canvas{width:100%;height:340px;display:block}
           <div style="display:flex;gap:6px;width:100%"><button id="mChk" style="text-align:center">Check for updates</button><button id="mUpd" style="text-align:center" disabled>Install</button></div>
           <div class="s" id="mUpdMsg"></div></div>
         <div class="mi"><button id="mReset">Reset dashboard settings</button></div>
-      </div></div><span class="bld" id="build">build 2026-11-22z · 30x simulation</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+      </div></div><span class="bld" id="build">build 2026-11-23a · 30x simulation</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1039,8 +1045,7 @@ function render(s){
       <span>Target $${f(x.target)} · now $${f(x.price)}</span>
       <span>Model ${pc(x.p)} (raw ${pc(x.raw)}) · ${mmss(x.tau)} left</span>
       ${x.yes_ask!=null?(()=>{const m=mults(x.yes_ask,x.yes_bid,x.no_ask);return `<span>Kalshi live: UP <b>${mx(m.up)}</b> · DOWN <b>${mx(m.dn)}</b></span>`})():""}</div>`).join("");
-  if(html){sg_.style.display="block";if(html!==lastSigHtml){sg_.innerHTML=html;lastSigHtml=html}}
-  else{sg_.style.display="none";if(lastSigHtml){sg_.innerHTML="";lastSigHtml=""}}
+  syncSig(html);
   if(soundOn){if(s.newSignal&&shown.length)beep("sig");if(s.newFinal&&fc)beep("fin",s.newSignal&&shown.length?0.7:0);if(s.newAutoAlert&&aa)beep("auto",(s.newSignal&&shown.length?0.7:0)+(s.newFinal&&fc?1.0:0)+(s.newPicks&&s.newPicks.length&&pks.length?1.0:0));if(s.newPicks&&s.newPicks.length&&pks.length)beep("pick",(s.newSignal&&shown.length?0.7:0)+(s.newFinal&&fc?1.0:0))}
 
   const p=s.pred,q=s.quote,m=$("msg");
@@ -1373,8 +1378,21 @@ $("yseg").onclick=e=>{const b_=e.target.closest("button");if(!b_)return;const a=
 const setTgt=()=>{const v=parseFloat(String($("tgtIn").value).replace(/[$,\s]/g,""));if(v>0&&winStart!=null){targetOv[selected]={w:winStart,v};$("tgtIn").value="";tickNow()}};
 $("tgtSet").onclick=setTgt;$("tgtIn").addEventListener("keydown",e=>{if(e.key==="Enter")setTgt()});
 $("tgtAuto").onclick=()=>{delete targetOv[selected];tickNow()};
-$("sig").onclick=e=>{const sw=e.target.closest(".swbtn");if(sw){const el=$("sel");el.value=sw.dataset.sw;el.dispatchEvent(new Event("change"));dismissed.add(sw.dataset.k);lastSigHtml="";$("sig").style.display="none";return}
-  const b_=e.target.closest(".x");if(b_){dismissed.add(b_.dataset.k);lastSigHtml="";$("sig").style.display="none"}};
+function sigLeave(row){if(!row||row.classList.contains("leaving"))return;row.classList.add("leaving");row.style.height=row.offsetHeight+"px";void row.offsetHeight;row.style.height="0px";row.style.marginBottom="0";row.style.paddingTop=row.style.paddingBottom="0";
+  setTimeout(()=>{row.remove();sigPad()},150)}
+function sigPad(){const n=[...$("sig").children].filter(c=>!c.classList.contains("leaving")).length;document.body.classList.toggle("sigpad",n>0);if(!$("sig").children.length)$("sig").style.display="none"}
+// update the popup list in place: new ones slide in, dismissed ones slide out, the rest are left alone
+function syncSig(html){
+  const sg=$("sig"),tmp=document.createElement("div");tmp.innerHTML=html;
+  const want=[...tmp.children].map(el=>{const x=el.querySelector(".x");return [x?x.dataset.k:"",el]});
+  const keys=new Set(want.map(w=>w[0])),have=new Map();
+  for(const c of [...sg.children]){if(c.classList.contains("leaving"))continue;if(keys.has(c.dataset.key))have.set(c.dataset.key,c);else sigLeave(c)}
+  for(const [k,el] of want){const c=have.get(k);
+    if(c){if(c.innerHTML!==el.innerHTML)c.innerHTML=el.innerHTML}
+    else{el.dataset.key=k;el.classList.add("enter");sg.appendChild(el);setTimeout(()=>el.classList.remove("enter"),200)}}
+  if(want.length)sg.style.display="block";sigPad()}
+$("sig").onclick=e=>{const sw=e.target.closest(".swbtn");if(sw){const el=$("sel");el.value=sw.dataset.sw;el.dispatchEvent(new Event("change"));dismissed.add(sw.dataset.k);sigLeave(sw.closest(".sigrow"));return}
+  const b_=e.target.closest(".x");if(b_){dismissed.add(b_.dataset.k);sigLeave(b_.closest(".sigrow"))}};
 $("calib").onclick=e=>{if(e.target.id==="clr"&&confirm("Delete all saved calibration data and signal history?")){calSamples=[];sigHist=[];platt={a:1,b:0};ls.set("k15cal",[]);ls.set("k15sig",[])}};
 const cvEl=$("cv");
 cvEl.addEventListener("wheel",e=>{e.preventDefault();const rc=cvEl.getBoundingClientRect(),frac=Math.min(1,Math.max(0,(e.clientY-rc.top-14)/(rc.height-38)));yzoom(e.deltaY<0?0.85:1/0.85,frac)},{passive:false});
