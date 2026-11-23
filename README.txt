@@ -16,8 +16,8 @@ UPDATING (no new setup)
 KALSHI ACCOUNT AND LIVE BETTING (optional)
   Menu > Kalshi account walks you through it: create an API key on kalshi.com (Profile > API Keys), put the private key file
   Kalshi gives you in the "keys" folder (button in the panel), and paste the Key ID. The private key never leaves this computer
-  and is never sent to the dashboard page. Betting stays OFF until you switch it on, and the helper enforces a per-bet and a
-  per-day limit (fees included). Only 15-minute crypto markets can be bought, as fill-or-kill orders. Every bet attempt is
+  and is never sent to the dashboard page. Betting stays OFF until you press the "Real betting" button in the Kalshi
+  account panel. There are no per-bet or per-day limits: each mode can only bet the money you allocated to it. Only 15-minute crypto markets can be bought, as fill-or-kill orders. Every bet attempt is
   recorded in data\live_orders.jsonl. Use the Demo account option to try it with fake money first.
   REAL-MONEY VIEWS: the Timed bets card and the Auto mode card each have a "Real money" button that swaps the card for a
   real-money version that looks and works like the fake-money one. Type an amount in its Allocated $ box (Auto mode: one box;
@@ -26,7 +26,7 @@ KALSHI ACCOUNT AND LIVE BETTING (optional)
   $90 account leaves $40 untouched). If it wins $10 the box shows $60; type 50 and press Set and the extra $10 goes back to your
   cash. Type a bigger number to add more (never more than your free cash), or 0 to take everything back. The amount can't go
   below what is in a bet that hasn't settled. Then press "Start real betting" (press it a second time to confirm).
-  Real bets are placed only when the fake-money twin bets, and the per-bet and per-day limits still apply. They switch off whenever you
+  Real bets are placed only when the fake-money twin bets, and a mode can never bet more than its allocated money. They switch off whenever you
   restart, and "Stop all real betting" turns everything off at once. The Kalshi account card shows your cash, what is allocated,
   what is currently bet, and your real wins and losses (taken from Kalshi's own market results).
   The key can place real bets: keep the keys folder private and never share it or the zip of this folder. If a key is ever exposed,

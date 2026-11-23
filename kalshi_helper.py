@@ -39,7 +39,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-24e"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-24f"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -770,7 +770,7 @@ def acct_summary(force=False):
 # Every rule below is enforced here, in the helper, not just in the page: the page cannot talk it out of them.
 #   * trading is OFF until you switch it on in the Kalshi account panel (and it switches itself off again if you change environment)
 #   * only 15-minute crypto markets (KX...15M) can be bought; only "buy", never sell
-#   * one bet can't cost more than your per-bet limit, and a day's bets can't cost more than your daily limit (fees included)
+#   * a mode can only bet its own allocated money; a hand-placed bet can only use cash no mode has allocated
 #   * every order is a fill-or-kill limit order: it fills completely at your price or better, or not at all
 #   * every attempt, accepted or refused, is written to data/live_orders.jsonl
 TICKER_RE = re.compile(r"^KX[A-Z0-9]+15M-[A-Z0-9\-]+$")
@@ -1029,17 +1029,18 @@ def _place_order(body):
         fee = est_fee(count, price)
         cost = count * price / 100.0 + fee
         row["est_cost"] = round(cost, 4)
-        if cost > t["max_bet"] + 1e-9:
-            raise TradeError("This bet would cost about $%.2f, over your per-bet limit of $%.2f." % (cost, t["max_bet"]))
         if row["src"] in ("sim", "auto"):
             bk = budget_stats(env).get(row["src"], {}).get(sym_of(ticker) if row["src"] == "sim" else "*")
             if not bk or bk["bank"] <= 0:
                 raise TradeError("No real money is allocated to this (or it is all gone). Allocate some first.")
             if cost > bk["avail"] + 1e-9:
                 raise TradeError("This bet would cost about $%.2f but only $%.2f is left in its real bankroll." % (cost, max(bk["avail"], 0)))
-        used = spent_today(env)
-        if used + cost > t["daily"] + 1e-9:
-            raise TradeError("This bet would take today's total to $%.2f, over your daily limit of $%.2f." % (used + cost, t["daily"]))
+        if row["src"] == "manual":       # a hand-placed bet can only use cash that no mode has allocated
+            sm = acct_summary()
+            if sm.get("ok") and sm.get("balance") is not None:
+                held = sum(max(v["avail"], 0) for ks in budget_stats(env).values() for v in ks.values())
+                if cost > sm["balance"] - held + 1e-9:
+                    raise TradeError("This bet would cost about $%.2f but only $%.2f of your cash isn't allocated to a mode." % (cost, max(sm["balance"] - held, 0)))
         if row["src"] != "manual" and any(r.get("src") == row["src"] and r.get("ticker") == ticker and r.get("env") == env and r.get("order_id")
                                           for r in live_rows()):
             raise TradeError("Already bet on this market from this mode.")
