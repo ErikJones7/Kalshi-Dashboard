@@ -484,6 +484,16 @@ class Handler(BaseHTTPRequestHandler):
                 log("update failed:\n" + traceback.format_exc())
                 self._send(200, json.dumps({"ok": False, "error": str(e)}))
             return
+        if self.path.startswith("/restart"):
+            org = self.headers.get("Origin") or ""
+            local = (not org) or org == "null" or org.startswith("http://127.0.0.1") or org.startswith("http://localhost")
+            if self.headers.get("X-Kalshi") != "1" or not local:
+                return self._send(403, json.dumps({"error": "forbidden"}))
+            self._send(200, json.dumps({"ok": True}))
+            log("restart requested")
+            restart_self(self.server.server_address[1])
+            threading.Timer(1.0, self.server.shutdown).start()
+            return
         if self.path.startswith("/open") or self.path.startswith("/settings"):
             org = self.headers.get("Origin") or ""
             local = (not org) or org == "null" or org.startswith("http://127.0.0.1") or org.startswith("http://localhost")
