@@ -131,10 +131,10 @@ body{transition:margin-left .14s ease-out}
         <div class="mi"><div class="mt">Updates</div><div class="s" id="mVer"></div>
           <input type="text" id="mUrl" placeholder="Update address (https://…)" spellcheck="false" style="width:100%;font-size:12px">
           <input type="password" id="mTok" placeholder="Access token (only for a private repository)" style="width:100%;font-size:12px">
-          <div style="display:flex;gap:6px;width:100%"><button id="mChk" style="text-align:center">Check for updates</button><button id="mUpd" style="text-align:center" disabled>Install</button></div>
+          <div style="display:flex;gap:6px;width:100%"><button id="mChk" style="text-align:center;flex:1">Check for updates</button></div>
           <div class="s" id="mUpdMsg"></div></div>
         <div class="mi"><button id="mReset">Reset dashboard settings</button></div>
-      </div></div><span class="bld" id="build">build 2026-11-23d</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+      </div></div><span class="bld" id="build">build 2026-11-23e</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1331,17 +1331,18 @@ async function updCall(action){
   const body={action,url:$("mUrl").value.trim()};const tok=$("mTok").value.trim();if(tok)body.token=tok;
   return hcmd("/update",body);
 }
+// one button: check, and if something newer exists, install it
 $("mChk").onclick=async()=>{
-  updMsg("Checking…");$("mUpd").disabled=true;
+  $("mChk").disabled=true;updMsg("Checking…");
   try{const r=await updCall("check");
-    if(!r.ok){updMsg(r.error||"Couldn't check.");return}
+    if(!r.ok){updMsg(r.error||"Couldn't check.");$("mChk").disabled=false;return}
     $("mTok").value="";
-    if(r.available){updReady=true;$("mUpd").disabled=false;updMsg("Version "+r.remote+" is available"+(r.notes?": "+r.notes:"")+".")}
-    else updMsg("You're up to date ("+r.local+").")
-  }catch(e){updMsg(e.message||"Couldn't check.")}
+    if(!r.available){updMsg("You're up to date ("+r.local+").");$("mChk").disabled=false;return}
+    await installUpdate(r.remote)
+  }catch(e){updMsg(e.message||"Couldn't check.");$("mChk").disabled=false}
 };
-$("mUpd").onclick=async()=>{
-  $("mUpd").disabled=true;$("mChk").disabled=true;updMsg("Installing…");
+async function installUpdate(ver){
+  updMsg("Version "+ver+" found. Installing…");
   try{const r=await updCall("apply");
     if(!r.ok){updMsg(r.error||"The update failed. Nothing was changed.");$("mChk").disabled=false;return}
     if(!r.updated){updMsg("Already up to date.");$("mChk").disabled=false;return}
@@ -1355,7 +1356,7 @@ $("mUpd").onclick=async()=>{
       setTimeout(poll,1000)};
     setTimeout(poll,2500);
   }catch(e){updMsg(e.message||"The update failed.");$("mChk").disabled=false}
-};
+}
 const menuErr=e=>{$("mPath").textContent=e.message||"Something went wrong"};
 $("mData").onclick=()=>hcmd("/open",{what:"data"}).catch(menuErr);
 $("mApp").onclick=()=>hcmd("/open",{what:"app"}).catch(menuErr);
