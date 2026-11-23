@@ -158,7 +158,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-25f</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-25g</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -195,8 +195,6 @@ body{transition:margin-left .14s ease-out}
       <label title="Real money set aside for this. It goes up and down with its wins and losses. Type a new amount to add money or send some back to your cash.">Allocated $ <input type="number" id="autoRealStart" min="0" step="0.01" style="width:90px"></label><button id="autoRealSet">Set</button>
       <label>Max bet <input type="number" id="autoCap" min="1" max="100" step="1">%</label>
       <label title="A bet is only placed when its price is at or below what the model thinks it is worth, minus 1¢. This lets it pay that many cents more, so more bets go through. 0 is the strictest.">Pay up to <input type="number" id="autoOver" min="0" max="10" step="1" style="width:56px">¢ extra</label>
-      <label title="The daily return (local midnight to midnight) Auto aims for at least, as % of the bankroll it started the day with. It is a target shown on the card; Auto does not stop or change how it bets.">Day min +<input type="number" id="autoGoalD" min="0" max="100" step="0.5" style="width:56px">%</label>
-      <label title="The weekly return (Monday to Sunday) Auto aims for at least, as % of the bankroll it started the week with. It is a target shown on the card; Auto does not stop or change how it bets.">Week min +<input type="number" id="autoGoalW" min="0" max="500" step="1" style="width:56px">%</label>
       <button id="autoRealHist">View real bet history</button>
     </div>
   </div>
@@ -298,6 +296,14 @@ body{transition:margin-left .14s ease-out}
   <div class="card" style="max-width:1100px;margin:0 auto">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:17px" id="rhTitle">Real bet history</b><button id="rhClose">Close</button></div>
     <div class="s" id="rhSum" style="margin:6px 0"></div>
+    <div id="rhGoal" style="display:none;margin:6px 0 10px">
+      <div class="simctl" style="gap:10px;flex-wrap:wrap">
+      <label title="The daily return (local midnight to midnight) Auto aims for at least, as % of the bankroll it started the day with. It is a target tracked in the bet history; Auto does not stop or change how it bets.">Day min +<input type="number" id="autoGoalD" min="0" max="100" step="0.5" style="width:56px">%</label>
+      <label title="The weekly return (Monday to Sunday) Auto aims for at least, as % of the bankroll it started the week with. It is a target tracked in the bet history; Auto does not stop or change how it bets.">Week min +<input type="number" id="autoGoalW" min="0" max="500" step="1" style="width:56px">%</label>
+      </div>
+      <div class="s" id="rhGoalTxt" style="margin:6px 0"></div>
+      <table class="mini" id="rhGoalTbl" style="margin-bottom:8px"></table>
+    </div>
     <div style="overflow:auto;max-height:70vh"><table class="mini" id="rhTbl"></table></div>
   </div>
 </div>
@@ -1573,6 +1579,15 @@ function renderKa(){
     return `<tr><td>${escH(r.time)}</td><td>${escH({sim:"timed",auto:"auto"}[r.src]||r.src||"manual")}</td><td>${escH(r.env)}</td><td>${escH(r.ticker)}</td><td>${escH(String(r.side).toUpperCase())}</td><td>${r.count}</td><td>${r.price_cents}¢</td><td>${r.filled&&r.avg_cents!=null?r.avg_cents+"¢":"–"}</td><td>${r.filled&&r.mult?"×"+r.mult.toFixed(2):"–"}</td><td class="${r.filled?(won===false?"miss":"hit"):"miss"}">${r.filled?(won==null?"Filled, waiting":won?"Won":"Lost"):escH(r.refused||r.error||"Not filled")}</td><td>${r.filled?money(r.cost_total):"–"}</td><td>${r.filled&&won!=null?money(pay(r,won)):"–"}</td><td class="${net>0?"hit":net<0?"miss":""}">${net==null?"–":(net>=0?"+":"-")+"$"+Math.abs(net).toFixed(2)}</td></tr>`})));
 }
 let rhSrc=null;
+function renderRHGoal(){      // Auto's daily / weekly minimum returns, in its bet history
+  const box=$("rhGoal");box.style.display=rhSrc==="auto"?"block":"none";if(rhSrc!=="auto")return;
+  const G=autoGoals(),sg=v=>(v>=0?"+":"")+v.toFixed(1)+"%";
+  if(!G){setT($("rhGoalTxt"),"Allocate some real money to Auto mode to track its daily and weekly returns.");setH($("rhGoalTbl"),"");return}
+  const st=(p,g)=>g?(p>=g?" · min +"+g+"% met":" · min +"+g+"% not yet"):"";
+  setT($("rhGoalTxt"),"Today "+sg(G.D.pct)+st(G.D.pct,G.gd)+"   |   This week (Mon–Sun) "+sg(G.W.pct)+st(G.W.pct,G.gw)+". Each is settled profit as a share of the bankroll at the start of that day or week.");
+  const nm=t=>new Date(t).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"});
+  setH($("rhGoalTbl"),'<tr><th>Day</th><th>Bets settled</th><th>Net</th><th>Return</th><th>Daily min</th></tr>'+G.days.map(d=>`<tr><td>${escH(nm(d.t))}</td><td>${d.n}</td><td class="${d.n?cls(d.net):""}">${d.n?$$(d.net):"–"}</td><td class="${d.n?cls(d.net):""}">${d.n?sg(d.pct):"–"}</td><td class="${!d.n?"dim":d.pct>=G.gd?"hit":"miss"}">${!d.n||!G.gd?"–":d.pct>=G.gd?"Met":"Not met"}</td></tr>`).join(""));
+}
 function renderRH(){      // real bets of one mode, using Kalshi's own price, multiplier and payout once they are in
   if(!rhSrc)return;const rows=(acct.orders||[]).filter(r=>r.src===rhSrc&&r.env===((acct.info&&acct.info.env)||r.env));
   let w=0,l=0,net=0,open=0,fail=0;
@@ -1581,6 +1596,7 @@ function renderRH(){      // real bets of one mode, using Kalshi's own price, mu
     return `<tr><td>${escH(r.time)}</td><td>${escH(symOf(r)||"")}</td><td>${escH(String(r.side).toUpperCase())}</td><td>${r.filled&&r.fill_count!=null?r.fill_count:r.count}</td><td>${r.price_cents}¢</td><td>${r.filled&&r.avg_cents!=null?r.avg_cents+"¢":"–"}</td><td>${r.filled&&r.mult?"×"+r.mult.toFixed(2):"–"}</td><td class="${r.filled?(won===false?"miss":"hit"):"miss"}">${r.filled?(won==null?"Filled, waiting":won?"Won":"Lost"):escH(r.refused||r.error||"Not filled")}</td><td>${r.filled?money(r.cost_total):"–"}</td><td>${r.filled&&won!=null?money(pay(r,won)):"–"}</td><td class="${n>0?"hit":n<0?"miss":""}">${n==null?"–":(n>=0?"+":"-")+"$"+Math.abs(n).toFixed(2)}</td></tr>`});
   const h=["Time","Coin","Side","Contracts","Limit","Avg paid","Multiplier","Result","Cost","Payout","Net"];
   setH($("rhTbl"),'<tr>'+h.map(x=>`<th>${x}</th>`).join("")+'</tr>'+(tr.length?tr.join(""):`<tr><td colspan="${h.length}" class="dim">No real bets yet</td></tr>`));
+  renderRHGoal();
   setT($("rhSum"),rows.length?`${w} won, ${l} lost, ${open} waiting, ${fail} not filled. Net ${(net>=0?"+":"-")+"$"+Math.abs(net).toFixed(2)} on settled bets. Newest first, ${(acct.info&&acct.info.env==="demo")?"demo":"real"} account.`:"");
 }
 async function openRH(src){rhSrc=src;setT($("rhTitle"),(src==="auto"?"Auto mode":"Timed bets")+" real bet history");$("rhw").style.display="block";renderRH();await acctRefresh(true)}
@@ -1656,7 +1672,10 @@ function autoGoals(){      // today's and this week's settled real Auto profit, 
   const w0=new Date(d0);w0.setDate(w0.getDate()-((d0.getDay()+6)%7));
   const calc=t=>{const net=rows.filter(m=>m.r.t>=t/1000).reduce((a,m)=>a+m.net,0),base=b.bank-net;return{net,pct:base>0?net/base*100:0}};
   const D=calc(+d0),W=calc(+w0),gd=goalPct("d"),gw=goalPct("w");
-  return{D,W,gd,gw};      // minimum daily and weekly returns to aim for: shown on the card only, they never stop or change a bet
+  const days=[];for(let i=0;i<7;i++){const t0=new Date(d0);t0.setDate(t0.getDate()-i);const t1=new Date(t0);t1.setDate(t1.getDate()+1);
+    const dn=rows.filter(m=>m.r.t>=t0/1000&&m.r.t<t1/1000),net=dn.reduce((a,m)=>a+m.net,0),after=rows.filter(m=>m.r.t>=t1/1000).reduce((a,m)=>a+m.net,0),base=b.bank-after-net;
+    days.push({t:+t0,n:dn.length,net,pct:base>0?net/base*100:0})}
+  return{D,W,gd,gw,days};      // minimum daily and weekly returns to aim for: tracked in the bet history only, they never stop or change a bet
 }
 function realAuto(best,two,picks,wEnd){          // the same sizing rule as fake-money auto mode, applied to its real bankroll
   if(!realReady()){realEvent("Auto: not placed (account not ready)");return}
@@ -1796,10 +1815,10 @@ function renderRealAuto(){
   const b=budOf("auto","*"),rows=realOf("auto"),inp=$("autoRealStart"),ev=real.events.filter(e=>e.includes("· Auto")).slice(0,3);
   if(document.activeElement!==inp)inp.value=b?money2(b.bank):0;
   const tot=b?b.w+b.l:0,dd=b&&b.peak>0?Math.max(0,1-b.bank/b.peak):0;let samples=0;for(const k in autoSt.learn)samples+=autoSt.learn[k].n;
-  const GO=autoGoals(),L=real.autoLast,st=!b?"Allocate some real money to begin":!real.auto?"Real betting is off. Press Start real betting to begin. Fake-money Auto mode keeps running either way.":(L&&L.win===winStart?L.text:(autoNote==="Bet placed"?"Waiting for the real bet":autoNote)||"Waiting for the next window");
+  const L=real.autoLast,st=!b?"Allocate some real money to begin":!real.auto?"Real betting is off. Press Start real betting to begin. Fake-money Auto mode keeps running either way.":(L&&L.win===winStart?L.text:(autoNote==="Bet placed"?"Waiting for the real bet":autoNote)||"Waiting for the next window");
   const cell=(l,v,c)=>`<div>${l}<b${c?` class="${c}"`:""}>${v}</b></div>`;
   setH($("arStats"),cell("Allocated",b?$$(b.bank):"–")+cell("Free to bet",b?$$(b.avail):"–")+cell("Net",b?$$(b.net):"–",b?cls(b.net):"")+cell("Wins / losses",b?b.w+" / "+b.l:"–")+
-    cell("Hit rate",tot?Math.round(b.w/tot*1000)/10+"%":"–")+cell("Windows skipped",b?realSkip().n:"–")+cell("Today",GO?(GO.D.pct>=0?"+":"")+GO.D.pct.toFixed(1)+"%"+(GO.gd?" · min +"+GO.gd+"% "+(GO.D.pct>=GO.gd?"met":"not yet"):""):"–",GO&&GO.D.pct>0?"hit":GO&&GO.D.pct<0?"miss":"")+cell("This week",GO?(GO.W.pct>=0?"+":"")+GO.W.pct.toFixed(1)+"%"+(GO.gw?" · min +"+GO.gw+"% "+(GO.W.pct>=GO.gw?"met":"not yet"):""):"–",GO&&GO.W.pct>0?"hit":GO&&GO.W.pct<0?"miss":"")+cell("Currently bet",b?$$(b.open):"–")+cell("Below peak",Math.round(dd*1000)/10+"%")+
+    cell("Hit rate",tot?Math.round(b.w/tot*1000)/10+"%":"–")+cell("Windows skipped",b?realSkip().n:"–")+cell("Currently bet",b?$$(b.open):"–")+cell("Below peak",Math.round(dd*1000)/10+"%")+
     cell("Min confidence now",(g=>g==null?"none":Math.round(g*1000)/10+"%")(autoGate(1)))+cell("Learned from",samples+" samples")+cell("Status",st));
   setH($("arNote"),(acct.stale?'<b class="miss">'+escH(staleMsg)+"</b><br>":"")+escH(flashFor("· Auto")));
 }
