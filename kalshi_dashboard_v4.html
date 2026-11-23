@@ -158,7 +158,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-24s</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-24t</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -334,6 +334,11 @@ const setH=(e,h)=>{if(e.__h!==h){e.__h=h;e.innerHTML=h}}, setT=(e,t)=>{t=t==null
 /* ============================ state ============================ */
 const ls={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},
           set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const pageErrs=[];      // problems caught so the page keeps running; shown next to the build number
+function noteErr(where,e){try{const m=where+": "+((e&&e.stack)||(e&&e.message)||e);pageErrs.push(new Date().toLocaleTimeString()+" "+m.split("\n").slice(0,3).join(" | "));if(pageErrs.length>20)pageErrs.shift();console.error(where,e);
+  const b=document.getElementById("build");if(b){b.textContent=b.textContent.replace(/ · \d+ problems? caught$/,"")+" · "+pageErrs.length+" problem"+(pageErrs.length===1?"":"s")+" caught";b.title="Click to copy details. Last: "+pageErrs[pageErrs.length-1]}}catch(_){}}
+window.addEventListener("error",ev=>noteErr("error",ev.error||ev.message));window.addEventListener("unhandledrejection",ev=>noteErr("rejection",ev.reason));
+const safe=(where,fn)=>{try{return fn()}catch(e){noteErr(where,e)}};
 let syms=[], hist={}, latest={}, strike={}, quote=null, quoteBy={};
 let lastTick=null, winStart=null, sim=false, built=false;
 let selected=(()=>{try{return localStorage.getItem("k15sel")||"BTC"}catch(e){return "BTC"}})();
@@ -407,7 +412,8 @@ function chooseAll(){
     if(k){curSrc[s]=k;latest[s]={px:o[k].px,ts:o[k].ts}}else{delete latest[s];delete curSrc[s]}
   }
 }
-async function jget(url,opt){const r=await fetch(url,opt);if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}
+async function jget(url,opt){const r=await fetch(url,Object.assign({signal:AbortSignal.timeout(12000)},opt));      // a request that never answers must not freeze a feed
+  if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}
 // Kalshi: prefer the local helper (kalshi_helper.py) because browsers usually block direct calls; fall back to direct.
 let kBase=null;
 function kalshiBases(){
@@ -418,7 +424,7 @@ async function kalshiGet(path){
   const bases=kBase?[kBase]:kalshiBases(); let last;
   for(const b of bases){
     try{
-      const r=await fetch(b+path);
+      const r=await fetch(b+path,{signal:AbortSignal.timeout(12000)});
       if(!r.ok){let t="";try{t=(await r.text()).slice(0,140)}catch(_){}throw new Error("HTTP "+r.status+(t?" "+t:""))}
       const j=await r.json(); kBase=b; SRC.kalshi.ws=b===KALSHI?"direct":"via helper"; return j;
     }catch(e){last=e}
@@ -460,12 +466,15 @@ async function discover(){
 function wsRun(key,url,onOpen,onMsg){
   let tries=0;
   const go=()=>{
-    SRC[key].ws="connecting"; let ws;
+    SRC[key].ws="connecting"; let ws,gone=false;
     try{ws=new WebSocket(url)}catch(e){SRC[key].ws="failed";SRC[key].err=String(e);setTimeout(go,15000);return}
-    ws.onopen=()=>{tries=0;SRC[key].ws="connected";SRC[key].err="";try{onOpen(ws)}catch(e){SRC[key].err=String(e)}};
-    ws.onmessage=ev=>{try{onMsg(JSON.parse(ev.data))}catch(e){}};
+    const drop=()=>{if(gone)return;gone=true;clearInterval(ws._t);clearInterval(ws._w);SRC[key].ws="reconnecting";setTimeout(go,Math.min(30000,2000*(++tries)))};
+    ws._last=Date.now();
+    ws._w=setInterval(()=>{if(Date.now()-ws._last>45000){SRC[key].err="no data for 45 s, reconnecting";ws.onclose=ws.onmessage=null;try{ws.close()}catch(e){}drop()}},5000);      // a socket that goes silent without closing is replaced
+    ws.onopen=()=>{ws._last=Date.now();tries=0;SRC[key].ws="connected";SRC[key].err="";try{onOpen(ws)}catch(e){SRC[key].err=String(e)}};
+    ws.onmessage=ev=>{ws._last=Date.now();try{onMsg(JSON.parse(ev.data))}catch(e){}};
     ws.onerror=()=>{SRC[key].err="connection error (blocked by browser/network, or offline)"};
-    ws.onclose=()=>{clearInterval(ws._t);SRC[key].ws="reconnecting";setTimeout(go,Math.min(30000,2000*(++tries)))};
+    ws.onclose=drop;
   };
   go();
 }
@@ -634,7 +643,7 @@ async function kalshiLoop(){
       for(const s of syms){const h=strike[s],need=!h||h.end!==end,isSel=s===selected;
         const near=(end-now)<=Math.max(finSec,300)+15&&now-(lastTry[s]||0)>=3;   // live multipliers for every coin around its final-call time
         if(isSel||near||(need&&now-(lastTry[s]||0)>5)){lastTry[s]=now;jobs.push(refreshMarket(s,end,isSel))}}
-      await Promise.all(jobs);
+      await Promise.race([Promise.all(jobs),new Promise((_,rej)=>setTimeout(()=>rej(new Error("Kalshi market request timed out")),15000))]);
     }catch(e){kalshiStatus="unreachable";SRC.kalshi.rest="failing";SRC.kalshi.err=(e&&e.message)||"request failed";kalshiBlockedUntil=Date.now()+10000}
   }
   setTimeout(kalshiLoop,1000);
@@ -961,7 +970,7 @@ function step(tick,light){
         simBusy.add(k);refreshMarket(sym,wEnd,sym===selected).catch(()=>{}).then(()=>simBusy.delete(k));continue}
       const side=r.pCal>=0.5?"UP":"DOWN",m=mults(q.yes_ask,q.yes_bid,q.no_ask),mult=side==="UP"?m.up:m.dn;
       if(!mult)continue;
-      simWait.delete(sym+"|"+cp);simFired.add(k);if(real.sim){const bk=budOf("sim",sym);if(bk&&bk.avail>=1)realMirror("sim",sym,side,Math.floor(bk.avail*100)/100,{w:wEnd,p:side==="UP"?r.pCal:1-r.pCal})}const tr=simTr(sym,cp);if(!(tr.bank>0))continue;     // busted and set to stay at $0
+      simWait.delete(sym+"|"+cp);simFired.add(k);if(real.sim){const bk=budOf("sim",sym);if(bk&&bk.avail>=1)safe("real timed bet",()=>realMirror("sim",sym,side,Math.floor(bk.avail*100)/100,{w:wEnd,p:side==="UP"?r.pCal:1-r.pCal}))}const tr=simTr(sym,cp);if(!(tr.bank>0))continue;     // busted and set to stay at $0
       pendSim.push({w:wStart,sym,cp,at:simAt,side,p:side==="UP"?r.pCal:1-r.pCal,tau:r.tau,anchorLn:r.anchorLn,ask:q.yes_ask,bid:q.yes_bid,mult,stake:tr.bank})}
   }
   autoStep(tick,tau,wStart,wEnd);
@@ -1227,7 +1236,7 @@ function render(s){
   if(T.recent.length){tr+='<table class="mini"><tr><th>Window</th><th>Coin</th><th>Call</th><th>Model</th><th>Kalshi multiplier</th><th>Result</th></tr>'+
     T.recent.map(x=>`<tr><td>${new Date((x.w+900)*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</td><td>${x.sym}</td><td>${x.side}</td><td>${pc(x.p)} @${mmss(x.tau)}</td><td>${mx(sideMult(x))}</td><td class="${x.pending?"":x.hit?"hit":"miss"}">${x.pending?"LIVE":x.hit?"HIT":"MISS"}</td></tr>`).join("")+"</table>"}
   setH($("track"),tr);
-  renderLive(s);renderSim();
+  safe("real-money cards",()=>renderLive(s));safe("timed bets card",()=>renderSim());
   const C=s.calib;
   let cb=`<div class="s">${C.n} scored samples</div>`;
   cb+='<table class="mini"><tr><th>Confidence</th><th>Samples</th><th>Model said</th><th>Actually right</th></tr>'+
@@ -1327,7 +1336,7 @@ function autoStep(tick,tau,wStart,wEnd){
   autoDone=true;
   if(!place.length){autoNote="Edge too small to bet";return}
   for(const {x,stake} of place)pendAuto.push({w:wStart,sym:x.sym,side:x.side,p:x.e.p,lb:x.e.lb,edge:x.edge,tau:x.tau,anchorLn:x.anchorLn,ask:x.ask,bid:x.bid,mult:1/x.cost,stake,split:place.length>1});
-  if(real.auto)realAuto(best,two,picks,wEnd);
+  if(real.auto)safe("real auto bet",()=>realAuto(best,two,picks,wEnd));
   curAutoAlert={w:wStart,tau,bets:place.map(({x,stake})=>({sym:x.sym,side:x.side,stake,mult:1/x.cost,conf:x.conf,lb:x.e.lb,edge:x.edge}))};autoNewFlag=true;
   autoNote="Bet placed";autoSave()}
 
@@ -1499,11 +1508,11 @@ const oldHelper="The helper that is running is an older version that doesn't kno
 const acctNeed="Open the dashboard from its icon (the address starts with http://127.0.0.1) to use your Kalshi account.";
 async function aget(p){
   if(!hBase&&!(await findHelper()))throw new Error("The helper isn't connected. Open the dashboard from its icon.");
-  const r=await fetch(hBase+p,{cache:"no-store"});if(r.status===403)throw new Error(acctNeed);if(r.status===404)throw new Error(oldHelper);if(!r.ok)throw new Error("HTTP "+r.status);return r.json();
+  const r=await fetch(hBase+p,{cache:"no-store",signal:AbortSignal.timeout(20000)});if(r.status===403)throw new Error(acctNeed);if(r.status===404)throw new Error(oldHelper);if(!r.ok)throw new Error("HTTP "+r.status);return r.json();
 }
 async function apost(p,o){
   if(!hBase&&!(await findHelper()))throw new Error("The helper isn't connected. Open the dashboard from its icon.");
-  const r=await fetch(hBase+p,{method:"POST",headers:{"X-Kalshi":"1","Content-Type":"text/plain"},body:JSON.stringify(o||{})});
+  const r=await fetch(hBase+p,{method:"POST",headers:{"X-Kalshi":"1","Content-Type":"text/plain"},body:JSON.stringify(o||{}),signal:AbortSignal.timeout(30000)});
   let d={};try{d=await r.json()}catch(e){}
   if(r.status===403)throw new Error(d.error||acctNeed);if(r.status===404)throw new Error(oldHelper);return d;
 }
@@ -1903,12 +1912,14 @@ $("simBtn").onclick=()=>{
   if(!sim){enterSim();sim=true}else{sim=false;exitSim()}
   $("simBtn").textContent=sim?"Simulate: On ("+SIM_SPEED+"x)":"Simulate: Off";
   syms.forEach(s=>{hist[s]=[];delete latest[s]});predC=[];predA=[];bfLeft=0;lastTick=null;simBase=null;res={};fired=new Set()};
+$("build").onclick=()=>{if(!pageErrs.length)return;try{navigator.clipboard.writeText(pageErrs.join("\n"))}catch(e){}$("build").title="Copied. Last: "+pageErrs[pageErrs.length-1]};
 (async()=>{
   $("msg").style.display="block";$("msg").textContent="Connecting to exchanges and loading recent price history…";
-  await discover(); await syncHelper(); startFeeds(); startPolling(); kalshiLoop();
+  try{await discover()}catch(e){noteErr("discover",e)}try{await syncHelper()}catch(e){noteErr("syncHelper",e)}
+  try{startFeeds();startPolling()}catch(e){noteErr("start feeds",e)}kalshiLoop();
   try{await Promise.race([backfillAll(),new Promise(r=>setTimeout(r,20000))])}catch(e){}
   $("msg").style.display="none";
   tickNow();
-  const loop=()=>{if(sim)simAdvance();else tickNow();setTimeout(loop,1000-(Date.now()%1000)+20)}; loop();
+  const loop=()=>{try{if(sim)simAdvance();else tickNow()}catch(e){noteErr("tick",e)}finally{setTimeout(loop,1000-(Date.now()%1000)+20)}}; loop();      // one bad second must never stop the whole page
 })();
 </script></body></html>

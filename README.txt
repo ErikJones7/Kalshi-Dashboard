@@ -42,6 +42,10 @@ KALSHI ACCOUNT AND LIVE BETTING (optional)
 MAC / LINUX
   Double-click "Kalshi Dashboard.command" (needs Python 3). Updating works the same way.
 
+KEEPING GOING
+  If something in the page ever fails, it is caught and the page keeps running; a "problems caught" note appears next to the build number
+  (click it to copy the details). Price feeds that go silent reconnect on their own, and requests that never answer time out.
+
 COINS
   ADA, BCH and TON are no longer tracked. Any money that was allocated to them goes back to your cash automatically.
 
