@@ -141,7 +141,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-23u</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-23v</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -170,7 +170,7 @@ body{transition:margin-left .14s ease-out}
       <label><input type="checkbox" id="autoOn"> On</label>
       <label>Start $ <input type="number" id="autoStart" min="1" step="10"></label>
       <label>Max bet <input type="number" id="autoCap" min="1" max="100" step="1">%</label>
-      <button id="autoReset">Reset bankroll</button><button id="autoForget">Reset learning</button>
+      <button id="autoHist">View bet history</button><button id="autoReset">Reset bankroll</button><button id="autoForget">Reset learning</button>
     </div>
   </div>
   <div class="autostats" id="autoStats"></div>
@@ -215,6 +215,23 @@ body{transition:margin-left .14s ease-out}
       <span class="s" id="vwCnt"></span>
     </div>
     <div style="overflow:auto;max-height:55vh"><table class="mini" id="vwTbl"></table></div>
+  </div>
+</div>
+<div id="avw" style="display:none;position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.65);overflow:auto;padding:16px">
+  <div class="card" style="max-width:1250px;margin:0 auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <b style="font-size:17px">Auto mode bet history</b>
+      <div style="display:flex;gap:8px"><button id="avCsv">Download CSV (filtered)</button><button id="avClose">Close</button></div>
+    </div>
+    <div class="s" id="avWhere" style="margin:6px 0"></div>
+    <div id="avSum"></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:10px 0">
+      <label>Coin <select id="avCoin"></select></label>
+      <label>Result <select id="avRes"><option value="">All</option><option value="WIN">Wins</option><option value="LOSS">Losses</option><option value="OPEN">Open</option></select></label>
+      <label>Min win chance % <input type="number" id="avMin" min="0" max="100" step="0.5" value="0" style="width:70px"></label>
+      <span class="s" id="avCnt"></span>
+    </div>
+    <div style="overflow:auto;max-height:55vh"><table class="mini" id="avTbl"></table></div>
   </div>
 </div>
 <details class="card" id="diagBox" style="margin-bottom:12px"><summary class="k" style="cursor:pointer">Data sources &amp; diagnostics (where each coin's price comes from)</summary><div id="diag" style="margin-top:8px"></div></details>
@@ -1335,6 +1352,56 @@ function viewerCsv(){
 $("vwBtn").onclick=openViewer;$("vwClose").onclick=()=>{$("vw").style.display="none"};$("vwCsv").onclick=viewerCsv;
 ["vwCoin","vwRes","vwMin"].forEach(id=>$(id).addEventListener("change",renderViewer));
 $("vw").addEventListener("click",e=>{if(e.target.id==="vw")$("vw").style.display="none"});
+
+/* ============================ auto mode bet history (same layout as the signal data viewer) ============================ */
+let avRows=[];
+async function openAutoHistory(){
+  $("avw").style.display="block";$("avWhere").textContent="Loading…";
+  const mine=()=>simLog.filter(x=>x.cp==="AUTO");
+  let rows=mine(),where=sim?"Practice run at "+SIM_SPEED+"x – not saved anywhere.":"Showing what is stored in this browser only (start the helper to see everything in the data folder).";
+  if(!sim&&(hBase||await findHelper())){
+    try{rows=await hget("/data/auto");where="Saved in the folder: "+(await hget("/data/info")).dir+"  ·  sim_trades.csv (auto bets are marked AUTO)  ·  "+rows.length+" auto bets"}
+    catch(e){
+      try{rows=((await hget("/data/state")).sim||[]).filter(x=>x.cp==="AUTO");where="Saved in the folder (newest 2,000 simulated and auto bets). Restart the helper to see them all."}
+      catch(e2){where="Couldn't read the data folder ("+e.message+"); showing browser data."}}
+  }
+  const live=pendAuto.map(x=>({...x,live:true}));
+  avRows=rows.concat(live).map(r=>({w:(r.w||0)+900,sym:r.sym,side:r.side,p:r.p,lb:r.lb,tau:r.tau,tgt:r.anchorLn!=null?Math.exp(r.anchorLn):null,mult:r.mult,stake:r.stake,
+    pnl:r.live?null:r.pnl,bank:r.live?null:r.bank,up:r.live?null:!!r.up,split:!!r.split,res:r.live?"OPEN":(r.hit?"WIN":"LOSS")})).sort((a,b)=>b.w-a.w);
+  $("avWhere").textContent=where;
+  const coins=[...new Set(avRows.map(r=>r.sym))].sort();
+  $("avCoin").innerHTML='<option value="">All coins</option>'+coins.map(c=>`<option>${c}</option>`).join("");
+  renderAutoHistory();
+}
+function autoHistFiltered(){
+  const c=$("avCoin").value,rs=$("avRes").value,mn=(parseFloat($("avMin").value)||0)/100;
+  return avRows.filter(r=>(!c||r.sym===c)&&(!rs||r.res===rs)&&(r.p==null||r.p>=mn));
+}
+function renderAutoHistory(){
+  const rows=autoHistFiltered(),done=rows.filter(r=>r.res!=="OPEN"),wins=done.filter(r=>r.res==="WIN").length;
+  const staked=done.reduce((t,r)=>t+r.stake,0),net=done.reduce((t,r)=>t+r.pnl,0),sgn=v=>(v>=0?"+":"-")+$$(Math.abs(v)).replace("-","");
+  const by={};for(const r of done){const o=by[r.sym]=by[r.sym]||{n:0,h:0,st:0,net:0};o.n++;o.h+=r.res==="WIN"?1:0;o.st+=r.stake;o.net+=r.pnl}
+  const bk=[[0,0.9],[0.9,0.95],[0.95,0.98],[0.98,1.001]].map(([lo,hi])=>{const d=done.filter(r=>r.p>=lo&&r.p<hi);return {lo,hi,n:d.length,h:d.filter(r=>r.res==="WIN").length,net:d.reduce((t,r)=>t+r.pnl,0)}});
+  const cl=v=>v>0?"hit":v<0?"miss":"";
+  $("avSum").innerHTML=`<div class="v">${done.length?wins+" / "+done.length+" won ("+(100*wins/done.length).toFixed(1)+"%)":"No settled auto bets match"}</div>
+    <div class="s">${done.length?`Net <b class="${cl(net)}">${sgn(net)}</b> on ${$$(staked)} staked (${staked?(net>=0?"+":"")+(100*net/staked).toFixed(1)+"%":"–"}) · Average win chance ${(100*mean(done.map(r=>r.p))).toFixed(1)}%`:""}</div>
+    <table class="mini" style="margin-top:8px"><tr><th>Coin</th><th>Bets</th><th>Wins</th><th>Hit rate</th><th>Staked</th><th>Net</th></tr>`+
+    Object.keys(by).sort().map(k=>`<tr><td>${k}</td><td>${by[k].n}</td><td>${by[k].h}</td><td>${(100*by[k].h/by[k].n).toFixed(1)}%</td><td>${$$(by[k].st)}</td><td class="${cl(by[k].net)}">${sgn(by[k].net)}</td></tr>`).join("")+
+    `</table><table class="mini" style="margin-top:8px"><tr><th>Win chance</th><th>Bets</th><th>Wins</th><th>Hit rate</th><th>Net</th></tr>`+
+    bk.map(x=>`<tr><td>${x.lo?(x.lo*100).toFixed(0):"under 90"}${x.lo?"–"+(x.hi>1?"100":(x.hi*100).toFixed(0)):""}%</td><td>${x.n}</td><td>${x.h}</td><td>${x.n?(100*x.h/x.n).toFixed(1)+"%":"–"}</td><td class="${cl(x.net)}">${x.n?sgn(x.net):"–"}</td></tr>`).join("")+"</table>";
+  $("avCnt").textContent=rows.length+" rows"+(rows.length>2000?" (showing newest 2000; CSV has all)":"");
+  $("avTbl").innerHTML='<tr><th>Window end</th><th>Coin</th><th>Call</th><th>Win chance</th><th>Safe estimate</th><th>Secs left</th><th>Target</th><th>Kalshi multiplier</th><th>Stake</th><th>Settled</th><th>Result</th><th>Profit</th><th>Bankroll after</th></tr>'+
+    rows.slice(0,2000).map(r=>`<tr><td>${new Date(r.w*1000).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</td><td>${r.sym}</td><td class="${r.side==="UP"?"up":"dn"}">${r.side}</td><td>${pc(r.p)}</td><td>${pc(r.lb)}</td><td>${r.tau}</td><td>${f(r.tgt)}</td><td>${mx(r.mult)}</td><td>${$$(r.stake)}${r.split?" (split)":""}</td><td>${r.up==null?"–":r.up?"above":"below"}</td><td class="${r.res==="WIN"?"hit":r.res==="LOSS"?"miss":""}">${r.res}</td><td class="${r.pnl==null?"":cl(r.pnl)}">${r.pnl==null?"–":sgn(r.pnl)}</td><td>${r.bank==null?"–":$$(r.bank)}</td></tr>`).join("");
+}
+function autoHistCsv(){
+  const rows=autoHistFiltered(),esc=v=>v==null?"":String(v);
+  const lines=[["window_end","coin","call","win_chance","safe_estimate","secs_left","target","kalshi_multiplier","stake","split","settled","result","profit","bankroll_after"].join(",")]
+    .concat(rows.map(r=>[new Date(r.w*1000).toISOString(),r.sym,r.side,r.p,r.lb,r.tau,r.tgt,r.mult,r.stake,r.split?"yes":"",r.up==null?"":r.up?"above":"below",r.res,r.pnl==null?"":Math.round(r.pnl*100)/100,r.bank==null?"":Math.round(r.bank*100)/100].map(esc).join(",")));
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([lines.join("\n")],{type:"text/csv"}));a.download="auto_bet_history.csv";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+}
+$("autoHist").onclick=openAutoHistory;$("avClose").onclick=()=>{$("avw").style.display="none"};$("avCsv").onclick=autoHistCsv;
+["avCoin","avRes","avMin"].forEach(id=>$(id).addEventListener("change",renderAutoHistory));
+$("avw").addEventListener("click",e=>{if(e.target.id==="avw")$("avw").style.display="none"});
 
 /* ============================ menu ============================ */
 async function hcmd(path,obj){

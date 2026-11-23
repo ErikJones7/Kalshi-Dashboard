@@ -544,6 +544,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, json.dumps({"sig": store["sig"][-5000:], "cal": list(cal_recent), "fin": store["fin"][-2000:], "sim": store["sim"][-2000:], "simstate": read_simstate()}))
             if name == "signals":
                 return self._send(200, json.dumps(store["sig"]))
+            if name == "auto":
+                return self._send(200, json.dumps([r for r in store["sim"] if r.get("cp") == "AUTO"]))
             if name == "info":
                 return self._send(200, json.dumps({"dir": DATA, "signals": len(store["sig"]), "final_calls": len(store["fin"]),
                                                    "calibration_samples": CAL_COUNT[0], "sim_trades": len(store["sim"])}))
