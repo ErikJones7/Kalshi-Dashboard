@@ -589,11 +589,18 @@ def update_manifest(cfg):
     return base, man, ver
 
 
+def is_newer(remote, local):
+    """True only when the remote build stamp is later than ours (never step back to an older copy)."""
+    if local in ("", "unknown", None):
+        return True
+    return remote > local
+
+
 def update_check():
     cfg = load_settings()
     base, man, ver = update_manifest(cfg)
     loc = local_version()
-    return {"ok": True, "local": loc, "remote": ver, "available": ver != loc, "notes": str(man.get("notes", ""))}
+    return {"ok": True, "local": loc, "remote": ver, "available": is_newer(ver, loc), "notes": str(man.get("notes", ""))}
 
 
 def restart_self(port):
@@ -617,7 +624,7 @@ def update_apply(port):
     cfg = load_settings()
     base, man, ver = update_manifest(cfg)
     loc = local_version()
-    if ver == loc:
+    if not is_newer(ver, loc):
         return {"ok": True, "updated": False, "local": loc, "remote": ver}
     names = man.get("files") or []
     hashes = man.get("sha256") or {}
