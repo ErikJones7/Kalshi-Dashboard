@@ -43,10 +43,10 @@ MAC / LINUX
   Double-click "Kalshi Dashboard.command" (needs Python 3). Updating works the same way.
 
 DAILY AND WEEKLY GOALS (real Auto mode)
-  Auto aims for at least +2% a day and, if some days go badly, at least +15% over the week (Monday to Sunday). It stops betting for the rest
-  of the day once the day is up the "Stop at +__%/day" amount (default 10%), and starts again the next morning. The weekly figure is a
-  minimum to aim for and is shown on the card ("Week min"); it does not stop betting. Percentages are settled profit as a share of the
-  bankroll at the start of that day or week. These are targets, not guarantees, and nothing about them makes a bet safer.
+  Auto aims for at least +2% a day and +15% over the week (Monday to Sunday). The Auto card shows today's and this week's settled profit
+  as a share of the bankroll at the start of that day or week, and whether each minimum is met yet. The two minimums can be changed in
+  the "Day min" and "Week min" boxes. They are targets only: Auto never stops betting or changes how it bets because of them, and
+  they are not guarantees.
 
 NOTIFICATIONS
   While real Auto betting is on, the Auto popup and sound come from the real bet (when its order is actually bought), not from the
