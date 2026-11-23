@@ -30,6 +30,8 @@ KALSHI ACCOUNT AND LIVE BETTING (optional)
   restart, and "Stop all real betting" turns everything off at once. The Kalshi account card shows your cash, what is allocated,
   what is currently bet, and your real wins and losses (taken from Kalshi's own market results). Once a real bet has gone through, the helper replaces its own estimates with Kalshi's records: the price and fee actually paid, the
   multiplier that gives, and the payout when the market settles. Real wins, losses, net and bankroll use those figures.
+  Each card has its own "View real bet history" button (what was bought, the price paid, multiplier, result and payout).
+  The Start/Stop real betting button sits next to the "Real money" label on each card.
   The Auto mode and Timed bets cards show the real-money version at all times, with the fake-money version in a dropdown at the bottom.
   The "Activity log" button in the
   Kalshi account panel opens a card with everything the real-money modes did, with times.
