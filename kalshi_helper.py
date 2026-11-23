@@ -824,6 +824,117 @@ def est_fee(count, price_cents):
     return math.ceil(0.07 * count * p * (1 - p) * 100 - 1e-9) / 100.0          # Kalshi's taker fee formula, rounded up to the cent
 
 
+# ---- results from Kalshi and real bankrolls
+# Each mode gets a real bankroll you set (the "Start $"). It can only ever bet that amount plus what it has won or lost since,
+# so the rest of your account is untouched. This is enforced here, in the helper, using Kalshi's own market results.
+RESULTS_FILE = "live_results.json"
+_res = {"d": None, "busy": False, "last": 0.0}
+
+
+def _res_cache():
+    if _res["d"] is None:
+        try:
+            with open(os.path.join(DATA, RESULTS_FILE), "r", encoding="utf-8") as f:
+                _res["d"] = json.load(f)
+        except Exception:
+            _res["d"] = {}
+    return _res["d"]
+
+
+def _resolve_worker(todo):
+    try:
+        d = _res_cache()
+        changed = False
+        for env, tk in todo[:6]:
+            try:
+                st, body = fetch_upstream((DEMO_BASE if env == "demo" else UPSTREAM) + "/markets/" + urllib.parse.quote(tk))
+                m = json.loads(body.decode("utf-8", "ignore") or "{}").get("market") or {}
+                if st < 400 and m.get("result") in ("yes", "no"):
+                    d[env + "|" + tk] = m["result"]
+                    changed = True
+            except Exception:
+                pass
+        if changed:
+            os.makedirs(DATA, exist_ok=True)
+            with open(os.path.join(DATA, RESULTS_FILE), "w", encoding="utf-8") as f:
+                json.dump(d, f)
+    finally:
+        _res["busy"] = False
+
+
+def annotate(rows):
+    """Adds Kalshi's result ("yes"/"no") to each filled row once its market has settled, and fetches missing ones in the background."""
+    d, now, todo = _res_cache(), time.time(), []
+    for r in rows:
+        r["res"] = d.get("%s|%s" % (r.get("env"), r.get("ticker"))) if r.get("filled") else None
+        if r.get("filled") and not r["res"] and now > (r.get("w") or (r.get("t") or now) + 900) + 15:
+            k = (r.get("env"), r.get("ticker"))
+            if k not in todo:
+                todo.append(k)
+    if todo and not _res["busy"] and now - _res["last"] > 6:
+        _res["busy"], _res["last"] = True, now
+        threading.Thread(target=_resolve_worker, args=(todo,), daemon=True).start()
+    return rows
+
+
+def sym_of(ticker):
+    m = re.match(r"^KX([A-Z0-9]+?)15M-", ticker or "")
+    return m.group(1) if m else ""
+
+
+def budget_stats(env, rows=None):
+    cfg = (load_settings().get("kalshi_budget") or {}).get(env) or {}
+    rows = rows if rows is not None else annotate(live_rows())
+    out = {}
+    for src, keys in cfg.items():
+        out[src] = {}
+        for key, b in keys.items():
+            start, since = float(b.get("start") or 0), float(b.get("since") or 0)
+            mine = [r for r in rows if r.get("filled") and r.get("env") == env and r.get("src") == src and (r.get("t") or 0) >= since - 0.001
+                    and (src != "sim" or sym_of(r.get("ticker")) == key)]
+            net, peak, w, l = 0.0, start, 0, 0
+            for r in sorted([r for r in mine if r.get("res")], key=lambda r: (r.get("w") or r.get("t") or 0)):
+                won = r["res"] == r.get("side")
+                net += ((r.get("fill_count") or 0) - (r.get("cost_total") or 0)) if won else -(r.get("cost_total") or 0)
+                w, l = w + (1 if won else 0), l + (0 if won else 1)
+                peak = max(peak, start + net)
+            opn = [r for r in mine if not r.get("res")]
+            oc = sum(r.get("cost_total") or 0 for r in opn)
+            out[src][key] = {"start": start, "since": since, "n": len(mine), "w": w, "l": l, "net": round(net, 4), "peak": round(peak, 4),
+                             "bank": round(start + net, 4), "open": round(oc, 4), "open_n": len(opn), "avail": round(start + net - oc, 4)}
+    return out
+
+
+def budget_set(body):
+    _kid, env = acct_config()
+    src, key = body.get("src"), str(body.get("key") or "*")
+    if src not in ("auto", "sim"):
+        raise ValueError("Unknown mode.")
+    if src == "auto":
+        key = "*"
+    elif not re.match(r"^[A-Z0-9]{2,12}$", key):
+        raise ValueError("Unknown coin.")
+    start = float(body.get("start"))
+    if not (0 <= start <= 1000000):
+        raise ValueError("That amount isn't valid.")
+    cfg = load_settings()
+    bud = cfg.setdefault("kalshi_budget", {}).setdefault(env, {})
+    if start > 0:
+        sm = acct_summary(True)
+        if not sm.get("ok") or sm.get("balance") is None:
+            raise ValueError("Couldn't read your Kalshi balance, so nothing was set aside.")
+        others = sum(v["avail"] for sn, ks in budget_stats(env).items() for kn, v in ks.items() if not (sn == src and kn == key))
+        if others + start > sm["balance"] + 1e-9:
+            raise ValueError("You have $%.2f in cash and $%.2f is already set aside for other modes, so only $%.2f is left to give out."
+                             % (sm["balance"], max(others, 0), max(sm["balance"] - others, 0)))
+        bud.setdefault(src, {})[key] = {"start": start, "since": time.time()}
+    else:
+        bud.get(src, {}).pop(key, None)
+    save_settings(cfg)
+    acct_cache["data"] = None
+    return budget_stats(env)
+
+
 def signed_post(base, path, body):
     if path != "/portfolio/orders":
         raise ValueError("not allowed")
@@ -870,7 +981,15 @@ def _ask_cents(m, side):
     return a if a else None
 
 
+_exec_lock = threading.Lock()
+
+
 def place_order(body):
+    with _exec_lock:                       # one order at a time, so each bankroll check sees every earlier order
+        return _place_order(body)
+
+
+def _place_order(body):
     t = trade_cfg()
     key_id, env = acct_config()
     ticker = str(body.get("ticker") or "")
@@ -882,7 +1001,7 @@ def place_order(body):
     row = {"t": time.time(), "day": time.strftime("%Y-%m-%d"), "time": time.strftime("%Y-%m-%d %H:%M:%S"), "env": env, "ticker": ticker,
            "side": side, "count": count, "price_cents": price, "filled": False, "cost_total": 0.0,
            "src": body.get("src") if body.get("src") in ("manual", "sim", "auto") else "manual",
-           "w": _f(body.get("w")), "sym": str(body.get("sym") or "")[:12], "conf": _f(body.get("conf"))}
+           "w": _f(body.get("w")), "sym": sym_of(ticker) or str(body.get("sym") or "")[:12], "conf": _f(body.get("conf"))}
     try:
         if not t["trading"]:
             raise TradeError("Betting is switched off. Turn it on in Menu > Kalshi account.")
@@ -900,6 +1019,12 @@ def place_order(body):
         row["est_cost"] = round(cost, 4)
         if cost > t["max_bet"] + 1e-9:
             raise TradeError("This bet would cost about $%.2f, over your per-bet limit of $%.2f." % (cost, t["max_bet"]))
+        if row["src"] in ("sim", "auto"):
+            bk = budget_stats(env).get(row["src"], {}).get(sym_of(ticker) if row["src"] == "sim" else "*")
+            if not bk or bk["start"] <= 0:
+                raise TradeError("No real bankroll is set for this. Give it a Start $ first.")
+            if cost > bk["avail"] + 1e-9:
+                raise TradeError("This bet would cost about $%.2f but only $%.2f is left in its real bankroll." % (cost, max(bk["avail"], 0)))
         used = spent_today(env)
         if used + cost > t["daily"] + 1e-9:
             raise TradeError("This bet would take today's total to $%.2f, over your daily limit of $%.2f." % (used + cost, t["daily"]))
@@ -1051,7 +1176,9 @@ class Handler(BaseHTTPRequestHandler):
                 if name == "summary":
                     return self._send(200, json.dumps(acct_summary("force=1" in path)))
                 if name == "orders":
-                    return self._send(200, json.dumps(live_rows()[-400:][::-1]))
+                    return self._send(200, json.dumps(annotate(live_rows()[-400:])[::-1]))
+                if name == "budget":
+                    return self._send(200, json.dumps({"env": acct_config()[1], "budget": budget_stats(acct_config()[1])}))
                 if name.startswith("market/"):
                     tk = urllib.parse.unquote(name[len("market/"):])
                     if not TICKER_RE.match(tk):
@@ -1126,6 +1253,8 @@ class Handler(BaseHTTPRequestHandler):
                 if name == "order":
                     return self._send(200, json.dumps(place_order(body)))
                 if name == "config":
+                    if "budget" in body:
+                        return self._send(200, json.dumps({"ok": True, "budget": budget_set(body["budget"])}))
                     return self._send(200, json.dumps({"ok": True, "status": acct_set(body)}))
                 if name == "folder":
                     os.makedirs(KEYS_DIR, exist_ok=True)

@@ -19,11 +19,14 @@ KALSHI ACCOUNT AND LIVE BETTING (optional)
   and is never sent to the dashboard page. Betting stays OFF until you switch it on, and the helper enforces a per-bet and a
   per-day limit (fees included). Only 15-minute crypto markets can be bought, as fill-or-kill orders. Every bet attempt is
   recorded in data\live_orders.jsonl. Use the Demo account option to try it with fake money first.
-  REAL-MONEY REPLICAS: the Timed bets card and the Auto mode card each have a "Real money" switch. When on, every time that
-  mode bets, the same bet (same coin, side and moment) is also placed on your Kalshi account. Simulated bets use the "Real stake $"
-  box; Auto mode uses its own sizing rules applied to your account value. They switch off whenever you restart, and the "Stop all real
-  betting" button turns everything off at once. The Kalshi account card shows your cash, what is currently bet, today's spend and
-  your real wins and losses (taken from Kalshi's own market results).
+  REAL-MONEY VIEWS: the Timed bets card and the Auto mode card each have a "Real money" button that swaps the card for a
+  real-money version that looks and works like the fake-money one. Give it a Start $ (Auto mode: one box; Timed bets: one per coin,
+  or "Apply to all"). That money is its bankroll: it can only bet that amount plus whatever it has won or lost from it, and the rest of
+  your Kalshi cash is never touched (for example Start $50 of a $90 account leaves $40 untouched). The total set aside can never be
+  more than your cash. Changing a Start $ starts that bankroll fresh; 0 gives the money back. Then press "Start real betting".
+  Real bets are placed only when the fake-money twin bets, and the per-bet and per-day limits still apply. They switch off whenever you
+  restart, and "Stop all real betting" turns everything off at once. The Kalshi account card shows your cash, what is set aside,
+  what is currently bet, and your real wins and losses (taken from Kalshi's own market results).
   The key can place real bets: keep the keys folder private and never share it or the zip of this folder. If a key is ever exposed,
   delete it on Kalshi's API Keys page.
 
