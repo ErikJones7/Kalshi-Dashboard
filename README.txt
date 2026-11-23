@@ -42,6 +42,10 @@ KALSHI ACCOUNT AND LIVE BETTING (optional)
 MAC / LINUX
   Double-click "Kalshi Dashboard.command" (needs Python 3). Updating works the same way.
 
+REFRESH RATE
+  In the last 4 minutes of every window the dashboard refreshes every coin's Kalshi price twice a second (once a second before that).
+  If Kalshi says there are too many requests, it drops back to once a second for a minute and carries on.
+
 PRICES
   A real bet is only placed when its price is at or below what the model thinks it is worth (minus 1 cent). The "Pay up to N cents extra"
   box on Auto mode and Timed bets lets it pay a little more so more bets go through (default 1; 0 is the strictest). A refused bet says

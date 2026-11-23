@@ -39,7 +39,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-24y"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-25a"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -60,7 +60,7 @@ FROZEN = bool(getattr(sys, "frozen", False))            # True when running as t
 HERE = os.path.dirname(os.path.abspath(sys.executable if FROZEN else __file__))
 BUNDLE = getattr(sys, "_MEIPASS", HERE)                 # where PyInstaller unpacks the bundled dashboard page
 ALLOWED = ("/markets", "/series", "/events", "/exchange")   # read-only public data only
-CACHE_TTL = 0.8                                             # seconds; avoids hammering Kalshi
+CACHE_TTL = 0.4                                             # seconds; avoids hammering Kalshi
 DEFAULT_PORT = 8787
 cache = {}
 lock = threading.Lock()
