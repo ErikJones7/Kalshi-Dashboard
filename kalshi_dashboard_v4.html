@@ -149,7 +149,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-24j</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-24k</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -842,7 +842,7 @@ function step(tick,light){
   }
   lastTick=tick;
   const wStart=tick-tick%WINDOW,wEnd=wStart+WINDOW,el=tick-wStart,tau=Math.max(wEnd-tick,0);
-  if(wStart!==winStart){if(winStart!==null)finalizeWindow(el);winStart=wStart;res={};fired=new Set();lastCal={};finFired=new Set();if(autoSt.on&&!autoDone&&winStart!==null){autoSt.skipped++}autoDone=false;curAutoAlert=null;autoNote="";autoStab={};autoG=0;autoSnap=new Set();if(autoSt.on&&autoSt.pause>0){autoSt.pause--;autoDone=true;autoNote="Sitting out this window after losses"}pickFired=new Set();curPicks=[];finAll=new Set();simFired=new Set();simWait=new Set();simBusy=new Set()}
+  if(wStart!==winStart){if(winStart!==null)finalizeWindow(el);winStart=wStart;res={};fired=new Set();lastCal={};finFired=new Set();if(autoSt.on&&!autoDone&&winStart!==null){autoSt.skipped++}if(real.auto&&winStart!==null)realWindowEnd();autoDone=false;curAutoAlert=null;autoNote="";autoStab={};autoG=0;autoSnap=new Set();if(autoSt.on&&autoSt.pause>0){autoSt.pause--;autoDone=true;autoNote="Sitting out this window after losses"}pickFired=new Set();curPicks=[];finAll=new Set();simFired=new Set();simWait=new Set();simBusy=new Set()}
   if(light)return null;
   if(predSel!==selected){predC.fill(null);predA.fill(null);predSel=selected}
   const N=hist[syms[0]].length, active=el>=MARK;
@@ -1566,6 +1566,11 @@ function renderLive(s){      // real-money parts of the page, once a second
 const realReady=()=>!sim&&acct.info&&acct.info.ready&&acct.info.trading&&acct.sum&&acct.sum.ok;
 const allocFree=()=>Object.values(acct.bud||{}).reduce((t,m)=>t+Object.values(m).reduce((u,b)=>u+Math.max(b.avail,0),0),0);
 const allocBank=()=>Object.values(acct.bud||{}).reduce((t,m)=>t+Object.values(m).reduce((u,b)=>u+Math.max(b.bank,0),0),0);
+function realSkip(){      // windows Auto mode's real bankroll sat out, kept per allocation record so it starts over with a new one
+  const b=budOf("auto","*"),k=(acct.info&&acct.info.env)||"";let o=ls.get("k15realskip",null);
+  if(!b)return{n:0,w:0};if(!o||o.k!==k||o.s!==b.since){o={k,s:b.since,n:0,w:0};ls.set("k15realskip",o);}return o}
+function realWindowEnd(){      // a 15-minute window just ended while real auto was on: did it place a real bet?
+  const o=realSkip();if(!budOf("auto","*"))return;o.w++;if(!real.autoBet)o.n++;real.autoBet=false;ls.set("k15realskip",o);}
 const budOf=(src,key)=>(acct.bud&&acct.bud[src]&&acct.bud[src][key])||null;
 function realEvent(t){real.events.unshift(new Date().toLocaleTimeString()+" · "+t);real.evT.unshift(Date.now());if(real.events.length>300){real.events.length=300;real.evT.length=300}}
 function flashFor(m){      // the newest message for a card, without its time, and only while it is fresh
@@ -1578,7 +1583,7 @@ function realMirror(src,sym,side,stake,meta){
     if(pl.err){realEvent(tag+": not placed ("+pl.err+")");return}
     try{
       const d=await apost("/account/order",{ticker:pl.ticker,side:pl.side,count:pl.count,price:pl.price,src,w:meta.w,sym,conf:meta.p});
-      if(d.ok&&d.filled){realEvent(tag+": bought "+d.fill_count+" for "+money(d.cost));
+      if(d.ok&&d.filled){realEvent(tag+": bought "+d.fill_count+" for "+money(d.cost));if(src==="auto")real.autoBet=true;
         if(acct.info)acct.info.spent_today=(acct.info.spent_today||0)+d.cost;if(acct.sum&&acct.sum.ok&&acct.sum.balance!=null)acct.sum.balance-=d.cost;
         const bk=budOf(src,src==="auto"?"*":sym);if(bk){bk.avail-=d.cost;bk.open+=d.cost}}
       else realEvent(tag+": "+(d.ok?"not filled (the price moved), nothing bought":(d.error||"not placed")))
@@ -1654,7 +1659,7 @@ function renderRealAuto(){
   const st=!b?"Allocate some real money to begin":!real.auto?"Real betting is off. Press Start real betting to begin. Fake-money Auto mode keeps running either way.":(autoNote||"Waiting for the next window");
   const cell=(l,v,c)=>`<div>${l}<b${c?` class="${c}"`:""}>${v}</b></div>`;
   setH($("arStats"),cell("Allocated",b?$$(b.bank):"–")+cell("Free to bet",b?$$(b.avail):"–")+cell("Net",b?$$(b.net):"–",b?cls(b.net):"")+cell("Wins / losses",b?b.w+" / "+b.l:"–")+
-    cell("Hit rate",tot?Math.round(b.w/tot*1000)/10+"%":"–")+cell("Currently bet",b?$$(b.open):"–")+cell("Below peak",Math.round(dd*1000)/10+"%")+
+    cell("Hit rate",tot?Math.round(b.w/tot*1000)/10+"%":"–")+cell("Windows skipped",b?realSkip().n:"–")+cell("Currently bet",b?$$(b.open):"–")+cell("Below peak",Math.round(dd*1000)/10+"%")+
     cell("Min confidence now",(g=>g==null?"none":Math.round(g*1000)/10+"%")(autoGate(1)))+cell("Learned from",samples+" samples")+cell("Status",st));
   setH($("arNote"),(acct.stale?'<b class="miss">'+escH(staleMsg)+"</b><br>":"")+escH(flashFor("· Auto")));
 }
