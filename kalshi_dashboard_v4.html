@@ -141,7 +141,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-23v</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-23w</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1021,9 +1021,10 @@ function draw(ch){
     x.fillStyle=mut;x.textAlign="left";x.fillText(ch.src==="page"?"price when page opened":"target",px(x0)+4,py(ch.tY)-8)}
   // now + window end markers
   x.strokeStyle="rgba(128,128,150,.7)";x.lineWidth=1;x.beginPath();x.moveTo(px(0),padT);x.lineTo(px(0),padT+H);x.stroke();
-  x.fillStyle=mut;x.textAlign="center";x.fillText("now",px(0),padT-4);
+  x.fillStyle=mut;x.textAlign=px(0)>padL+W-50?"right":px(0)<padL+50?"left":"center";
+  x.fillText(new Date(tick*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit"}),px(0),padT-4);      // the time right now, where the line is
   const tEnd=ch.wEnd-tick;
-  if(tEnd>0&&tEnd<=fut){x.setLineDash([2,3]);x.beginPath();x.moveTo(px(tEnd),padT);x.lineTo(px(tEnd),padT+H);x.stroke();x.setLineDash([]);x.textAlign=px(tEnd)>padL+W-50?"right":"center";x.fillText(W<480?"end":"window ends",px(tEnd),padT-4)}
+  if(tEnd>0&&tEnd<=fut){x.setLineDash([2,3]);x.beginPath();x.moveTo(px(tEnd),padT);x.lineTo(px(tEnd),padT+H);x.stroke();x.setLineDash([])}
   // projected fan for the selected coin (68% and 95%)
   if(ch.fan){
     const pts=ch.fan.t.map((t,k)=>k).filter(k=>ch.fan.t[k]<=fut);
