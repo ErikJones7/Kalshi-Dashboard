@@ -543,6 +543,8 @@ def local_version():
 
 
 def http_get(url, token=None, timeout=20):
+    if "raw.githubusercontent.com" in url:      # GitHub caches raw files for ~5 minutes; a changing query string gets the newest copy
+        url += ("&" if "?" in url else "?") + "cb=%d" % int(time.time())
     headers = {"User-Agent": "kalshi-helper/2.0"}
     if token:
         headers["Authorization"] = "token " + token
