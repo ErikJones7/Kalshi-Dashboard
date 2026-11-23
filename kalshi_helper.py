@@ -39,7 +39,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-25a"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-25b"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -985,12 +985,11 @@ def annotate(rows):
             r["avg_cents"] = round((r.get("cost") or ct) / fc * 100, 1)
             r["mult"] = round(fc / ct, 3)               # what each $1 paid (fees included) pays back if it wins
         if r["res"]:
-            sp = a.get("s|%s|%s" % (r.get("env"), r.get("ticker")))
+            # Kalshi pays $1 per winning contract. Only this order's own contracts count: the settlement Kalshi reports covers the
+            # whole position in the market, which also holds any contracts bought by hand or by another order.
             won = r["res"] == r.get("side")
-            r["payout"] = sp["payout"] if sp else (fc if won else 0.0)
-            r["payout_actual"] = bool(sp)
-            if not sp and (r.get("env"), r.get("ticker")) not in ts and _act["tries"].get(("s", r.get("ticker")), 0) < 6:
-                ts.append((r.get("env"), r.get("ticker")))
+            r["payout"] = fc if won else 0.0
+            r["payout_actual"] = False
     if todo and not _res["busy"] and now - _res["last"] > 6:
         _res["busy"], _res["last"] = True, now
         threading.Thread(target=_resolve_worker, args=(todo,), daemon=True).start()

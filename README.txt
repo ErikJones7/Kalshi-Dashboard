@@ -42,6 +42,10 @@ KALSHI ACCOUNT AND LIVE BETTING (optional)
 MAC / LINUX
   Double-click "Kalshi Dashboard.command" (needs Python 3). Updating works the same way.
 
+BETS YOU ADD BY HAND
+  If you buy more contracts yourself in a market Auto or Timed bets already bet in, only the contracts the app itself bought count toward its
+  net, allocation and free-to-bet. Your own contracts are not credited to it, win or lose.
+
 DAILY AND WEEKLY GOALS (real Auto mode)
   Auto aims for at least +2% a day and +15% over the week (Monday to Sunday). Open "View real bet history" on the Auto card to see today's
   and this week's settled profit as a share of the bankroll at the start of that day or week, whether each minimum is met, and the last
