@@ -158,7 +158,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-24q</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-24r</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -214,7 +214,7 @@ body{transition:margin-left .14s ease-out}
     <div class="simctl">
       <label>Bet at <input type="number" id="simAt" min="5" max="300" step="5">s left</label>
       <label>Min confidence <input type="number" id="simMin" min="50" max="99.9" step="1">%</label>
-      <label title="With nothing allocated yet, this amount is split evenly across all coins. If some money is already allocated, it sets every coin to this amount.">Allocated $ <input type="number" id="simRealAll" min="0" step="0.01" style="width:90px"></label><button id="simRealAllB">Set all coins</button>
+      <label title="Total real money for all coins. It is split evenly across every coin when you press Split evenly (or Enter).">Total $ for all coins <input type="number" id="simRealAll" min="0" step="0.01" style="width:90px"></label><button id="simRealAllB">Split evenly</button>
       <button id="simRealHist">View real bet history</button>
     </div>
   </div>
@@ -1677,19 +1677,21 @@ $("autoOnBtn").onclick=async()=>{      // a number typed in the box but not yet 
 const money2=v=>Math.round(v*100)/100;
 $("autoRealStart").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();$("autoRealSet").click()}};
 $("autoRealSet").onclick=()=>{const el=$("autoRealStart"),b=budOf("auto","*");realAlloc("auto","*",parseFloat(el.value),el,b?money2(b.bank):0)};
-$("simRealAllB").onclick=async()=>{
-  const v=parseFloat($("simRealAll").value);if(!(v>=0))return;
+$("simRealAll").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();$("simRealAllB").click()}};
+$("simRealAllB").onclick=async()=>{      // the box is the TOTAL for all coins, split evenly across them (leftover cents go to the first coins)
+  const v=parseFloat($("simRealAll").value);if(!(v>=0)||!syms.length)return;
   if(real.pend)await real.pend.catch(()=>{});
-  const none=!syms.some(x=>{const b=budOf("sim",x);return b&&b.bank>0});
-  if(none&&v>0&&syms.length){      // nothing allocated yet: the amount is the total, split evenly across every coin (leftover cents go to the first coins)
-    const sm=acct.sum,cash=sm&&sm.ok?sm.balance-allocFree():null;
-    if(cash!=null&&v>cash+1e-9){realEvent("Timed bets: "+money(v)+" is more than your unused cash ("+money(Math.max(cash,0))+"). Nothing was changed.");return}
-    const cents=Math.round(v*100),base=Math.floor(cents/syms.length),extra=cents-base*syms.length;
-    for(let i=0;i<syms.length;i++){const x=syms[i],amt=(base+(i<extra?1:0))/100,b=budOf("sim",x);
-      if(!(await realAlloc("sim",x,amt,null,b?money2(b.bank):0,true)))break;
-      const el=$("rs_"+x);if(el)el.value=amt.toFixed(2)}
-    return}
-  for(const x of syms){const b=budOf("sim",x);if(!(await realAlloc("sim",x,v,null,b?money2(b.bank):0,true)))break}
+  const cents=Math.round(v*100),base=Math.floor(cents/syms.length),extra=cents-base*syms.length;
+  const plan=syms.map((x,i)=>{const b=budOf("sim",x);return{x,amt:(base+(i<extra?1:0))/100,cur:b?b.bank:0,open:b?b.open||0:0}});
+  const bad=plan.find(q=>q.amt<q.open-1e-9);
+  if(bad){realEvent("Timed bets: NOT changed. "+bad.x+" has "+money(bad.open)+" in an unsettled bet, so it can't go down to "+money(bad.amt)+". Try again after it settles, or enter a larger total.");return}
+  const sm=acct.sum,cash=sm&&sm.ok?sm.balance-allocFree():null,delta=plan.reduce((t,q)=>t+q.amt-q.cur,0);
+  if(cash!=null&&delta>cash+1e-9){realEvent("Timed bets: NOT changed. "+money(v)+" needs "+money(delta)+" more than is allocated now, but your unused cash is only "+money(Math.max(cash,0))+".");return}
+  plan.sort((p,q)=>(p.amt-p.cur)-(q.amt-q.cur));      // coins going down first, so the cash they free is there for the ones going up
+  let n=0;
+  for(const q of plan){if(Math.abs(q.amt-q.cur)<0.005){n++;continue}
+    const b=budOf("sim",q.x);if(!(await realAlloc("sim",q.x,q.amt,null,b?money2(b.bank):0,true)))break;n++}
+  if(n===plan.length)realEvent("Timed bets: "+money(v)+" split evenly across "+syms.length+" coins ("+money(base)+" each"+(extra?", plus a cent on the first "+extra:"")+")")
 };
 $("acStop").onclick=async()=>{      // one switch for all real betting: ON stops every real mode, OFF allows real bets again (each mode still has to be started)
   const on=!!(acct.info&&acct.info.trading);
@@ -1728,14 +1730,13 @@ function renderRealTimed(){
       $("rset_"+s).onclick=go;el.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();go()}}})}
   const rows=realOf("sim"),T={bank:0,avail:0,w:0,l:0,net:0,open:0},ev=real.events.filter(e=>e.includes("· Timed bet")).slice(0,3);
   setH($("trNote"),(acct.stale?'<b class="miss">'+escH(staleMsg)+"</b><br>":"")+escH("Each coin bets its whole real bankroll at "+simAt+" s left when the win chance is at least "+Math.round(simMin*100)+"%. The Allocated $ box is its bankroll: it moves up and down with its wins and losses. Type a new amount for a coin and press Set (or Enter): a smaller number sends money back to your cash, a bigger one adds more. A coin that loses everything stays at $0 until you allocate more. Money you haven't allocated is never touched.")+(flashFor("· Timed bet")?"<br>"+escH(flashFor("· Timed bet")):""));
-  setT($("simRealAllB"),syms.some(x=>{const b=budOf("sim",x);return b&&b.bank>0})?"Set all coins":"Split across coins");
   for(const s of syms){const b=budOf("sim",s),inp=$("rs_"+s);if(!inp)continue;
     if(document.activeElement!==inp)inp.value=b?money2(b.bank):0;
     setT($("rb_"+s),b?$$(b.avail):"–");setT($("rw_"+s),b?b.w+" / "+b.l:"–");const n=$("rn_"+s);setT(n,b?$$(b.net):"–");setC(n,b?cls(b.net):"");
     const op=rows.find(m=>m.sym===s&&m.won==null);
     setT($("ro_"+s),op?`${op.r.side==="yes"?"UP":"DOWN"} ${$$(op.r.cost_total)} @ ${op.r.price_cents}¢${op.open?"":" · settling"}`:b&&b.start>0&&b.avail<1?"Out of money":"–");
     if(b){T.avail+=b.avail;T.bank+=b.bank;T.w+=b.w;T.l+=b.l;T.net+=b.net;T.open+=b.open}}
-  setT($("rs_all"),$$(T.bank));setT($("rb_all"),$$(T.avail));setT($("rw_all"),T.w+" / "+T.l);const nn=$("rn_all");setT(nn,$$(T.net));setC(nn,cls(T.net));setT($("ro_all"),T.open?$$(T.open)+" open":"–");
+  setT($("rs_all"),$$(T.bank));if(document.activeElement!==$("simRealAll"))$("simRealAll").value=T.bank>0?money2(T.bank):"";setT($("rb_all"),$$(T.avail));setT($("rw_all"),T.w+" / "+T.l);const nn=$("rn_all");setT(nn,$$(T.net));setC(nn,cls(T.net));setT($("ro_all"),T.open?$$(T.open)+" open":"–");
 }
 $("autoRealHist").onclick=()=>openRH("auto");$("simRealHist").onclick=()=>openRH("sim");
 
