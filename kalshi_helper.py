@@ -892,7 +892,7 @@ def budget_stats(env, rows=None):
             start, since = float(b.get("start") or 0), float(b.get("since") or 0)
             mine = [r for r in rows if r.get("filled") and r.get("env") == env and r.get("src") == src and (r.get("t") or 0) >= since - 0.001
                     and (src != "sim" or sym_of(r.get("ticker")) == key)]
-            net, peak, w, l = 0.0, start, 0, 0
+            net, peak, w, l = 0.0, max(start, 0.0), 0, 0
             for r in sorted([r for r in mine if r.get("res")], key=lambda r: (r.get("w") or r.get("t") or 0)):
                 won = r["res"] == r.get("side")
                 net += ((r.get("fill_count") or 0) - (r.get("cost_total") or 0)) if won else -(r.get("cost_total") or 0)
@@ -906,6 +906,8 @@ def budget_stats(env, rows=None):
 
 
 def budget_set(body):
+    """Set how much real money a mode/coin has allocated. The number is the bankroll itself (what it was given plus what it has won
+    or lost), so raising it deposits more from cash and lowering it sends the difference back to cash. 0 releases it entirely."""
     _kid, env = acct_config()
     src, key = body.get("src"), str(body.get("key") or "*")
     if src not in ("auto", "sim"):
@@ -914,20 +916,28 @@ def budget_set(body):
         key = "*"
     elif not re.match(r"^[A-Z0-9]{2,12}$", key):
         raise ValueError("Unknown coin.")
-    start = float(body.get("start"))
-    if not (0 <= start <= 1000000):
+    target = float(body.get("alloc", body.get("start")))
+    if not (0 <= target <= 1000000):
         raise ValueError("That amount isn't valid.")
+    target = round(target, 2)
     cfg = load_settings()
     bud = cfg.setdefault("kalshi_budget", {}).setdefault(env, {})
-    if start > 0:
+    cur = budget_stats(env).get(src, {}).get(key)
+    if cur and cur["open"] > 0 and target < cur["open"] - 1e-9:
+        raise ValueError("$%.2f of it is in a bet that hasn't settled yet, so it can't go below that until the bet finishes." % cur["open"])
+    if target > 0:
         sm = acct_summary(True)
         if not sm.get("ok") or sm.get("balance") is None:
-            raise ValueError("Couldn't read your Kalshi balance, so nothing was set aside.")
+            raise ValueError("Couldn't read your Kalshi balance, so nothing was changed.")
         others = sum(v["avail"] for sn, ks in budget_stats(env).items() for kn, v in ks.items() if not (sn == src and kn == key))
-        if others + start > sm["balance"] + 1e-9:
-            raise ValueError("You have $%.2f in cash and $%.2f is already set aside for other modes, so only $%.2f is left to give out."
+        mine = target - (cur["open"] if cur else 0.0)           # what this one will have free to bet
+        if others + mine > sm["balance"] + 1e-9:
+            raise ValueError("You have $%.2f in cash and $%.2f is already allocated to other modes, so only $%.2f more can be allocated here."
                              % (sm["balance"], max(others, 0), max(sm["balance"] - others, 0)))
-        bud.setdefault(src, {})[key] = {"start": start, "since": time.time()}
+        if cur:      # keep the record (wins, losses, net); only move the capital so that bankroll == target
+            bud[src][key]["start"] = round(target - cur["net"], 4)
+        else:
+            bud.setdefault(src, {})[key] = {"start": target, "since": time.time()}
     else:
         bud.get(src, {}).pop(key, None)
     save_settings(cfg)
@@ -1021,8 +1031,8 @@ def _place_order(body):
             raise TradeError("This bet would cost about $%.2f, over your per-bet limit of $%.2f." % (cost, t["max_bet"]))
         if row["src"] in ("sim", "auto"):
             bk = budget_stats(env).get(row["src"], {}).get(sym_of(ticker) if row["src"] == "sim" else "*")
-            if not bk or bk["start"] <= 0:
-                raise TradeError("No real bankroll is set for this. Give it a Start $ first.")
+            if not bk or bk["bank"] <= 0:
+                raise TradeError("No real money is allocated to this (or it is all gone). Allocate some first.")
             if cost > bk["avail"] + 1e-9:
                 raise TradeError("This bet would cost about $%.2f but only $%.2f is left in its real bankroll." % (cost, max(bk["avail"], 0)))
         used = spent_today(env)

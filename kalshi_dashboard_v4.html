@@ -147,7 +147,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-24c</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-24d</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -181,7 +181,7 @@ body{transition:margin-left .14s ease-out}
   <div class="simhead">
     <div class="k" id="autoK">Auto mode</div>
     <div class="simctl">
-      <label class="realonly">Start $ <input type="number" id="autoRealStart" min="0" step="1" style="width:80px"></label>
+      <label class="realonly" title="Real money set aside for this. It goes up and down with its wins and losses. Type a new amount to add money or send some back to your cash.">Allocated $ <input type="number" id="autoRealStart" min="0" step="0.01" style="width:90px"></label><button id="autoRealSet" class="realonly">Set</button>
       <button id="autoOnBtn" class="realonly">Start real betting</button>
       <button id="autoReal" class="realsw" title="Switch this card between fake money and your real Kalshi account">Real money</button>
       <label class="simonly">Start $ <input type="number" id="autoStart" min="1" step="10"></label>
@@ -202,7 +202,7 @@ body{transition:margin-left .14s ease-out}
       <label>Bet at <input type="number" id="simAt" min="5" max="300" step="5">s left</label>
       <label>Min confidence <input type="number" id="simMin" min="50" max="99.9" step="1">%</label>
       <label class="simonly">After a loss <select id="simMode"><option value="restart">Restart from start $</option><option value="zero">Stay at $0</option></select></label>
-      <label class="realonly">Start $ <input type="number" id="simRealAll" min="0" step="1" style="width:80px"></label><button id="simRealAllB" class="realonly">Apply to all</button>
+      <label class="realonly" title="Set every coin to the same allocated amount">Allocated $ <input type="number" id="simRealAll" min="0" step="0.01" style="width:90px"></label><button id="simRealAllB" class="realonly">Set all coins</button>
       <button id="simOnBtn" class="realonly">Start real betting</button>
       <button id="simReal" class="realsw" title="Switch this card between fake money and your real Kalshi account">Real money</button>
       <button id="simReset" class="simonly">Reset all</button>
@@ -1548,7 +1548,7 @@ function renderLive(s){      // real-money parts of the page, once a second
 
 
 // ---- real-money replicas of the timed bets and auto mode: same trigger, same coin and side, same moment, on your Kalshi account.
-// Each mode bets only its own real bankroll (the Start $ you gave it, plus what it has won or lost since); the helper enforces that.
+// Each mode bets only its own real bankroll (the amount you allocated, which moves with its wins and losses); the helper enforces that.
 const realReady=()=>!sim&&acct.info&&acct.info.ready&&acct.info.trading&&acct.sum&&acct.sum.ok;
 const budOf=(src,key)=>(acct.bud&&acct.bud[src]&&acct.bud[src][key])||null;
 function realEvent(t){real.events.unshift(new Date().toLocaleTimeString()+" · "+t);if(real.events.length>10)real.events.length=10}
@@ -1580,30 +1580,40 @@ function realGuard(s){
   setT($("autoOnBtn"),real.auto?"Stop real betting":"Start real betting");setT($("simOnBtn"),real.sim?"Stop real betting":"Start real betting");
   $("autoOnBtn").classList.toggle("arm",real.auto);$("simOnBtn").classList.toggle("arm",real.sim);
 }
-function realSwitch(k,on){
+const armT={};
+async function realSwitch(k,on){
   const name=k==="auto"?"Auto mode":"Timed bets";
   if(!on){real[k]=false;realEvent(name+" real betting off");return}
+  if(real.pend)await real.pend.catch(()=>{});
   if(!realReady()){realEvent("Can't start yet: connect your account and turn betting on in Menu, then Kalshi account.");return}
   const i=acct.info,tot=Object.values((acct.bud&&acct.bud[k])||{}).reduce((t,b)=>t+Math.max(b.avail,0),0);
-  if(!(tot>=1)){realEvent(name+": give it a real Start $ first (the Start $ box), then press Start again.");return}
-  if(!confirm("Start placing "+(i.env==="demo"?"DEMO":"REAL")+" bets with "+name+"?\n\nIt can only bet its own real bankroll, $"+tot.toFixed(2)+" right now (its Start $ plus what it has won or lost). The rest of your account is not touched.\nLimits: $"+i.max_bet+" per bet, $"+i.daily+" per day, fees included. It stops when you restart."))return;
-  real[k]=true;realEvent(name+" real betting ON");
+  if(!(tot>=1)){realEvent(name+": allocate some real money first (type an amount in the Allocated $ box and press Set), then press Start again.");return}
+  if(!armT[k]||Date.now()-armT[k]>6000){armT[k]=Date.now();realEvent(name+": press Start real betting again within 6 seconds to confirm. It will place "+(i.env==="demo"?"DEMO":"REAL")+" bets using only its allocated $"+tot.toFixed(2)+". Limits: $"+i.max_bet+" per bet, $"+i.daily+" per day, fees included.");return}
+  armT[k]=0;real[k]=true;realEvent(name+" real betting ON");
 }
-async function realAlloc(src,key,v,el,prev,quiet){      // set aside real money for a mode (or one coin); 0 takes it back
+function realAlloc(src,key,v,el,prev,quiet){      // set a mode's (or one coin's) real allocation; it is the bankroll itself, so it moves with wins and losses
   const name=src==="auto"?"Auto mode":"Timed bets"+(key!=="*"?" ("+key+")":"");
-  if(!(v>=0)){if(el)el.value=prev;return false}
-  if(!quiet&&v>0&&!confirm("Set aside $"+v+" of your "+(acct.info&&acct.info.env==="demo"?"demo":"real")+" money for "+name+"?\n\nIt will only ever bet that amount plus what it wins or loses from it, starting fresh now. The rest of your account stays untouched. Set it to 0 to take the money back.")){if(el)el.value=prev;return false}
-  try{const d=await apost("/account/config",{budget:{src,key,start:v}});if(!d.ok)throw new Error(d.error||"Couldn't set that aside");acct.bud=d.budget||acct.bud;realEvent(name+": "+(v>0?money(v)+" set aside":"released"));return true}
-  catch(e){realEvent(name+": "+(e.message||"failed"));if(el)el.value=prev;return false}
-  finally{acctRefresh(true)}
+  if(!(v>=0)){if(el)el.value=prev;return Promise.resolve(false)}
+  const p=(async()=>{
+    try{const d=await apost("/account/config",{budget:{src,key,alloc:v}});if(!d.ok)throw new Error(d.error||"Couldn't change that");acct.bud=d.budget||acct.bud;
+      realEvent(name+": "+(v>0?money(v)+" allocated":"released, all of it is back in your cash"));return true}
+    catch(e){realEvent(name+": NOT changed. "+(e.message||"failed"));if(el)el.value=prev;return false}
+    finally{acctRefresh(true)}
+  })();
+  real.pend=p;return p;
 }
 $("autoReal").onclick=()=>{real.autoView=!real.autoView};$("simReal").onclick=()=>{real.simView=!real.simView};
-$("autoOnBtn").onclick=()=>realSwitch("auto",!real.auto);$("simOnBtn").onclick=()=>realSwitch("sim",!real.sim);
-$("autoRealStart").onchange=e=>{const b=budOf("auto","*");realAlloc("auto","*",parseFloat(e.target.value),e.target,b?b.start:0)};
+$("autoOnBtn").onclick=async()=>{      // a number typed in the box but not yet set is applied first, so Start never uses a stale amount
+  const el=$("autoRealStart"),b=budOf("auto","*"),v=parseFloat(el.value);
+  if(!real.auto&&v>=0&&Math.abs(v-(b?b.bank:0))>=0.005)await realAlloc("auto","*",v,el,b?money2(b.bank):0);
+  realSwitch("auto",!real.auto)};$("simOnBtn").onclick=()=>realSwitch("sim",!real.sim);
+const money2=v=>Math.round(v*100)/100;
+$("autoRealStart").onchange=()=>$("autoRealSet").click();
+$("autoRealStart").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();$("autoRealSet").click()}};
+$("autoRealSet").onclick=()=>{const el=$("autoRealStart"),b=budOf("auto","*");realAlloc("auto","*",parseFloat(el.value),el,b?money2(b.bank):0)};
 $("simRealAllB").onclick=async()=>{
   const v=parseFloat($("simRealAll").value);if(!(v>=0))return;
-  if(v>0&&!confirm("Set aside $"+v+" for each of the "+syms.length+" coins ($"+(v*syms.length).toFixed(2)+" in all) of your "+(acct.info&&acct.info.env==="demo"?"demo":"real")+" money?\n\nEach coin only ever bets its own amount plus what it wins or loses from it, starting fresh now. The rest of your account stays untouched."))return;
-  for(const s of syms){const b=budOf("sim",s);if(!(await realAlloc("sim",s,v,null,b?b.start:0,true)))break}
+  for(const x of syms){const b=budOf("sim",x);if(!(await realAlloc("sim",x,v,null,b?money2(b.bank):0,true)))break}
 };
 $("acStop").onclick=async()=>{real.sim=real.auto=false;try{await apost("/account/config",{trading:false})}catch(e){}realEvent("All real betting stopped");acctRefresh(true)};
 
@@ -1617,11 +1627,11 @@ function realOf(src){      // this mode's filled real bets on the account being 
 }
 function renderRealAuto(){
   const b=budOf("auto","*"),rows=realOf("auto"),inp=$("autoRealStart"),ev=real.events.filter(e=>e.includes("· Auto")).slice(0,3);
-  if(document.activeElement!==inp)inp.value=b?b.start:0;
+  if(document.activeElement!==inp)inp.value=b?money2(b.bank):0;
   const tot=b?b.w+b.l:0,dd=b&&b.peak>0?Math.max(0,1-b.bank/b.peak):0;let samples=0;for(const k in autoSt.learn)samples+=autoSt.learn[k].n;
-  const st=!b?"Give Auto mode a Start $ to begin":!real.auto?"Real betting is off. Press Start real betting to begin. Fake-money Auto mode keeps running either way.":(autoNote||"Waiting for the next window");
+  const st=!b?"Allocate some real money to begin":!real.auto?"Real betting is off. Press Start real betting to begin. Fake-money Auto mode keeps running either way.":(autoNote||"Waiting for the next window");
   const cell=(l,v,c)=>`<div>${l}<b${c?` class="${c}"`:""}>${v}</b></div>`;
-  setH($("arStats"),cell("Bankroll",b?$$(b.bank):"–")+cell("Net",b?$$(b.net):"–",b?cls(b.net):"")+cell("Wins / losses",b?b.w+" / "+b.l:"–")+
+  setH($("arStats"),cell("Allocated",b?$$(b.bank):"–")+cell("Free to bet",b?$$(b.avail):"–")+cell("Net",b?$$(b.net):"–",b?cls(b.net):"")+cell("Wins / losses",b?b.w+" / "+b.l:"–")+
     cell("Hit rate",tot?Math.round(b.w/tot*1000)/10+"%":"–")+cell("Currently bet",b?$$(b.open):"–")+cell("Below peak",Math.round(dd*1000)/10+"%")+
     cell("Min confidence now",(g=>g==null?"none":Math.round(g*1000)/10+"%")(autoGate(1)))+cell("Learned from",samples+" samples")+cell("Status",st));
   setH($("arNote"),ev.map(escH).join("<br>"));
@@ -1632,19 +1642,19 @@ let trKey="";
 function renderRealTimed(){
   const key=syms.join();
   if(key!==trKey){trKey=key;
-    $("trTbl").innerHTML='<tr><th>Coin</th><th>Start $</th><th>Bankroll</th><th>Wins / losses</th><th>Net</th><th>Open bet</th></tr>'+
+    $("trTbl").innerHTML='<tr><th>Coin</th><th>Allocated $</th><th>Free to bet</th><th>Wins / losses</th><th>Net</th><th>Open bet</th></tr>'+
       syms.map(s=>`<tr><td>${s}</td><td><input type="number" min="0" step="1" id="rs_${s}" style="width:78px"></td><td id="rb_${s}"></td><td id="rw_${s}"></td><td id="rn_${s}"></td><td class="dim" id="ro_${s}"></td></tr>`).join("")+
       '<tr class="tot"><td>All</td><td id="rs_all"></td><td id="rb_all"></td><td id="rw_all"></td><td id="rn_all"></td><td class="dim" id="ro_all"></td></tr>';
-    syms.forEach(s=>{$("rs_"+s).onchange=e=>{const b=budOf("sim",s);realAlloc("sim",s,parseFloat(e.target.value),e.target,b?b.start:0)}})}
-  const rows=realOf("sim"),T={start:0,bank:0,w:0,l:0,net:0,open:0},ev=real.events.filter(e=>e.includes("· Timed bet")).slice(0,3);
-  setH($("trNote"),escH("Each coin bets its whole real bankroll at "+simAt+" s left when the win chance is at least "+Math.round(simMin*100)+"%. A coin that loses everything stays at $0 until you give it a new Start $. Money you haven't set aside is never touched.")+(ev.length?"<br>"+ev.map(escH).join("<br>"):""));
+    syms.forEach(s=>{$("rs_"+s).onchange=e=>{const b=budOf("sim",s);realAlloc("sim",s,parseFloat(e.target.value),e.target,b?money2(b.bank):0)}})}
+  const rows=realOf("sim"),T={bank:0,avail:0,w:0,l:0,net:0,open:0},ev=real.events.filter(e=>e.includes("· Timed bet")).slice(0,3);
+  setH($("trNote"),escH("Each coin bets its whole real bankroll at "+simAt+" s left when the win chance is at least "+Math.round(simMin*100)+"%. The Allocated $ box is its bankroll: it moves up and down with its wins and losses. Type a smaller number to send money back to your cash, or a bigger one to add more. A coin that loses everything stays at $0 until you allocate more. Money you haven't allocated is never touched.")+(ev.length?"<br>"+ev.map(escH).join("<br>"):""));
   for(const s of syms){const b=budOf("sim",s),inp=$("rs_"+s);if(!inp)continue;
-    if(document.activeElement!==inp)inp.value=b?b.start:0;
-    setT($("rb_"+s),b?$$(b.bank):"–");setT($("rw_"+s),b?b.w+" / "+b.l:"–");const n=$("rn_"+s);setT(n,b?$$(b.net):"–");setC(n,b?cls(b.net):"");
+    if(document.activeElement!==inp)inp.value=b?money2(b.bank):0;
+    setT($("rb_"+s),b?$$(b.avail):"–");setT($("rw_"+s),b?b.w+" / "+b.l:"–");const n=$("rn_"+s);setT(n,b?$$(b.net):"–");setC(n,b?cls(b.net):"");
     const op=rows.find(m=>m.sym===s&&m.won==null);
     setT($("ro_"+s),op?`${op.r.side==="yes"?"UP":"DOWN"} ${$$(op.r.cost_total)} @ ${op.r.price_cents}¢${op.open?"":" · settling"}`:b&&b.start>0&&b.avail<1?"Out of money":"–");
-    if(b){T.start+=b.start;T.bank+=b.bank;T.w+=b.w;T.l+=b.l;T.net+=b.net;T.open+=b.open}}
-  setT($("rs_all"),$$(T.start));setT($("rb_all"),$$(T.bank));setT($("rw_all"),T.w+" / "+T.l);const nn=$("rn_all");setT(nn,$$(T.net));setC(nn,cls(T.net));setT($("ro_all"),T.open?$$(T.open)+" open":"–");
+    if(b){T.avail+=b.avail;T.bank+=b.bank;T.w+=b.w;T.l+=b.l;T.net+=b.net;T.open+=b.open}}
+  setT($("rs_all"),$$(T.bank));setT($("rb_all"),$$(T.avail));setT($("rw_all"),T.w+" / "+T.l);const nn=$("rn_all");setT(nn,$$(T.net));setC(nn,cls(T.net));setT($("ro_all"),T.open?$$(T.open)+" open":"–");
 }
 $("autoRealHist").onclick=openKa;
 
