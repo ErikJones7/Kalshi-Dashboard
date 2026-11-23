@@ -35,6 +35,7 @@ import argparse
 import collections
 import csv
 import hashlib
+import http.client
 import json
 import os
 import platform
@@ -45,6 +46,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import traceback
 import webbrowser
@@ -159,10 +161,35 @@ def log(msg):
         pass
 
 
+CSVS = {"sig": ("signals.csv", SIG_COLS, sig_row), "fin": ("final_calls.csv", FIN_COLS, fin_row), "sim": ("sim_trades.csv", SIM_COLS, sim_row)}
+csv_stale = set()       # spreadsheets that must be rebuilt in full because the last write to them failed (for example, open in Excel)
+
+
 def rewrite_csvs():
-    for name, cols, fn, kind in (("signals.csv", SIG_COLS, sig_row, "sig"), ("final_calls.csv", FIN_COLS, fin_row, "fin"), ("sim_trades.csv", SIM_COLS, sim_row, "sim")):
+    for kind, (name, cols, fn) in CSVS.items():
         if store[kind]:
-            write_csv(name, cols, [fn(r) for r in store[kind]])
+            try:
+                write_csv(name, cols, [fn(r) for r in store[kind]])
+                csv_stale.discard(kind)
+            except Exception:
+                csv_stale.add(kind)
+                log("could not rewrite %s (will retry on the next save):\n%s" % (name, traceback.format_exc()))
+
+
+def append_csv(kind, rows):
+    """Add the new rows to the end of the spreadsheet instead of rewriting every row each time; rebuild in full if anything looks off."""
+    name, cols, fn = CSVS[kind]
+    path = os.path.join(DATA, name)
+    if kind in csv_stale or not os.path.isfile(path) or os.path.getsize(path) == 0:
+        write_csv(name, cols, [fn(r) for r in store[kind]])
+        csv_stale.discard(kind)
+        return
+    try:
+        with open(path, "a", newline="") as f:
+            csv.writer(f).writerows([fn(r) for r in rows])
+    except Exception:
+        csv_stale.add(kind)
+        raise
 
 
 def load_store():
@@ -207,6 +234,7 @@ def save_data(body):
     added = {"sig": 0, "fin": 0, "cal": 0, "sim": 0}
     with lock:
         os.makedirs(DATA, exist_ok=True)
+        fresh = {"sig": [], "fin": [], "sim": []}
         for kind, fn in (("sig", "signals.jsonl"), ("fin", "final_calls.jsonl"), ("sim", "sim_trades.jsonl")):
             with open(os.path.join(DATA, fn), "a", encoding="utf-8") as f:
                 for r in body.get(kind) or []:
@@ -215,6 +243,7 @@ def save_data(body):
                         continue
                     seen[kind].add(k)
                     store[kind].append(r)
+                    fresh[kind].append(r)
                     f.write(json.dumps(r, separators=(",", ":")) + "\n")
                     added[kind] += 1
         newcal = []
@@ -239,12 +268,9 @@ def save_data(body):
                 for r in newcal:
                     w.writerow([r.get("w") or 0, r.get("s") or "", r.get("t") or 0, r.get("x"), r.get("y")])
             CAL_COUNT[0] += len(newcal)
-        if added["sig"]:
-            write_csv("signals.csv", SIG_COLS, [sig_row(r) for r in store["sig"]])
-        if added["fin"]:
-            write_csv("final_calls.csv", FIN_COLS, [fin_row(r) for r in store["fin"]])
-        if added["sim"]:
-            write_csv("sim_trades.csv", SIM_COLS, [sim_row(r) for r in store["sim"]])
+        for kind in ("sig", "fin", "sim"):
+            if added[kind]:
+                append_csv(kind, fresh[kind])
         if isinstance(body.get("simstate"), dict):
             tmp = os.path.join(DATA, "sim_state.json.tmp")
             with open(tmp, "w", encoding="utf-8") as f:
@@ -277,11 +303,88 @@ def find_dashboard():
     return None
 
 
+_CTX = []
+
+
+def ssl_ctx():
+    """One shared certificate store for the whole run (building it from disk on every request was the slowest part of a fetch)."""
+    if not _CTX:
+        _CTX.append(ssl.create_default_context())
+    return _CTX[0]
+
+
+def _pool_wanted():
+    """Keep-alive connections go straight to Kalshi; on a network that needs a proxy, use the normal route instead."""
+    try:
+        px = urllib.request.getproxies()
+        if px.get("https") or px.get("all"):
+            return bool(urllib.request.proxy_bypass(urllib.parse.urlsplit(UPSTREAM).hostname or ""))
+    except Exception:
+        pass
+    return True
+
+
+POOL_ON = [_pool_wanted()]
+POOL_WORKED = [False]
+_idle = []                       # idle keep-alive connections to Kalshi, reused so each request skips the TCP + TLS handshake
+_idle_lock = threading.Lock()
+POOL_MAX, POOL_IDLE = 8, 20.0
+
+
+def _pooled_get(url):
+    u = urllib.parse.urlsplit(url)
+    path = u.path + ("?" + u.query if u.query else "")
+    for attempt in (0, 1):
+        c = None
+        if attempt == 0:
+            with _idle_lock:
+                while _idle:
+                    host, cc, t = _idle.pop()
+                    if host == u.netloc and time.time() - t < POOL_IDLE:
+                        c = cc
+                        break
+                    cc.close()
+        fresh = c is None
+        if fresh:
+            c = http.client.HTTPSConnection(u.netloc, timeout=8, context=ssl_ctx())
+        try:
+            c.request("GET", path, headers={"User-Agent": "kalshi-helper/1.0", "Accept": "application/json"})
+            r = c.getresponse()
+            body = r.read()
+        except Exception:
+            c.close()
+            if fresh:
+                raise
+            continue                 # the server had closed an idle connection: try once more on a new one
+        if 300 <= r.status < 400:
+            c.close()
+            raise RuntimeError("redirect")     # let the normal route follow it
+        if r.will_close:
+            c.close()
+        else:
+            with _idle_lock:
+                if len(_idle) < POOL_MAX:
+                    _idle.append((u.netloc, c, time.time()))
+                else:
+                    c.close()
+        if r.status >= 400 and not body:
+            body = json.dumps({"error": "Kalshi returned HTTP %d" % r.status}).encode()
+        POOL_WORKED[0] = True
+        return r.status, body
+    raise RuntimeError("no connection")
+
+
 def fetch_upstream(url):
-    """Normal fetch; if this Python can't verify certificates (common on Mac), fall back to curl."""
+    """Reused connection first; if that is not possible, the normal fetch; and if this Python can't verify certificates (common on Mac), curl."""
+    if POOL_ON[0]:
+        try:
+            return _pooled_get(url)
+        except Exception:
+            if not POOL_WORKED[0]:
+                POOL_ON[0] = False   # never worked on this computer (proxy, certificates...): stop trying it
     req = urllib.request.Request(url, headers={"User-Agent": "kalshi-helper/1.0", "Accept": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=8, context=ssl.create_default_context()) as r:
+        with urllib.request.urlopen(req, timeout=8, context=ssl_ctx()) as r:
             return r.status, r.read()
     except urllib.error.HTTPError as e:
         return e.code, e.read() or json.dumps({"error": "Kalshi returned HTTP %d" % e.code}).encode()
@@ -550,7 +653,7 @@ def http_get(url, token=None, timeout=20):
         headers["Authorization"] = "token " + token
     try:
         with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=timeout,
-                                    context=ssl.create_default_context()) as r:
+                                    context=ssl_ctx()) as r:
             return r.read()
     except urllib.error.HTTPError as e:
         raise RuntimeError("The update address answered HTTP %d (check the address%s)." % (e.code, " and token" if token else ""))

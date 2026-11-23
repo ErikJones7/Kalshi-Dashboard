@@ -141,7 +141,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-23o</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-23p</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -230,6 +230,8 @@ const DEFAULT_SYMS=["BTC","ETH","SOL","XRP","DOGE","BNB","HYPE","NEAR","ZEC"];
 const KALSHI="https://api.elections.kalshi.com/trade-api/v2";
 const SPANS={"1m":60,"5m":300,"10m":600,"15m":900,"30m":1800,"1h":3600,"10h":36000};
 const $=id=>document.getElementById(id);
+// change-guarded writers: only touch the page when the value actually changed (keeps selection, hover and scroll intact and avoids needless layout)
+const setH=(e,h)=>{if(e.__h!==h){e.__h=h;e.innerHTML=h}}, setT=(e,t)=>{t=t==null?"":String(t);if(e.textContent!==t)e.textContent=t}, setC=(e,c)=>{if(e.className!==c)e.className=c}, setA=(e,k,v)=>{if(e.getAttribute(k)!==v)e.setAttribute(k,v)};
 
 /* ============================ state ============================ */
 const ls={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},
@@ -636,7 +638,12 @@ function mc(x0,tau,sigma,drift30,known,target,floor,np,fanPts){
   const sorted=Float64Array.from(S).sort(),q=f=>sorted[Math.min(np-1,Math.floor(f*np))];
   return {pRaw:(above+0.5)/(np+1),meanS:ms/np,q:[q(.025),q(.16),q(.5),q(.84),q(.975)],fan};
 }
+let _cbA=null,_cbK="",_cbV=null;
 function calibBins(){
+  const key=calSamples.length+"|"+platt.a+"|"+platt.b;
+  if(_cbV&&_cbA===calSamples&&_cbK===key)return _cbV;
+  _cbA=calSamples;_cbK=key;return _cbV=calibBinsRaw()}
+function calibBinsRaw(){
   return [[0.5,0.7],[0.7,0.9],[0.9,0.97],[0.97,1.001]].map(([lo,hi])=>{
     let c=0,cor=0,pp=0;
     for(const s of calSamples){const p=calibrate(sg(s.x)),cf=Math.max(p,1-p);if(cf>=lo&&cf<hi){c++;cor+=((p>=0.5)===(s.y===1))?1:0;pp+=cf}}
@@ -738,6 +745,11 @@ function finalizeWindow(elNow){
 }
 
 /* ============================ 1 Hz step ============================ */
+let _tt=null;
+function trkTot(){   // totals over the saved histories; they only change when a window settles, so don't rescan thousands of rows every second
+  const t=_tt;if(t&&t.sh===sigHist&&t.sl===sigHist.length&&t.fh===finHist&&t.fl===finHist.length)return t;
+  const f=finHist.filter(x=>x.sel!==false);
+  return _tt={sh:sigHist,sl:sigHist.length,fh:finHist,fl:finHist.length,hits:sigHist.filter(x=>x.hit).length,avgP:sigHist.length?mean(sigHist.map(x=>x.p)):null,finN:f.length,finHits:f.filter(x=>x.hit).length}}
 function step(tick,light){
   if(!syms.length)return null;
   const now=Date.now()/1000,n=syms.length;
@@ -913,9 +925,9 @@ function step(tick,light){
     const side=r.pCal>=thr?"UP":r.pCal<=1-thr?"DOWN":null;
     if(side)signals.push({w:wStart,sym:s,side,p:side==="UP"?r.pCal:1-r.pCal,raw:side==="UP"?r.pRaw:1-r.pRaw,tau,final:r.q[2],lo:r.q[1],hi:r.q[3],target:Math.exp(r.anchorLn),price:r.P,
       yes_ask:s===selected&&q?q.yes_ask:null,yes_bid:s===selected&&q?q.yes_bid:null,no_ask:s===selected&&q?q.no_ask:null})}
-  const done=sigHist, hits=done.filter(x=>x.hit).length;
+  const done=sigHist, tc=trkTot();const hits=tc.hits;
   const recent=pendSig.map(x=>({...x,pending:true})).concat(done.slice(-12)).slice(-12).reverse();
-  const track={n:done.length,hits,avgP:done.length?mean(done.map(x=>x.p)):null,pending:pendSig.length,recent,fin:{n:finHist.filter(x=>x.sel!==false).length,hits:finHist.filter(x=>x.sel!==false&&x.hit).length}};
+  const track={n:done.length,hits,avgP:tc.avgP,pending:pendSig.length,recent,fin:{n:tc.finN,hits:tc.finHits}};
   const bins=calibBins();
 
   return {tick,elapsed:el,remaining:tau,phase:active?"active":"watch",to_active:Math.max(0,MARK-el),
@@ -953,14 +965,14 @@ function draw(ch){
   const cv=$("cv"),dpr=window.devicePixelRatio||1,cw=cv.clientWidth||1000,chh=cv.clientHeight||340;
   if(cv.width!==Math.round(cw*dpr)){cv.width=Math.round(cw*dpr);cv.height=Math.round(chh*dpr)}
   const x=cv.getContext("2d"); x.setTransform(dpr,0,0,dpr,0,0); x.clearRect(0,0,cw,chh);
-  if(!ch){$("lg").innerHTML="";$("cvnote").textContent="Waiting for prices…";return}
+  if(!ch){setH($("lg"),"");setT($("cvnote"),"Waiting for prices…");return}
   const fg=getComputedStyle(document.body).color, mut="#8e9099", span=ch.span, fut=ch.fut, tick=ch.tick, tot=span+fut;
   const padL=84,padR=100,padT=14,padB=24,W=cw-padL-padR,H=chh-padT-padB;
   const vals=[].concat(ch.coin,showAvg?ch.avg:[],ch.pcoin,showPavg?ch.pavg:[]).filter(v=>v!=null);
   if(ch.tY!=null)vals.push(ch.tY);
   if(ch.fan)ch.fan.t.forEach((t,k)=>{if(t<=fut)vals.push(ch.fan.q[k][0],ch.fan.q[k][4])});
   if(ch.avgF&&showPavg)ch.avgF.forEach(([t,v])=>{if(t<=fut)vals.push(v)});
-  if(!vals.length){$("cvnote").textContent="Waiting for data…";return}
+  if(!vals.length){setT($("cvnote"),"Waiting for data…");return}
   let lo=Math.min(...vals),hi=Math.max(...vals); {const mid=(hi+lo)/2,ms=Math.abs(mid)*4e-4;if(hi-lo<ms){hi=mid+ms/2;lo=mid-ms/2}} const pd=(hi-lo)*0.08;hi+=pd;lo-=pd;
   {let nowV=null;for(let i=ch.coin.length-1;i>=0;i--)if(ch.coin[i]!=null&&isFinite(ch.coin[i])){nowV=ch.coin[i];break}
    if(nowV!=null){const h=Math.max(hi-nowV,nowV-lo);hi=nowV+h;lo=nowV-h}}      // auto: the current price stays in the middle
@@ -1014,24 +1026,26 @@ function draw(ch){
   // predicted finish markers (only when the window end is inside the view)
   if(ch.fin&&ch.fin.tau<=fut){[[ch.fin.c,COL.pcoin],[showPavg?ch.fin.a:null,COL.pavg]].forEach(([v,cl])=>{if(v==null)return;
     x.fillStyle=cl;x.beginPath();x.arc(px(ch.fin.tau),py(v),4.5,0,7);x.fill();x.textAlign="right";x.fillText("$"+f(v),px(ch.fin.tau)-8,py(v)-9)})}
-  $("lg").innerHTML=`<span><b style="color:${COL.coin}">━</b> ${ch.sel} actual</span>${showAvg?`<span><b style="color:${COL.avg}">━</b> average of other coins</span>`:""}<span><b style="color:${COL.pcoin}">╍</b> ${ch.sel} predicted</span>${showPavg?`<span><b style="color:${COL.pavg}">╍</b> average, predicted</span>`:""}`;
+  setH($("lg"),`<span><b style="color:${COL.coin}">━</b> ${ch.sel} actual</span>${showAvg?`<span><b style="color:${COL.avg}">━</b> average of other coins</span>`:""}<span><b style="color:${COL.pcoin}">╍</b> ${ch.sel} predicted</span>${showPavg?`<span><b style="color:${COL.pavg}">╍</b> average, predicted</span>`:""}`);
   const note=[];
   if(ch.have<span)note.push("Only "+mmss(Math.floor(ch.have))+" of history so far.");
   if(ch.fan&&ch.fin&&ch.fin.tau>fut)note.push("Window ends in "+mmss(ch.fin.tau)+" (beyond this view).");
-  $("cvnote").textContent=note.join(" ");
+  setT($("cvnote"),note.join(" "));
 }
 
+let lastS=null;
+document.addEventListener("visibilitychange",()=>{if(document.hidden)return;if(sim){if(lastS)render(lastS)}else tickNow()});
 function render(s){
   if(!built){built=true;$("sel").onchange=e=>{selected=e.target.value;quote=null;yMan=null;try{localStorage.setItem("k15sel",selected)}catch(_){}tickNow()}}
   const selKey=s.coins.map(r=>r.sym+(r.price!=null?"1":"0")).join();
   if(selKey!==window.__selKey){window.__selKey=selKey;
     $("sel").innerHTML=s.coins.map(r=>`<option value="${r.sym}">${r.sym}${r.price!=null?"":" – No data"}</option>`).join("")}
   $("sel").value=s.selected;
-  $("clock").textContent="Time left "+mmss(s.remaining);
-  $("phase").textContent=s.phase==="active"?"LAST 5 MIN – predicting":"Predicting · last 5 minutes start in "+mmss(s.to_active);
-  const fe=$("feed");fe.textContent=s.live+"/"+s.total+" coins live"+(s.sim?" (SIMULATED "+SIM_SPEED+"x)":Object.keys(s.srcCount).length?" · "+Object.entries(s.srcCount).map(([k,v])=>NAMES[k]+" "+v).join(", "):"");fe.className="pill "+(s.live>0?"ok":"bad");
-  {const sv=$("sav");sv.textContent=savState==="ok"?"Data folder: saving":savState==="off"?(savErr?"Data folder: "+savErr:"Data folder: helper not running (saved in browser only)"):savState==="err"?"Data folder: save failed ("+savErr+"), will retry":"Data folder: checking…";sv.title=savErr?("Reason: "+savErr):(helperPage?"Page served from: "+helperPage+" · ":"")+"Signal, final-call and calibration data are saved to the data folder next to kalshi_helper.py";sv.className="pill "+(savState==="ok"?"ok":savState==="checking"?"":"bad")}
-  {const kk=$("kal"),ok=s.sim||kalshiStatus==="live";kk.textContent=ok?"Kalshi: connected":kalshiStatus==="unreachable"?"Kalshi: not connected":"Kalshi: connecting";kk.className="pill "+(ok?"ok":kalshiStatus==="unreachable"?"bad":"")}
+  setT($("clock"),"Time left "+mmss(s.remaining));
+  setT($("phase"),s.phase==="active"?"LAST 5 MIN – predicting":"Predicting · last 5 minutes start in "+mmss(s.to_active));
+  const fe=$("feed");setT(fe,s.live+"/"+s.total+" coins live"+(s.sim?" (SIMULATED "+SIM_SPEED+"x)":Object.keys(s.srcCount).length?" · "+Object.entries(s.srcCount).map(([k,v])=>NAMES[k]+" "+v).join(", "):""));setC(fe,"pill "+(s.live>0?"ok":"bad"));
+  {const sv=$("sav");setT(sv,savState==="ok"?"Data folder: saving":savState==="off"?(savErr?"Data folder: "+savErr:"Data folder: helper not running (saved in browser only)"):savState==="err"?"Data folder: save failed ("+savErr+"), will retry":"Data folder: checking…");setA(sv,"title",savErr?("Reason: "+savErr):(helperPage?"Page served from: "+helperPage+" · ":"")+"Signal, final-call and calibration data are saved to the data folder next to kalshi_helper.py");setC(sv,"pill "+(savState==="ok"?"ok":savState==="checking"?"":"bad"))}
+  {const kk=$("kal"),ok=s.sim||kalshiStatus==="live";setT(kk,ok?"Kalshi: connected":kalshiStatus==="unreachable"?"Kalshi: not connected":"Kalshi: connecting");setC(kk,"pill "+(ok?"ok":kalshiStatus==="unreachable"?"bad":""))}
 
   // popups (left side): only for the selected coin. Other coins still feed the track record and calibration.
   const sg_=$("sig"), shown=s.signals.filter(x=>x.sym===s.selected&&!dismissed.has(x.w+"|"+x.sym+"|"+x.side));
@@ -1069,8 +1083,10 @@ function render(s){
   const p=s.pred,q=s.quote,m=$("msg");
   const noFeed=!s.sim&&s.live===0&&Date.now()-bootMs>12000;
   m.style.display=((s.reason&&!p)||noFeed)?"block":"none";
-  m.textContent=noFeed?"No live prices are arriving. Your browser or network may be blocking the exchange connections (ad blocker, VPN, firewall, or opening the file in a restricted viewer). If you're viewing this inside a preview window, download the file and open it in its own Chrome/Edge/Firefox tab (the address bar should start with file:///). Open 'Data sources' below to see exactly what failed, or press Simulate to test the page.":(s.reason||"");
+  setT(m,noFeed?"No live prices are arriving. Your browser or network may be blocking the exchange connections (ad blocker, VPN, firewall, or opening the file in a restricted viewer). If you're viewing this inside a preview window, download the file and open it in its own Chrome/Edge/Firefox tab (the address bar should start with file:///). Open 'Data sources' below to see exactly what failed, or press Simulate to test the page.":(s.reason||""));
   if(noFeed&&!window.__dopen){window.__dopen=1;$("diagBox").open=true}
+  lastS=s;
+  if(document.hidden){lastCh=s.chart;return}      // popups and sounds above still run; the page itself is repainted the moment it is visible again
   let h="";
   renderTop(s);
   if(p){
@@ -1089,14 +1105,14 @@ function render(s){
     if(q&&q.yes_ask!=null&&q.yes_bid!=null&&p.edge_yes!=null){const m=mults(q.yes_ask,q.yes_bid,q.no_ask);
       h+=card("Kalshi live multipliers",`<div>UP ${mx(m.up)}</div><div>DOWN ${mx(m.dn)}</div>`,"")}
   }
-  $("cards").innerHTML=h; lastCh=s.chart; draw(s.chart);
+  setH($("cards"),h); lastCh=s.chart; draw(s.chart);
 
   let t="<tr><th>Coin</th><th>Price</th><th>Target</th><th>Since start (bps)</th><th>"+(s.phase==="active"?"Since 10:00 mark (bps)":"Last 5 min, rolling (bps)")+"</th><th>Vs avg of all (bps)</th><th>P(Up)</th></tr>";
   t+=s.coins.map(r=>{const hot=r.p_up!=null&&(r.p_up>=s.thr||r.p_up<=1-s.thr);
     return `<tr class="${r.sym===s.selected?"sel":""}"${r.price==null?` style="opacity:.45" title="no price from any exchange"`:""}><td>${r.sym}</td><td>${f(r.price)}</td><td title="${r.tsrc==="manual"?"manually entered":r.tsrc==="kalshi"?"Kalshi strike":r.tsrc==="feed"?"price at window open":r.tsrc==="page"?"price when page opened":""}">${f(r.target)}${r.tsrc==="page"?"*":""}</td><td class="${c(r.move_start_bps)}">${b(r.move_start_bps)}</td><td class="${c(r.move_mark_bps)}">${b(r.move_mark_bps)}</td><td class="${c(r.vs_avg_bps)}">${b(r.vs_avg_bps)}</td><td class="${hot?"hot "+(r.p_up>=0.5?"up":"dn"):""}">${r.p_up==null?"–":pc(r.p_up)}</td></tr>`}).join("");
   t+=`<tr><td><b>Average (all)</b></td><td></td><td></td><td>${b(s.summary.avg_all_start_bps)}</td><td>${b(s.summary.avg_all_mark_bps)}</td><td></td><td></td></tr>`;
   t+=`<tr><td><b>Average (ex-selected)</b></td><td></td><td></td><td>${b(s.summary.avg_others_start_bps)}</td><td>${b(s.summary.avg_others_mark_bps)}</td><td></td><td></td></tr>`;
-  $("tbl").innerHTML=t;
+  setH($("tbl"),t);
 
   // track record
   const T=s.track;
@@ -1104,14 +1120,14 @@ function render(s){
   tr+=`<div class="s" style="margin-top:6px">Final calls: ${T.fin&&T.fin.n?T.fin.hits+" / "+T.fin.n+" correct ("+(100*T.fin.hits/T.fin.n).toFixed(1)+"%)":"None scored yet"}</div>`;
   if(T.recent.length){tr+='<table class="mini"><tr><th>Window</th><th>Coin</th><th>Call</th><th>Model</th><th>Kalshi multiplier</th><th>Result</th></tr>'+
     T.recent.map(x=>`<tr><td>${new Date((x.w+900)*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</td><td>${x.sym}</td><td>${x.side}</td><td>${pc(x.p)} @${mmss(x.tau)}</td><td>${mx(sideMult(x))}</td><td class="${x.pending?"":x.hit?"hit":"miss"}">${x.pending?"LIVE":x.hit?"HIT":"MISS"}</td></tr>`).join("")+"</table>"}
-  $("track").innerHTML=tr;
+  setH($("track"),tr);
   renderSim();
   const C=s.calib;
   let cb=`<div class="s">${C.n} scored samples</div>`;
   cb+='<table class="mini"><tr><th>Confidence</th><th>Samples</th><th>Model said</th><th>Actually right</th></tr>'+
     C.bins.map(x=>`<tr><td>${Math.round(x.lo*100)}–${x.hi>1?100:Math.round(x.hi*100)}%</td><td>${x.n}</td><td>${x.pred==null?"–":pc(x.pred)}</td><td>${x.acc==null?"–":pc(x.acc)}</td></tr>`).join("")+"</table>";
   cb+=`<div class="s" style="margin-top:8px"><button id="clr" style="padding:2px 8px;font-size:12px">Clear saved data</button></div>`;
-  $("calib").innerHTML=cb;
+  setH($("calib"),cb);
   renderDiag(s);
 }
 function renderTop(s){
@@ -1119,20 +1135,20 @@ function renderTop(s){
   if(sr){
     const srcTxt={kalshi:"Kalshi's exact strike",feed:"estimate, not Kalshi's strike",page:"price when page opened, not Kalshi's strike"}[sr.tsrc]||"";
     const d=(sr.target&&sr.price)?(sr.price>=sr.target?"above":"below")+" target by "+Math.abs((sr.price/sr.target-1)*1e4).toFixed(1)+" bps ($"+f(Math.abs(sr.price-sr.target))+")":"";
-    $("tgtK").textContent="Target price · "+s.selected;
-    $("tgtV").textContent=sr.target!=null?"$"+f(sr.target):"–";
-    $("tgtV").className="v "+(sr.target&&sr.price?(sr.price>=sr.target?"up":"dn"):"");
+    setT($("tgtK"),"Target price · "+s.selected);
+    setT($("tgtV"),sr.target!=null?"$"+f(sr.target):"–");
+    setC($("tgtV"),"v "+(sr.target&&sr.price?(sr.price>=sr.target?"up":"dn"):""));
     const kh=(sr.tsrc!=="kalshi"&&sr.tsrc!=="manual"&&SRC.kalshi.err)?"<br><span style=\"color:var(--dn)\">Couldn't reach Kalshi ("+SRC.kalshi.err+"), so this is an estimate.</span>":"";
-    $("tgtS").innerHTML=[srcTxt,d?"Now $"+f(sr.price)+" · "+d:""].filter(Boolean).join("<br>")+kh;
+    setH($("tgtS"),[srcTxt,d?"Now $"+f(sr.price)+" · "+d:""].filter(Boolean).join("<br>")+kh);
 
   }
   const fc=$("finCard");
   if(p){
-    fc.className="card final "+(p.direction==="UP"?"up":p.direction==="DOWN"?"dn":"");
-    fc.innerHTML=`<div class="k">Final prediction · ${s.selected} · ${mmss(p.tau)} left</div>
+    setC(fc,"card final "+(p.direction==="UP"?"up":p.direction==="DOWN"?"dn":""));
+    setH(fc,`<div class="k">Final prediction · ${s.selected} · ${mmss(p.tau)} left</div>
       <div class="v">$${f(p.median)} <span style="font-size:16px">${p.direction?(p.direction==="UP"?"finishes ABOVE target":"finishes BELOW target")+" · "+pc(p.confidence):"(target not known)"}</span></div>
-      <div class="s">68% range $${f(p.lo68)} – $${f(p.hi68)} · 95% range $${f(p.lo95)} – $${f(p.hi95)}</div>`;
-  } else {fc.className="card final";fc.innerHTML=`<div class="k">Final prediction · ${s.selected}</div><div class="v">–</div><div class="s">${s.reason||"Waiting for data…"}</div>`}
+      <div class="s">68% range $${f(p.lo68)} – $${f(p.hi68)} · 95% range $${f(p.lo95)} – $${f(p.hi95)}</div>`);
+  } else {setC(fc,"card final");setH(fc,`<div class="k">Final prediction · ${s.selected}</div><div class="v">–</div><div class="s">${s.reason||"Waiting for data…"}</div>`)}
 }
 function renderDiag(s){
   const now=nowS(), st=k=>{const x=SRC[k];return `<tr><td>${NAMES[k]}</td><td>${x.ws}</td><td>${x.rest}</td><td>${x.msgs}</td><td>${x.last?Math.round(now-x.last)+"s ago":"–"}</td><td style="text-align:left;color:var(--mut)">${x.err||""}</td></tr>`};
@@ -1144,7 +1160,7 @@ function renderDiag(s){
     t+=`<tr><td>${c}</td><td>${curSrc[c]?NAMES[curSrc[c]]:"<span class=miss>none</span>"}</td>`+ORDER.map(k=>`<td>${o[k]?f(o[k].px):"–"}</td>`).join("")+`<td>${BF[c]&&BF[c].n?NAMES[BF[c].src]+" ("+BF[c].n+" min)":"<span class=miss>none</span> "+((BF[c]&&BF[c].err)||"")}</td></tr>`}
   t+="</table>";
   if(excluded.length)t+=`<div class="s" style="margin-top:8px">Ignored Kalshi markets that are not tradable coins on any exchange: ${excluded.join(", ")}</div>`;
-  $("diag").innerHTML=t;
+  setH($("diag"),t);
 }
 function tickNow(){if(sim&&simVT===null)return;const s=step(sim?simVT:Math.floor(Date.now()/1000)); if(s)render(s)}
 
@@ -1212,25 +1228,25 @@ const $$=v=>(v<0?"-$":"$")+Math.abs(v).toLocaleString(undefined,{minimumFraction
 function resetSimCoin(sym,v){simSt.start[sym]=v;simSt.tr[sym]={};SIM_CP.forEach(cp=>{simSt.tr[sym][cp]={bank:v,w:0,l:0,net:0}})}
 function renderAuto(){
   const a=autoSt,tot=a.w+a.l,ob=pendAuto,dd=a.peak>0?Math.max(0,1-a.bank/a.peak):0;let samples=0;for(const k in a.learn)samples+=a.learn[k].n;
-  $("autoK").textContent=sim?"Auto mode · "+SIM_SPEED+"x practice run (not saved)":"Auto mode";
+  setT($("autoK"),sim?"Auto mode · "+SIM_SPEED+"x practice run (not saved)":"Auto mode");
   $("autoOn").checked=a.on;{const i=$("autoStart");if(document.activeElement!==i)i.value=a.start;const c=$("autoCap");if(document.activeElement!==c)c.value=Math.round((a.cap||0.2)*1000)/10}
   const st=!a.on?"Off":ob.length?"Open: "+ob.map(b=>`${b.sym} ${b.side} ${$$(b.stake)} @ ${mx(b.mult)}`).join(" + "):(autoNote||"Waiting for the next window");
   const cell=(l,v,c)=>`<div>${l}<b${c?` class="${c}"`:""}>${v}</b></div>`;
-  $("autoStats").innerHTML=cell("Bankroll",$$(a.bank))+cell("Net",$$(a.net),a.net>0?"hit":a.net<0?"miss":"")+cell("Wins / losses",a.w+" / "+a.l)+
-    cell("Hit rate",tot?Math.round(a.w/tot*1000)/10+"%":"–")+cell("Windows skipped",a.skipped)+cell("Below peak",Math.round(dd*1000)/10+"%")+cell("Min confidence now",(g=>g==null?"none":Math.round(g*1000)/10+"%")(autoGate(1)))+cell("Learned from",samples+" samples")+cell("Status",st);
+  setH($("autoStats"),cell("Bankroll",$$(a.bank))+cell("Net",$$(a.net),a.net>0?"hit":a.net<0?"miss":"")+cell("Wins / losses",a.w+" / "+a.l)+
+    cell("Hit rate",tot?Math.round(a.w/tot*1000)/10+"%":"–")+cell("Windows skipped",a.skipped)+cell("Below peak",Math.round(dd*1000)/10+"%")+cell("Min confidence now",(g=>g==null?"none":Math.round(g*1000)/10+"%")(autoGate(1)))+cell("Learned from",samples+" samples")+cell("Status",st));
 }
 function renderPicks(){
-  $("pickK").textContent=sim?"Best pick record · "+SIM_SPEED+"x practice run (not saved)":"Best pick record";
+  setT($("pickK"),sim?"Best pick record · "+SIM_SPEED+"x practice run (not saved)":"Best pick record");
   const by={};for(const x of pickHist){(by[x.T]=by[x.T]||[]).push(x)}
   const keys=[...new Set([60,180,300].concat(pickTimes,Object.keys(by).map(Number)))].sort((a,b)=>a-b),all=[].concat(...keys.map(k=>by[k]||[]));
   const row=(lab,a,cls)=>{const n=a.length,w=a.filter(x=>x.hit).length,net=a.reduce((t,x)=>t+(x.hit?x.mult-1:-1),0),ac=n?a.reduce((t,x)=>t+x.conf,0)/n:0;
     return `<tr${cls?` class="${cls}"`:""}><td>${lab}</td><td>${n}</td><td>${w} / ${n-w}</td><td>${n?pc(w/n):"–"}</td><td>${n?pc(ac):"–"}</td><td class="${net>0?"hit":net<0?"miss":""}">${n?(net>=0?"+":"-")+"$"+Math.abs(net).toFixed(2):"–"}</td></tr>`};
-  $("pickTbl").innerHTML='<tr><th>Time left</th><th>Picks</th><th>Wins / losses</th><th>Hit rate</th><th>Avg confidence</th><th>Net per $1</th></tr>'+
-    keys.map(k=>row(k%60===0?k/60+(k===60?" minute":" minutes"):k+" seconds",by[k]||[])).join("")+row("All",all,"tot");
+  setH($("pickTbl"),'<tr><th>Time left</th><th>Picks</th><th>Wins / losses</th><th>Hit rate</th><th>Avg confidence</th><th>Net per $1</th></tr>'+
+    keys.map(k=>row(k%60===0?k/60+(k===60?" minute":" minutes"):k+" seconds",by[k]||[])).join("")+row("All",all,"tot"));
 }
 function renderSim(){
   renderAuto();renderPicks();
-  {const k=$("simCard").querySelector(".k");if(k)k.textContent=sim?"Simulated bets · "+SIM_SPEED+"x practice run (not saved)":"Simulated bets"}
+  {const k=$("simCard").querySelector(".k");if(k)setT(k,sim?"Simulated bets · "+SIM_SPEED+"x practice run (not saved)":"Simulated bets")}
   const key=syms.join();
   if(key!==simKey){simKey=key;
     $("simTbl").innerHTML='<tr><th>Coin</th><th>Start $</th>'+SIM_CP.map(()=>'<th class="gs">Bankroll</th><th>Wins / losses</th><th>Net</th><th>Open bet</th>').join("")+"</tr>"+
@@ -1241,10 +1257,10 @@ function renderSim(){
   const tot={};SIM_CP.forEach(cp=>tot[cp]={b:0,w:0,l:0,n:0});
   for(const s of syms){const inp=$("ss_"+s);if(inp&&document.activeElement!==inp)inp.value=simStart(s);
     for(const cp of SIM_CP){const t=simTr(s,cp),ob=pendSim.find(b=>b.sym===s),T_=tot[cp];T_.b+=t.bank;T_.w+=t.w;T_.l+=t.l;T_.n+=t.net;
-      $("sb_"+s+"_"+cp).textContent=$$(t.bank);$("sw_"+s+"_"+cp).textContent=t.w+" / "+t.l;
-      const nn=$("sn_"+s+"_"+cp);nn.textContent=$$(t.net);nn.className=t.net>0?"hit":t.net<0?"miss":"";
-      $("so_"+s+"_"+cp).textContent=ob?`${ob.side} ${$$(ob.stake)} @ ${mx(ob.mult)}`:simWait.has(s+"|"+cp)?"Waiting":"–"}}
-  for(const cp of SIM_CP){$("tb_"+cp).textContent=$$(tot[cp].b);$("tw_"+cp).textContent=tot[cp].w+" / "+tot[cp].l;const e=$("tn_"+cp);e.textContent=$$(tot[cp].n);e.className=tot[cp].n>0?"hit":tot[cp].n<0?"miss":""}
+      setT($("sb_"+s+"_"+cp),$$(t.bank));setT($("sw_"+s+"_"+cp),t.w+" / "+t.l);
+      const nn=$("sn_"+s+"_"+cp);setT(nn,$$(t.net));setC(nn,t.net>0?"hit":t.net<0?"miss":"");
+      setT($("so_"+s+"_"+cp),ob?`${ob.side} ${$$(ob.stake)} @ ${mx(ob.mult)}`:simWait.has(s+"|"+cp)?"Waiting":"–")}}
+  for(const cp of SIM_CP){setT($("tb_"+cp),$$(tot[cp].b));setT($("tw_"+cp),tot[cp].w+" / "+tot[cp].l);const e=$("tn_"+cp);setT(e,$$(tot[cp].n));setC(e,tot[cp].n>0?"hit":tot[cp].n<0?"miss":"")}
 }
 try{if(localStorage.getItem("k15tblopen")==="0")$("tblBox").open=false}catch(e){}
 $("tblBox").addEventListener("toggle",()=>{try{localStorage.setItem("k15tblopen",$("tblBox").open?"1":"0")}catch(e){}});
@@ -1332,7 +1348,9 @@ async function openMenu(){
 function placeMenu(){const h=document.querySelector("header.hdr");if(!h)return;const r=h.getBoundingClientRect(),w=document.documentElement.clientWidth;
   const x=Math.min(Math.round(r.right+8),w-46),pw=Math.min(340,w-48);$("menuBtn").parentNode.style.left=x+"px";$("menuBtn").parentNode.style.top=Math.round(r.top+window.scrollY)+"px";
   const pn=$("menuPanel");pn.style.right="auto";pn.style.left=Math.min(0,w-8-(x+pw))+"px"}      // opens into the side margin while it fits, otherwise slides back over the page
-window.addEventListener("resize",placeMenu);setInterval(placeMenu,500);placeMenu();
+window.addEventListener("resize",placeMenu);
+if(window.ResizeObserver){const ro=new ResizeObserver(()=>placeMenu());ro.observe(document.body);const hd=document.querySelector("header.hdr");if(hd)ro.observe(hd)}
+setInterval(()=>{if(!document.hidden)placeMenu()},2000);placeMenu();
 function closeMenu(){if(!mp.classList.contains("open"))return;mp.classList.remove("open");mp.classList.add("closing");setTimeout(()=>mp.classList.remove("closing"),150)}
 $("mClose").onclick=e=>{e.stopPropagation();closeMenu()};
 $("menuBtn").onclick=e=>{e.stopPropagation();mp.classList.contains("open")?closeMenu():openMenu()};
