@@ -92,6 +92,9 @@ body{transition:margin-left .14s ease-out}
 .mini td,.mini th{padding:4px 8px;font-size:13px}
 .autostats{display:flex;gap:8px 26px;flex-wrap:wrap}.autostats div{display:flex;flex-direction:column;font-size:12px;color:var(--mut)}.autostats b{font-size:16px;color:var(--fg);font-weight:600}
 .simhead{display:flex;justify-content:space-between;align-items:center;gap:10px 16px;flex-wrap:wrap;margin-bottom:10px}
+.simttl{display:flex;align-items:center;gap:10px}
+.modesw{padding:4px 12px;font-size:13px;font-weight:700;border-radius:6px;border:1.5px solid var(--up);color:var(--up);background:var(--upbg);cursor:pointer}
+.modesw.realm{border-color:var(--dn);color:var(--dn);background:var(--dnbg)}
 .simctl{display:flex;gap:8px 14px;align-items:center;flex-wrap:wrap}
 .simctl label{display:flex;gap:6px;align-items:center;color:var(--mut);font-size:13px}
 .simctl input[type=number]{width:72px;padding:4px 6px}.simctl select,.simctl button{padding:4px 9px;font-size:13px}
@@ -106,7 +109,6 @@ body{transition:margin-left .14s ease-out}
 .lvb{min-width:210px;padding:10px 14px;font-weight:600}.lvb.arm{border-color:var(--sel);background:var(--hl);outline:2px solid var(--sel)}.lvb:disabled{opacity:.5;cursor:not-allowed}
 .lvb.arm,button.arm{border-color:var(--dn);color:var(--dn)}
 .card .realonly{display:none}.card.realon .realonly{display:revert}.card.realon .simonly{display:none!important}
-.realsw{color:var(--dn);font-weight:600}
 .warnbox{border:1px solid var(--dn);border-radius:8px;padding:8px 10px;margin:8px 0}
 </style></head><body>
 
@@ -147,7 +149,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-24h</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-24i</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -179,12 +181,11 @@ body{transition:margin-left .14s ease-out}
 
 <div class="card" id="autoCard" style="margin-bottom:12px">
   <div class="simhead">
-    <div class="k" id="autoK">Auto mode</div>
+    <div class="simttl"><div class="k" id="autoK">Auto mode</div><button id="autoReal" class="modesw fake" title="Showing fake money. Click to switch to your real Kalshi account.">Fake money</button></div>
     <div class="simctl">
       <label class="realonly" title="Real money set aside for this. It goes up and down with its wins and losses. Type a new amount to add money or send some back to your cash.">Allocated $ <input type="number" id="autoRealStart" min="0" step="0.01" style="width:90px"></label><button id="autoRealSet" class="realonly">Set</button>
       <button id="autoOnBtn" class="realonly">Start real betting</button>
-      <button id="autoReal" class="realsw" title="Switch this card between fake money and your real Kalshi account">Real money</button>
-      <label class="simonly">Start $ <input type="number" id="autoStart" min="1" step="10"></label>
+            <label class="simonly">Start $ <input type="number" id="autoStart" min="1" step="10"></label>
       <label>Max bet <input type="number" id="autoCap" min="1" max="100" step="1">%</label>
       <button id="autoHist" class="simonly">View bet history</button><button id="autoReset" class="simonly">Reset bankroll</button><button id="autoForget" class="simonly">Reset learning</button><button id="autoRealHist" class="realonly">View real bet history</button>
     </div>
@@ -196,7 +197,7 @@ body{transition:margin-left .14s ease-out}
 
 <div class="card" id="simCard" style="margin-bottom:12px">
   <div class="simhead">
-    <div class="k" id="simK">Timed bets</div>
+    <div class="simttl"><div class="k" id="simK">Timed bets</div><button id="simReal" class="modesw fake" title="Showing fake money. Click to switch to your real Kalshi account.">Fake money</button></div>
     <div class="simctl">
       <label class="simonly">Start $ <input type="number" id="simAll" min="0" step="10"></label><button id="simAllB" class="simonly">Apply to all</button>
       <label>Bet at <input type="number" id="simAt" min="5" max="300" step="5">s left</label>
@@ -204,7 +205,7 @@ body{transition:margin-left .14s ease-out}
       <label class="simonly">After a loss <select id="simMode"><option value="restart">Restart from start $</option><option value="zero">Stay at $0</option></select></label>
       <label class="realonly" title="Set every coin to the same allocated amount">Allocated $ <input type="number" id="simRealAll" min="0" step="0.01" style="width:90px"></label><button id="simRealAllB" class="realonly">Set all coins</button>
       <button id="simOnBtn" class="realonly">Start real betting</button>
-      <button id="simReal" class="realsw" title="Switch this card between fake money and your real Kalshi account">Real money</button>
+      
       <button id="simReset" class="simonly">Reset all</button>
     </div>
   </div>
@@ -1311,7 +1312,7 @@ const $$=v=>(v<0?"-$":"$")+Math.abs(v).toLocaleString(undefined,{minimumFraction
 function resetSimCoin(sym,v){simSt.start[sym]=v;simSt.tr[sym]={};SIM_CP.forEach(cp=>{simSt.tr[sym][cp]={bank:v,w:0,l:0,net:0}})}
 function renderAuto(){
   const a=autoSt,tot=a.w+a.l,ob=pendAuto,dd=a.peak>0?Math.max(0,1-a.bank/a.peak):0;let samples=0;for(const k in a.learn)samples+=a.learn[k].n;
-  setT($("autoK"),sim?"Auto mode · "+SIM_SPEED+"x practice run (not saved)":real.autoView?"Auto mode · REAL MONEY":"Auto mode");
+  setT($("autoK"),sim?"Auto mode · "+SIM_SPEED+"x practice run (not saved)":"Auto mode");
   {const i=$("autoStart");if(document.activeElement!==i)i.value=a.start;const c=$("autoCap");if(document.activeElement!==c)c.value=Math.round((a.cap||0.2)*1000)/10}
   const st=ob.length?"Open: "+ob.map(b=>`${b.sym} ${b.side} ${$$(b.stake)} @ ${mx(b.mult)}`).join(" + "):(autoNote||"Waiting for the next window");
   const cell=(l,v,c)=>`<div>${l}<b${c?` class="${c}"`:""}>${v}</b></div>`;
@@ -1330,7 +1331,7 @@ function renderPicks(){
 }
 function renderSim(){
   renderAuto();renderPicks();
-  setT($("simK"),sim?"Timed bets · "+SIM_SPEED+"x practice run (not saved)":real.simView?"Timed bets · REAL MONEY":"Timed bets");
+  setT($("simK"),sim?"Timed bets · "+SIM_SPEED+"x practice run (not saved)":"Timed bets");
   const key=syms.join();
   if(key!==simKey){simKey=key;
     $("simTbl").innerHTML='<tr><th>Coin</th><th>Start $</th>'+SIM_CP.map(()=>'<th class="gs">Bankroll</th><th>Wins / losses</th><th>Net</th><th>Open bet</th>').join("")+"</tr>"+
@@ -1468,6 +1469,7 @@ let acct={info:null,sum:null,orders:[],bud:{},err:"",busy:false}, lv={armed:null
 // real-money mirrors: in memory only, so they are always OFF after a restart and have to be switched on on purpose
 let real={sim:false,auto:false,autoView:false,simView:false,events:[],evT:[],q:Promise.resolve()};
 let liveRes={};
+const HELPER_EXPECT="2026-11-24h";      // the helper build this page needs (changes only when the helper program itself changes)
 const staleMsg="The helper program that is running is older than this page. Fully close it (Ctrl+Shift+Esc, end pythonw.exe / python.exe) and reopen the dashboard from its icon, or some real-money controls won't work right.";
 const oldHelper="The helper that is running is an older version that doesn't know about Kalshi accounts. Fully close it and reopen the dashboard from its icon: press Ctrl+Shift+Esc, open the Details tab, end every pythonw.exe (or python.exe) entry, then double-click the Kalshi Dashboard icon.";
 const acctNeed="Open the dashboard from its icon (the address starts with http://127.0.0.1) to use your Kalshi account.";
@@ -1484,7 +1486,7 @@ async function apost(p,o){
 async function acctRefresh(full){
   if(acct.busy)return;acct.busy=true;
   try{
-    acct.info=await aget("/account/status");acct.err="";{const pb=(($("build")||{}).textContent||"").match(/\d{4}-\d{2}-\d{2}[a-z]*/);acct.stale=!!(pb&&acct.info&&acct.info.build!==pb[0])}
+    acct.info=await aget("/account/status");acct.err="";acct.stale=!!(acct.info&&acct.info.build!==HELPER_EXPECT);
     if(acct.info.ready){const sm=await aget("/account/summary"+(full?"?force=1":""));acct.sum=sm;if(!sm.ok)acct.err=sm.error||""}
     else acct.sum=null;
     acct.orders=await aget("/account/orders");for(const r of acct.orders)if(r.res)liveRes[r.ticker]=r.res;
@@ -1592,7 +1594,8 @@ function realAuto(best,two,picks,wEnd){          // the same sizing rule as fake
 }
 function realGuard(s){
   if((real.sim||real.auto)&&(s.sim||!(acct.info&&acct.info.ready&&acct.info.trading))){real.sim=real.auto=false;realEvent("Real betting stopped ("+(s.sim?"practice run started":"betting was switched off")+")")}
-  setT($("autoReal"),real.autoView?"Fake money":"Real money");setT($("simReal"),real.simView?"Fake money":"Real money");
+  for(const [id,on] of [["autoReal",real.autoView],["simReal",real.simView]]){const b=$(id);setT(b,on?"Real money":"Fake money");b.classList.toggle("realm",on);b.classList.toggle("fake",!on);
+    b.title=on?"Showing your real Kalshi account. Click to switch back to fake money.":"Showing fake money. Click to switch to your real Kalshi account."}
   setT($("autoOnBtn"),real.auto?"Stop real betting":"Start real betting");setT($("simOnBtn"),real.sim?"Stop real betting":"Start real betting");
   $("autoOnBtn").classList.toggle("arm",real.auto);$("simOnBtn").classList.toggle("arm",real.sim);
 }
