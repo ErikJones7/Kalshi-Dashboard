@@ -158,7 +158,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-25d</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-25e</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -195,6 +195,8 @@ body{transition:margin-left .14s ease-out}
       <label title="Real money set aside for this. It goes up and down with its wins and losses. Type a new amount to add money or send some back to your cash.">Allocated $ <input type="number" id="autoRealStart" min="0" step="0.01" style="width:90px"></label><button id="autoRealSet">Set</button>
       <label>Max bet <input type="number" id="autoCap" min="1" max="100" step="1">%</label>
       <label title="A bet is only placed when its price is at or below what the model thinks it is worth, minus 1¢. This lets it pay that many cents more, so more bets go through. 0 is the strictest.">Pay up to <input type="number" id="autoOver" min="0" max="10" step="1" style="width:56px">¢ extra</label>
+      <label title="Real Auto stops betting for the rest of the day once today's settled profit reaches this % of the bankroll it started the day with. 0 turns it off. (Daily minimum aimed for: +2%.)">Stop at +<input type="number" id="autoGoalD" min="0" max="100" step="1" style="width:56px">%/day</label>
+      <label title="The weekly return (Monday to Sunday) Auto aims for at least, as % of the bankroll it started the week with. It is a target shown on the card; Auto does not stop for the week.">Week min +<input type="number" id="autoGoalW" min="0" max="500" step="1" style="width:56px">%</label>
       <button id="autoRealHist">View real bet history</button>
     </div>
   </div>
@@ -1647,8 +1649,20 @@ function realEvent(t){real.events.unshift(new Date().toLocaleTimeString()+" · "
 function flashFor(m){      // the newest message for a card, without its time, and only while it is fresh
   for(let i=0;i<real.events.length;i++){if(Date.now()-real.evT[i]>20000)return"";if(!m||real.events[i].includes(m))return real.events[i].replace(/^.*? · /,"")}return""}
 const killTxt=m=>/insufficient resting volume/i.test(m||"")?"not enough contracts for sale at that price, nothing was bought":(m||"not placed");
+const goalPct=k=>{const v=ls.get(k==="d"?"k15goalD":"k15goalW",k==="d"?10:15);return Number.isFinite(+v)?Math.max(0,+v):0};
+const DAY_MIN=2;      // the daily return Auto aims for at least (shown on the card, not enforced)
+function autoGoals(){      // today's and this week's settled real Auto profit, as a share of the bankroll it started that day / week with
+  const b=budOf("auto","*");if(!b)return null;
+  const rows=realOf("auto").filter(m=>m.won!=null&&m.net!=null),d0=new Date();d0.setHours(0,0,0,0);
+  const w0=new Date(d0);w0.setDate(w0.getDate()-((d0.getDay()+6)%7));
+  const calc=t=>{const net=rows.filter(m=>m.r.t>=t/1000).reduce((a,m)=>a+m.net,0),base=b.bank-net;return{net,pct:base>0?net/base*100:0}};
+  const D=calc(+d0),W=calc(+w0),gd=goalPct("d"),gw=goalPct("w");
+  return{D,W,gd,gw,stop:gd>0&&D.pct>=gd-1e-9?"day":null};      // only the daily goal stops betting; the weekly figure is a minimum to aim for
+}
+const goalMsg=g=>"today's +"+g.gd+"% goal is reached ("+(g.D.pct>=0?"+":"")+g.D.pct.toFixed(1)+"%), so Auto rests until tomorrow";
 function realAuto(best,two,picks,wEnd){          // the same sizing rule as fake-money auto mode, applied to its real bankroll
   if(!realReady()){realEvent("Auto: not placed (account not ready)");return}
+  const g=autoGoals();if(g&&g.stop){realEvent("Auto: not placed, "+goalMsg(g));real.autoLast={t:Date.now(),win:winStart,text:"Not betting: "+goalMsg(g)};return}
   const b=budOf("auto","*");if(!b||!(b.avail>=1)){realEvent("Auto: not placed (its real bankroll is "+money(b?Math.max(b.avail,0):0)+")");return}
   const dd=b.peak>0?Math.max(0,1-b.avail/b.peak):0,sc=Math.max(0.25,Math.min(1,1-dd/0.4)),tot=Math.min(autoSt.cap||0.2,best.f*sc*(two?1.3:1));
   const wS=winStart;
@@ -1675,6 +1689,7 @@ function autoRetry(x,stake,wS,wEnd,n){      // the real order was refused only b
     const r=res[x.sym];if(!r||r.pCal==null){stop("no signal");return}
     const sd=r.pCal>=0.5?"UP":"DOWN",conf=sd==="UP"?r.pCal:1-r.pCal;
     if(sd!==x.side||!autoAllow(conf,r.tau)){stop("the signal changed");return}
+    {const g=autoGoals();if(g&&g.stop){stop(goalMsg(g));return}}
     const b=budOf("auto","*"),st=Math.min(stake,b?Math.floor(b.avail*100)/100:0);if(!(st>=1)){stop("not enough bankroll left");return}
     try{await refreshMarket(x.sym,wEnd,false)}catch(e){}
     const o=await realMirror("auto",x.sym,x.side,st,{w:wEnd,p:conf,retry:n});
@@ -1748,6 +1763,8 @@ $("autoOnBtn").onclick=async()=>{      // a number typed in the box but not yet 
   realSwitch("sim",!real.sim)};
 const money2=v=>Math.round(v*100)/100;
 const overpay=src=>{const v=ls.get(src==="auto"?"k15overA":"k15overT",1);return Number.isFinite(+v)?Math.max(0,Math.min(10,Math.round(+v))):1};      // cents above "what it is worth" that a real bet may pay
+for(const [id,k] of [["autoGoalD","k15goalD"],["autoGoalW","k15goalW"]]){const el=$(id),dv=k==="k15goalD"?10:15;el.value=goalPct(k==="k15goalD"?"d":"w");
+  el.onchange=()=>{const v=parseFloat(el.value);if(v>=0&&v<=500){ls.set(k,v)}else el.value=goalPct(k==="k15goalD"?"d":"w")}}
 for(const [id,k] of [["autoOver","k15overA"],["simOver","k15overT"]]){const el=$(id);el.value=overpay(k==="k15overA"?"auto":"sim");el.onchange=()=>{const v=Math.max(0,Math.min(10,Math.round(parseFloat(el.value))));if(Number.isFinite(v)){ls.set(k,v);el.value=v}else el.value=overpay(k==="k15overA"?"auto":"sim")}}
 $("autoRealStart").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();$("autoRealSet").click()}};
 $("autoRealSet").onclick=()=>{const el=$("autoRealStart"),b=budOf("auto","*");realAlloc("auto","*",parseFloat(el.value),el,b?money2(b.bank):0)};
@@ -1783,10 +1800,10 @@ function renderRealAuto(){
   const b=budOf("auto","*"),rows=realOf("auto"),inp=$("autoRealStart"),ev=real.events.filter(e=>e.includes("· Auto")).slice(0,3);
   if(document.activeElement!==inp)inp.value=b?money2(b.bank):0;
   const tot=b?b.w+b.l:0,dd=b&&b.peak>0?Math.max(0,1-b.bank/b.peak):0;let samples=0;for(const k in autoSt.learn)samples+=autoSt.learn[k].n;
-  const L=real.autoLast,st=!b?"Allocate some real money to begin":!real.auto?"Real betting is off. Press Start real betting to begin. Fake-money Auto mode keeps running either way.":(L&&L.win===winStart?L.text:(autoNote==="Bet placed"?"Waiting for the real bet":autoNote)||"Waiting for the next window");
+  const GO=autoGoals(),L=real.autoLast,st=!b?"Allocate some real money to begin":!real.auto?"Real betting is off. Press Start real betting to begin. Fake-money Auto mode keeps running either way.":GO&&GO.stop?"Resting: "+goalMsg(GO):(L&&L.win===winStart?L.text:(autoNote==="Bet placed"?"Waiting for the real bet":autoNote)||"Waiting for the next window");
   const cell=(l,v,c)=>`<div>${l}<b${c?` class="${c}"`:""}>${v}</b></div>`;
   setH($("arStats"),cell("Allocated",b?$$(b.bank):"–")+cell("Free to bet",b?$$(b.avail):"–")+cell("Net",b?$$(b.net):"–",b?cls(b.net):"")+cell("Wins / losses",b?b.w+" / "+b.l:"–")+
-    cell("Hit rate",tot?Math.round(b.w/tot*1000)/10+"%":"–")+cell("Windows skipped",b?realSkip().n:"–")+cell("Currently bet",b?$$(b.open):"–")+cell("Below peak",Math.round(dd*1000)/10+"%")+
+    cell("Hit rate",tot?Math.round(b.w/tot*1000)/10+"%":"–")+cell("Windows skipped",b?realSkip().n:"–")+cell("Today",GO?(GO.D.pct>=0?"+":"")+GO.D.pct.toFixed(1)+"%"+" · min +"+DAY_MIN+"% "+(GO.D.pct>=DAY_MIN?"met":"not yet")+(GO.gd?" · stops at +"+GO.gd+"%":""):"–",GO&&GO.D.pct>0?"hit":GO&&GO.D.pct<0?"miss":"")+cell("This week",GO?(GO.W.pct>=0?"+":"")+GO.W.pct.toFixed(1)+"%"+(GO.gw?" · min +"+GO.gw+"% "+(GO.W.pct>=GO.gw?"met":"not yet"):""):"–",GO&&GO.W.pct>0?"hit":GO&&GO.W.pct<0?"miss":"")+cell("Currently bet",b?$$(b.open):"–")+cell("Below peak",Math.round(dd*1000)/10+"%")+
     cell("Min confidence now",(g=>g==null?"none":Math.round(g*1000)/10+"%")(autoGate(1)))+cell("Learned from",samples+" samples")+cell("Status",st));
   setH($("arNote"),(acct.stale?'<b class="miss">'+escH(staleMsg)+"</b><br>":"")+escH(flashFor("· Auto")));
 }
