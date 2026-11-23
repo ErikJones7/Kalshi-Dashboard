@@ -13,11 +13,21 @@ UPDATING (no new setup)
   Your Desktop icons keep working. Your saved data (the "data" folder) is never touched.
   If an old version is still running, the new one replaces it automatically.
 
+KALSHI ACCOUNT AND LIVE BETTING (optional)
+  Menu > Kalshi account walks you through it: create an API key on kalshi.com (Profile > API Keys), put the private key file
+  Kalshi gives you in the "keys" folder (button in the panel), and paste the Key ID. The private key never leaves this computer
+  and is never sent to the dashboard page. Betting stays OFF until you switch it on, and the helper enforces a per-bet and a
+  per-day limit (fees included). Only 15-minute crypto markets can be bought, as fill-or-kill orders. Every bet attempt is
+  recorded in data\live_orders.jsonl. Use the Demo account option to try it with fake money first.
+  The key can place real bets: keep the keys folder private and never share it or the zip of this folder. If a key is ever exposed,
+  delete it on Kalshi's API Keys page.
+
 MAC / LINUX
   Double-click "Kalshi Dashboard.command" (needs Python 3). Updating works the same way.
 
 FILES
   kalshi_helper.py            the helper (fetches Kalshi data, saves your data)
   kalshi_dashboard_v4.html    the dashboard page
+  keys\                       your Kalshi private key file (only if you connect your account; never share this folder)
   data\                       created on first run: signals, final calls, calibration, simulated bets (CSV files)
   build_exe.bat               optional: builds a single KalshiDashboard.exe

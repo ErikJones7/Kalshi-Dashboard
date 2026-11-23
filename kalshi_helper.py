@@ -37,6 +37,7 @@ import csv
 import hashlib
 import http.client
 import json
+import math
 import os
 import platform
 import re
@@ -401,6 +402,586 @@ def fetch_upstream(url):
         return 502, json.dumps({"error": msg}).encode()
 
 
+# --------------------------------------------------------------------------- Kalshi account (read-only)
+# Your private key stays in the "keys" folder next to this file. It is read here, in this program, to sign requests, and it is
+# never sent to the dashboard page or anywhere else. The only requests that are ever signed are the three GET calls in
+# ACCT_PATHS (balance, positions, fills): nothing in this file can place, change or cancel an order.
+KEYS_DIR = os.path.join(HERE, "keys")
+ACCT_PATHS = ("/portfolio/balance", "/portfolio/positions", "/portfolio/fills")
+DEMO_BASE = "https://external-api.demo.kalshi.co/trade-api/v2"
+PROD_BASES = [UPSTREAM, "https://external-api.kalshi.com/trade-api/v2"]
+KEY_EXT = (".pem", ".key", ".txt", ".p8")
+_key_cache = {}
+acct_cache = {"t": 0.0, "env": None, "data": None}
+acct_lock = threading.Lock()
+
+
+# ---- tiny DER reader (just enough to open PEM private keys)
+def _der(b, i=0):
+    tag, ln = b[i], b[i + 1]
+    i += 2
+    if ln & 0x80:
+        k = ln & 0x7F
+        ln = int.from_bytes(b[i:i + k], "big")
+        i += k
+    return tag, b[i:i + ln], i + ln
+
+
+def _der_items(b):
+    out, i = [], 0
+    while i < len(b):
+        t, c, i = _der(b, i)
+        out.append((t, c))
+    return out
+
+
+def parse_private_key(text):
+    """PEM text -> ("ed25519", 32-byte seed) or ("rsa", (n, e, d, p, q, dp, dq, qinv)). Raises ValueError with a plain-English reason."""
+    import base64
+    m = re.search(r"-----BEGIN ([A-Z0-9 ]*PRIVATE KEY)-----(.+?)-----END [A-Z0-9 ]*PRIVATE KEY-----", text, re.S)
+    if not m:
+        raise ValueError("That file doesn't contain a private key (it should start with -----BEGIN ... PRIVATE KEY-----).")
+    label, body = m.group(1), m.group(2)
+    if "ENCRYPTED" in label or "Proc-Type" in body:
+        raise ValueError("That private key is password-protected, which isn't supported. Use the key file exactly as Kalshi gave it to you.")
+    try:
+        der = base64.b64decode("".join(body.split()))
+        top = _der_items(_der(der)[1])
+        if label == "RSA PRIVATE KEY":                                  # PKCS#1
+            nums = [int.from_bytes(c, "big") for t, c in top[1:9]]
+            return "rsa", tuple(nums)
+        algid = _der_items(top[1][1])
+        oid = algid[0][1]
+        inner = top[2][1]
+        if oid == bytes.fromhex("2b6570"):                              # Ed25519
+            seed = _der(inner)[1]
+            if len(seed) != 32:
+                raise ValueError("bad length")
+            return "ed25519", seed
+        if oid == bytes.fromhex("2a864886f70d010101"):                  # RSA in PKCS#8
+            nums = [int.from_bytes(c, "big") for t, c in _der_items(_der(inner)[1])[1:9]]
+            return "rsa", tuple(nums)
+    except ValueError:
+        raise
+    except Exception:
+        raise ValueError("That private key file couldn't be read. Make sure it's the whole file Kalshi gave you, unedited.")
+    raise ValueError("That kind of key isn't supported. Create an Ed25519 or RSA key on Kalshi.")
+
+
+# ---- Ed25519 (RFC 8032), pure Python
+_P = 2 ** 255 - 19
+_Q = 2 ** 252 + 27742317777372353535851937790883648493
+_D = -121665 * pow(121666, _P - 2, _P) % _P
+_SQRT_M1 = pow(2, (_P - 1) // 4, _P)
+
+
+def _ed_add(a, b):
+    A, B = (a[1] - a[0]) * (b[1] - b[0]) % _P, (a[1] + a[0]) * (b[1] + b[0]) % _P
+    C, D = 2 * a[3] * b[3] * _D % _P, 2 * a[2] * b[2] % _P
+    E, F, G, H = B - A, D - C, D + C, B + A
+    return (E * F % _P, G * H % _P, F * G % _P, E * H % _P)
+
+
+def _ed_mul(s, pt):
+    q = (0, 1, 1, 0)
+    while s > 0:
+        if s & 1:
+            q = _ed_add(q, pt)
+        pt = _ed_add(pt, pt)
+        s >>= 1
+    return q
+
+
+def _ed_enc(pt):
+    zi = pow(pt[2], _P - 2, _P)
+    x, y = pt[0] * zi % _P, pt[1] * zi % _P
+    return (y | ((x & 1) << 255)).to_bytes(32, "little")
+
+
+def _ed_base():
+    y = 4 * pow(5, _P - 2, _P) % _P
+    x2 = (y * y - 1) * pow(_D * y * y + 1, _P - 2, _P) % _P
+    x = pow(x2, (_P + 3) // 8, _P)
+    if (x * x - x2) % _P:
+        x = x * _SQRT_M1 % _P
+    if x & 1:
+        x = _P - x
+    return (x, y, 1, x * y % _P)
+
+
+_ED_G = _ed_base()
+
+
+def ed25519_sign(seed, msg):
+    h = hashlib.sha512(seed).digest()
+    a = (int.from_bytes(h[:32], "little") & ((1 << 254) - 8)) | (1 << 254)
+    A = _ed_enc(_ed_mul(a, _ED_G))
+    r = int.from_bytes(hashlib.sha512(h[32:] + msg).digest(), "little") % _Q
+    R = _ed_enc(_ed_mul(r, _ED_G))
+    k = int.from_bytes(hashlib.sha512(R + A + msg).digest(), "little") % _Q
+    return R + ((r + k * a) % _Q).to_bytes(32, "little")
+
+
+# ---- RSA-PSS, SHA-256, MGF1(SHA-256), salt length 32 (what Kalshi asks for RSA keys)
+def _mgf1(seed, n):
+    out, c = b"", 0
+    while len(out) < n:
+        out += hashlib.sha256(seed + c.to_bytes(4, "big")).digest()
+        c += 1
+    return out[:n]
+
+
+def rsa_pss_sign(key, msg):
+    n, e, d, p, q, dp, dq, qi = key
+    bits = n.bit_length() - 1
+    em_len = (bits + 7) // 8
+    h_len = 32
+    m_hash = hashlib.sha256(msg).digest()
+    salt = os.urandom(h_len)
+    H = hashlib.sha256(b"\0" * 8 + m_hash + salt).digest()
+    db = b"\0" * (em_len - h_len * 2 - 2) + b"\x01" + salt
+    masked = bytearray(x ^ y for x, y in zip(db, _mgf1(H, em_len - h_len - 1)))
+    masked[0] &= 0xFF >> (8 * em_len - bits)
+    m = int.from_bytes(bytes(masked) + H + b"\xbc", "big")
+    s1, s2 = pow(m % p, dp, p), pow(m % q, dq, q)       # CRT
+    s = s2 + q * (qi * (s1 - s2) % p)
+    return s.to_bytes((n.bit_length() + 7) // 8, "big")
+
+
+def sign_message(key, msg):
+    kind, k = key
+    return ed25519_sign(k, msg) if kind == "ed25519" else rsa_pss_sign(k, msg)
+
+
+# ---- finding the key and the settings
+def find_key_file():
+    try:
+        files = [os.path.join(KEYS_DIR, f) for f in os.listdir(KEYS_DIR)
+                 if f.lower().endswith(KEY_EXT) and os.path.isfile(os.path.join(KEYS_DIR, f))]
+    except OSError:
+        return None
+    files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+    for p in files:
+        try:
+            with open(p, "r", encoding="utf-8", errors="ignore") as f:
+                if "PRIVATE KEY-----" in f.read(20000):
+                    return p
+        except OSError:
+            pass
+    return None
+
+
+def load_key():
+    """(path, key) for the newest private key file in the keys folder. Raises ValueError with a plain reason."""
+    p = find_key_file()
+    if not p:
+        raise ValueError("No private key file found yet. Put the key file Kalshi gave you into the keys folder.")
+    sig = (p, os.path.getmtime(p))
+    hit = _key_cache.get("k")
+    if hit and hit[0] == sig:
+        return p, hit[1]
+    with open(p, "r", encoding="utf-8", errors="ignore") as f:
+        key = parse_private_key(f.read())
+    _key_cache["k"] = (sig, key)
+    return p, key
+
+
+def acct_config():
+    cfg = load_settings()
+    env = "demo" if cfg.get("kalshi_env") == "demo" else "prod"
+    return (cfg.get("kalshi_key_id") or "").strip(), env
+
+
+def mask_id(s):
+    return (s[:4] + "…" + s[-4:]) if len(s) > 10 else ("…" if s else "")
+
+
+def acct_status():
+    key_id, env = acct_config()
+    out = {"key_id": mask_id(key_id), "has_id": bool(key_id), "env": env, "keys_dir": KEYS_DIR,
+           "has_key": False, "key_type": None, "key_error": None}
+    try:
+        p, key = load_key()
+        out["has_key"] = True
+        out["key_type"] = key[0]
+        out["key_file"] = os.path.basename(p)
+    except ValueError as e:
+        out["key_error"] = str(e) if find_key_file() else None
+    out["ready"] = out["has_id"] and out["has_key"]
+    return out
+
+
+# ---- signed GET (only the three whitelisted paths)
+def signed_get(base, path, query=""):
+    if path not in ACCT_PATHS:
+        raise ValueError("not allowed")
+    key_id, _env = acct_config()
+    _p, key = load_key()
+    u = urllib.parse.urlsplit(base)
+    full_path = u.path.rstrip("/") + path                         # this exact path, without the query, is what gets signed
+    ts = str(int(time.time() * 1000))
+    import base64
+    sig = base64.b64encode(sign_message(key, (ts + "GET" + full_path).encode())).decode()
+    headers = {"KALSHI-ACCESS-KEY": key_id, "KALSHI-ACCESS-TIMESTAMP": ts, "KALSHI-ACCESS-SIGNATURE": sig,
+               "Accept": "application/json", "User-Agent": "kalshi-helper/1.0"}
+    url = u.scheme + "://" + u.netloc + full_path + (("?" + query) if query else "")
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=10, context=ssl_ctx()) as r:
+            return r.status, r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read() or b"{}"
+    except Exception as e:
+        try:
+            args = ["curl", "-sS", "--max-time", "10", "-w", "\n%{http_code}"]
+            for k, v in headers.items():
+                args += ["-H", "%s: %s" % (k, v)]
+            pr = subprocess.run(args + [url], capture_output=True, timeout=14)
+            if pr.returncode == 0 and pr.stdout:
+                body, _, code = pr.stdout.rpartition(b"\n")
+                return int(code or 0), body
+        except Exception:
+            pass
+        raise ConnectionError(str(e))
+
+
+def _bases(env):
+    return [DEMO_BASE] if env == "demo" else PROD_BASES
+
+
+def acct_get(path, query=""):
+    key_id, env = acct_config()
+    last = None
+    for base in _bases(env):
+        try:
+            st, body = signed_get(base, path, query)
+        except ConnectionError as e:
+            last = e
+            continue                                               # can't reach this address: try the next one
+        try:
+            data = json.loads(body.decode("utf-8", "ignore") or "{}")
+        except ValueError:
+            data = {}
+        return st, data
+    raise ConnectionError(str(last) if last else "no connection")
+
+
+def _f(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _usd(o, dollars_key, cents_key):
+    """Kalshi sends money as dollar strings ("0.5600"); older replies used whole cents. Returns dollars."""
+    v = _f(o.get(dollars_key))
+    if v is not None:
+        return v
+    v = _f(o.get(cents_key))
+    return None if v is None else v / 100.0
+
+
+def norm_summary(bal, pos, fills):
+    out = {"balance": _usd(bal, "balance_dollars", "balance"),
+           "portfolio_value": _usd(bal, "portfolio_value_dollars", "portfolio_value"),
+           "positions": [], "fills": []}
+    for r in (pos.get("market_positions") or []):
+        n = _f(r.get("position_fp"))
+        if n is None:
+            n = _f(r.get("position"))
+        if not n:
+            continue
+        out["positions"].append({"ticker": r.get("ticker"), "side": "YES" if n > 0 else "NO", "contracts": abs(n),
+                                 "cost": _usd(r, "market_exposure_dollars", "market_exposure"),
+                                 "pnl": _usd(r, "realized_pnl_dollars", "realized_pnl"),
+                                 "fees": _usd(r, "fees_paid_dollars", "fees_paid")})
+    for r in (fills.get("fills") or []):
+        side = (r.get("outcome_side") or r.get("side") or "").upper()
+        py = _usd(r, "yes_price_dollars", "yes_price")
+        pn = _usd(r, "no_price_dollars", "no_price")
+        cnt = _f(r.get("count_fp"))
+        if cnt is None:
+            cnt = _f(r.get("count"))
+        fee = _f(r.get("fee_cost"))
+        out["fills"].append({"time": r.get("created_time") or r.get("ts"), "ticker": r.get("ticker") or r.get("market_ticker"),
+                             "side": side, "action": (r.get("action") or "buy").upper(), "contracts": cnt,
+                             "price": pn if side == "NO" else py, "fee": fee, "taker": bool(r.get("is_taker"))})
+    out["fills"].sort(key=lambda x: str(x["time"] or ""), reverse=True)
+    out["positions"].sort(key=lambda x: str(x["ticker"] or ""))
+    return out
+
+
+def acct_error_text(st, data):
+    if st in (401, 403):
+        return ("Kalshi didn't accept the key (HTTP %d). Check that the Key ID is the one that belongs to the private key file, "
+                "that the environment (real or demo) is right, and that this computer's clock is correct." % st)
+    msg = ""
+    if isinstance(data, dict):
+        msg = str(data.get("message") or data.get("error") or "")
+        if isinstance(data.get("error"), dict):
+            msg = str(data["error"].get("message") or data["error"].get("code") or "")
+    return "Kalshi returned HTTP %d%s" % (st, (": " + msg[:160]) if msg else "")
+
+
+def acct_summary(force=False):
+    s = acct_status()
+    if not s["ready"]:
+        return {"ok": False, "status": s, "error": s["key_error"] or ("Add your Key ID" if not s["has_id"] else "Add your private key file")}
+    with acct_lock:
+        c = acct_cache
+        if not force and c["data"] and c["env"] == s["env"] and time.time() - c["t"] < 5:
+            return c["data"]
+    try:
+        res = {}
+        errs = []
+
+        def run(name, path, query):
+            try:
+                res[name] = acct_get(path, query)
+            except Exception as e:
+                errs.append(str(e))
+        th = [threading.Thread(target=run, args=a) for a in (("bal", "/portfolio/balance", ""),
+                                                             ("pos", "/portfolio/positions", "limit=200&count_filter=position"),
+                                                             ("fil", "/portfolio/fills", "limit=100"))]
+        for t in th:
+            t.start()
+        for t in th:
+            t.join(15)
+        if errs or len(res) < 3:
+            out = {"ok": False, "status": s, "error": "Couldn't reach Kalshi: " + (errs[0] if errs else "timed out")}
+        else:
+            bad = [(st, d) for st, d in res.values() if st >= 400]
+            if bad:
+                out = {"ok": False, "status": s, "error": acct_error_text(bad[0][0], bad[0][1])}
+            else:
+                out = {"ok": True, "status": s, "t": time.time(), **norm_summary(res["bal"][1], res["pos"][1], res["fil"][1])}
+    except Exception as e:
+        log("account summary failed:\n" + traceback.format_exc())
+        out = {"ok": False, "status": s, "error": str(e)}
+    with acct_lock:
+        acct_cache.update(t=time.time(), env=s["env"], data=out)
+    return out
+
+
+# ---- placing bets (guarded)
+# Every rule below is enforced here, in the helper, not just in the page: the page cannot talk it out of them.
+#   * trading is OFF until you switch it on in the Kalshi account panel (and it switches itself off again if you change environment)
+#   * only 15-minute crypto markets (KX...15M) can be bought; only "buy", never sell
+#   * one bet can't cost more than your per-bet limit, and a day's bets can't cost more than your daily limit (fees included)
+#   * every order is a fill-or-kill limit order: it fills completely at your price or better, or not at all
+#   * every attempt, accepted or refused, is written to data/live_orders.jsonl
+TICKER_RE = re.compile(r"^KX[A-Z0-9]+15M-[A-Z0-9\-]+$")
+LIVE_LOG = "live_orders.jsonl"
+DEF_MAX_BET, DEF_DAILY = 5.0, 25.0
+_last_order = [0.0]
+order_lock = threading.Lock()
+
+
+class TradeError(Exception):
+    pass
+
+
+def trade_cfg():
+    cfg = load_settings()
+    def num(k, d):
+        try:
+            v = float(cfg.get(k))
+            return v if v > 0 else d
+        except (TypeError, ValueError):
+            return d
+    return {"trading": bool(cfg.get("kalshi_trading")), "max_bet": num("kalshi_max_bet", DEF_MAX_BET), "daily": num("kalshi_daily", DEF_DAILY)}
+
+
+def live_rows():
+    p = os.path.join(DATA, LIVE_LOG)
+    out = []
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            for ln in f:
+                try:
+                    out.append(json.loads(ln))
+                except ValueError:
+                    pass
+    except OSError:
+        pass
+    return out
+
+
+def live_append(row):
+    os.makedirs(DATA, exist_ok=True)
+    with open(os.path.join(DATA, LIVE_LOG), "a", encoding="utf-8") as f:
+        f.write(json.dumps(row) + "\n")
+
+
+def spent_today(env):
+    day = time.strftime("%Y-%m-%d")
+    return sum(r.get("cost_total") or 0 for r in live_rows() if r.get("day") == day and r.get("env") == env and r.get("filled"))
+
+
+def est_fee(count, price_cents):
+    p = price_cents / 100.0
+    return math.ceil(0.07 * count * p * (1 - p) * 100 - 1e-9) / 100.0          # Kalshi's taker fee formula, rounded up to the cent
+
+
+def signed_post(base, path, body):
+    if path != "/portfolio/orders":
+        raise ValueError("not allowed")
+    import base64
+    key_id, _env = acct_config()
+    _p, key = load_key()
+    u = urllib.parse.urlsplit(base)
+    full_path = u.path.rstrip("/") + path
+    ts = str(int(time.time() * 1000))
+    sig = base64.b64encode(sign_message(key, (ts + "POST" + full_path).encode())).decode()
+    headers = {"KALSHI-ACCESS-KEY": key_id, "KALSHI-ACCESS-TIMESTAMP": ts, "KALSHI-ACCESS-SIGNATURE": sig,
+               "Accept": "application/json", "Content-Type": "application/json", "User-Agent": "kalshi-helper/1.0"}
+    req = urllib.request.Request(u.scheme + "://" + u.netloc + full_path, data=json.dumps(body).encode(), headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=10, context=ssl_ctx()) as r:
+            return r.status, r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read() or b"{}"
+
+
+def market_check(ticker, env):
+    base = DEMO_BASE if env == "demo" else UPSTREAM
+    st, body = fetch_upstream(base + "/markets/" + urllib.parse.quote(ticker))
+    if st >= 400:
+        raise TradeError("Couldn't look up that market on Kalshi (HTTP %d)." % st)
+    m = json.loads(body.decode("utf-8", "ignore") or "{}").get("market") or {}
+    if str(m.get("status", "")).lower() not in ("open", "active"):
+        raise TradeError("That market isn't open for trading.")
+    try:
+        close = time.mktime(time.strptime(str(m.get("close_time"))[:19], "%Y-%m-%dT%H:%M:%S")) - time.timezone
+    except Exception:
+        close = None
+    return m, close
+
+
+def _ask_cents(m, side):
+    def q(k):
+        v = _f(m.get(k + "_dollars"))
+        if v is not None:
+            return v * 100
+        v = _f(m.get(k))
+        return v
+    a = q(side + "_ask")
+    return a if a else None
+
+
+def place_order(body):
+    t = trade_cfg()
+    key_id, env = acct_config()
+    ticker = str(body.get("ticker") or "")
+    side = str(body.get("side") or "").lower()
+    try:
+        count, price = int(body.get("count")), int(body.get("price"))
+    except (TypeError, ValueError):
+        raise TradeError("The bet details were incomplete.")
+    row = {"t": time.time(), "day": time.strftime("%Y-%m-%d"), "time": time.strftime("%Y-%m-%d %H:%M:%S"), "env": env, "ticker": ticker,
+           "side": side, "count": count, "price_cents": price, "filled": False, "cost_total": 0.0, "src": str(body.get("src") or "manual")[:20]}
+    try:
+        if not t["trading"]:
+            raise TradeError("Betting is switched off. Turn it on in Menu > Kalshi account.")
+        s = acct_status()
+        if not s["ready"]:
+            raise TradeError("Your Kalshi key isn't set up yet.")
+        if not TICKER_RE.match(ticker):
+            raise TradeError("Only 15-minute crypto markets can be bought from here.")
+        if side not in ("yes", "no"):
+            raise TradeError("The side must be YES or NO.")
+        if not (1 <= price <= 99) or not (1 <= count <= 10000):
+            raise TradeError("That price or number of contracts is out of range.")
+        fee = est_fee(count, price)
+        cost = count * price / 100.0 + fee
+        row["est_cost"] = round(cost, 4)
+        if cost > t["max_bet"] + 1e-9:
+            raise TradeError("This bet would cost about $%.2f, over your per-bet limit of $%.2f." % (cost, t["max_bet"]))
+        used = spent_today(env)
+        if used + cost > t["daily"] + 1e-9:
+            raise TradeError("This bet would take today's total to $%.2f, over your daily limit of $%.2f." % (used + cost, t["daily"]))
+        with order_lock:
+            if time.time() - _last_order[0] < 1.5:
+                raise TradeError("Slow down: one bet at a time.")
+            _last_order[0] = time.time()
+        m, close = market_check(ticker, env)
+        if close is not None and close - time.time() < 6:
+            raise TradeError("That market is about to close.")
+        ask = _ask_cents(m, side)
+        if ask is not None and price > ask + 5:
+            raise TradeError("Your price (%d¢) is well above the current ask (%d¢). Refresh and try again." % (price, ask))
+        order = {"ticker": ticker, "side": side, "action": "buy", "count": count, "type": "limit",
+                 "yes_price" if side == "yes" else "no_price": price, "time_in_force": "fill_or_kill",
+                 "client_order_id": "kd-%d-%s" % (int(time.time() * 1000), os.urandom(3).hex())}
+        row["client_order_id"] = order["client_order_id"]
+        base = _bases(env)[0]
+        st, rb = signed_post(base, "/portfolio/orders", order)
+        data = json.loads(rb.decode("utf-8", "ignore") or "{}")
+        if st >= 400:
+            row["error"] = acct_error_text(st, data)
+            raise TradeError(row["error"])
+        o = data.get("order") or {}
+        fc = _f(o.get("fill_count_fp"))
+        if fc is None:
+            fc = _f(o.get("fill_count"))
+        if fc is None:
+            fc = count if str(o.get("status", "")).lower() == "executed" else 0
+        spend = (_usd(o, "taker_fill_cost_dollars", "taker_fill_cost") or 0) + (_usd(o, "maker_fill_cost_dollars", "maker_fill_cost") or 0)
+        fees = (_usd(o, "taker_fees_dollars", "taker_fees") or 0) + (_usd(o, "maker_fees_dollars", "maker_fees") or 0)
+        if fc and not spend:
+            spend, fees = fc * price / 100.0, est_fee(int(fc), price)
+        row.update(order_id=o.get("order_id"), status=o.get("status"), filled=bool(fc and fc > 0), fill_count=fc,
+                   cost=round(spend, 4), fees=round(fees, 4), cost_total=round(spend + fees, 4))
+        acct_cache["data"] = None
+        return {"ok": True, "filled": row["filled"], "fill_count": fc, "cost": row["cost_total"], "status": o.get("status"),
+                "message": ("Bought %g contracts for $%.2f." % (fc, row["cost_total"])) if row["filled"] else "Not filled: the price moved before it could complete. Nothing was bought."}
+    except TradeError as e:
+        row["refused"] = str(e)
+        return {"ok": False, "error": str(e)}
+    except Exception as e:
+        log("order failed:\n" + traceback.format_exc())
+        row["refused"] = "error: %s" % e
+        return {"ok": False, "error": "The order couldn't be sent (%s). It may or may not have gone through; check the Kalshi site before trying again." % e}
+    finally:
+        try:
+            live_append(row)
+        except Exception:
+            pass
+
+
+def acct_info():
+    t = trade_cfg()
+    s = acct_status()
+    s.update(trading=t["trading"], max_bet=t["max_bet"], daily=t["daily"], spent_today=round(spent_today(s["env"]), 2))
+    return s
+
+
+def acct_set(body):
+    cfg = load_settings()
+    if "key_id" in body:
+        kid = str(body["key_id"]).strip()
+        if kid and not re.match(r"^[A-Za-z0-9\-]{8,80}$", kid):
+            raise ValueError("That doesn't look like a Key ID.")
+        cfg["kalshi_key_id"] = kid
+        if not kid:
+            cfg["kalshi_trading"] = False
+    if body.get("env") in ("prod", "demo") and body["env"] != ("demo" if cfg.get("kalshi_env") == "demo" else "prod"):
+        cfg["kalshi_env"] = body["env"]
+        cfg["kalshi_trading"] = False                                   # a new environment always starts with betting off
+    for k, name in (("max_bet", "kalshi_max_bet"), ("daily", "kalshi_daily")):
+        if k in body:
+            v = float(body[k])
+            if not (0.5 <= v <= 100000):
+                raise ValueError("Limits must be at least $0.50.")
+            cfg[name] = v
+    if "trading" in body:
+        cfg["kalshi_trading"] = bool(body["trading"])
+    save_settings(cfg)
+    acct_cache["data"] = None
+    return acct_info()
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "KalshiHelper/2.0"
 
@@ -424,6 +1005,17 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _own_origin_ok(self):
+        """Account requests must come from the dashboard page served by this helper: right Host (stops DNS-rebinding tricks) and, when the
+        browser says which site sent it, that site must be this helper itself. Other web pages can't read your account or place bets."""
+        port = self.server.server_address[1]
+        if (self.headers.get("Host") or "").lower() not in ("127.0.0.1:%d" % port, "localhost:%d" % port):
+            return False
+        org = self.headers.get("Origin")
+        if org is not None and org not in ("http://127.0.0.1:%d" % port, "http://localhost:%d" % port):
+            return False
+        return self.headers.get("Sec-Fetch-Site", "same-origin") in ("same-origin", "none")
+
     def do_OPTIONS(self):
         self.send_response(204)
         self._cors()
@@ -440,6 +1032,21 @@ class Handler(BaseHTTPRequestHandler):
                                                "update_url": cfg.get("update_url", ""), "has_token": bool(cfg.get("update_token")), "frozen": FROZEN}))
         if path.startswith("/alive"):
             return self._send(200, json.dumps({"ok": True}))
+        if path.startswith("/account/"):
+            if not self._own_origin_ok():
+                return self._send(403, json.dumps({"error": "forbidden"}))
+            name = path.split("?")[0][len("/account/"):]
+            try:
+                if name == "status":
+                    return self._send(200, json.dumps(acct_info()))
+                if name == "summary":
+                    return self._send(200, json.dumps(acct_summary("force=1" in path)))
+                if name == "orders":
+                    return self._send(200, json.dumps(live_rows()[-60:][::-1]))
+            except Exception as e:
+                log("account get failed:\n" + traceback.format_exc())
+                return self._send(500, json.dumps({"error": str(e)}))
+            return self._send(404, json.dumps({"error": "not found"}))
         if path.startswith("/kalshi/"):
             return self.proxy(path[len("/kalshi"):])
         if path.startswith("/data/"):
@@ -460,7 +1067,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, "{}")
         if self.path.startswith("/update"):
             org = self.headers.get("Origin") or ""
-            local = (not org) or org == "null" or org.startswith("http://127.0.0.1") or org.startswith("http://localhost")
+            local = (not org) or org == "null" or bool(re.match(r"^http://(127\.0\.0\.1|localhost)(:\d+)?$", org))
             if self.headers.get("X-Kalshi") != "1" or not local:
                 return self._send(403, json.dumps({"error": "forbidden"}))
             try:
@@ -486,7 +1093,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self.path.startswith("/restart"):
             org = self.headers.get("Origin") or ""
-            local = (not org) or org == "null" or org.startswith("http://127.0.0.1") or org.startswith("http://localhost")
+            local = (not org) or org == "null" or bool(re.match(r"^http://(127\.0\.0\.1|localhost)(:\d+)?$", org))
             if self.headers.get("X-Kalshi") != "1" or not local:
                 return self._send(403, json.dumps({"error": "forbidden"}))
             self._send(200, json.dumps({"ok": True}))
@@ -494,9 +1101,30 @@ class Handler(BaseHTTPRequestHandler):
             restart_self(self.server.server_address[1])
             threading.Timer(1.0, self.server.shutdown).start()
             return
+        if self.path.startswith("/account/"):
+            if not self._own_origin_ok() or self.headers.get("X-Kalshi") != "1":
+                return self._send(403, json.dumps({"ok": False, "error": "Open the dashboard from its icon (or http://127.0.0.1) to use your Kalshi account."}))
+            try:
+                n = int(self.headers.get("Content-Length", "0"))
+                body = json.loads(self.rfile.read(n).decode("utf-8") or "{}")
+                name = self.path.split("?")[0][len("/account/"):]
+                if name == "order":
+                    return self._send(200, json.dumps(place_order(body)))
+                if name == "config":
+                    return self._send(200, json.dumps({"ok": True, "status": acct_set(body)}))
+                if name == "folder":
+                    os.makedirs(KEYS_DIR, exist_ok=True)
+                    open_folder(KEYS_DIR)
+                    return self._send(200, json.dumps({"ok": True, "path": KEYS_DIR}))
+            except ValueError as e:
+                return self._send(200, json.dumps({"ok": False, "error": str(e)}))
+            except Exception as e:
+                log("account post failed:\n" + traceback.format_exc())
+                return self._send(200, json.dumps({"ok": False, "error": str(e)}))
+            return self._send(404, json.dumps({"error": "not found"}))
         if self.path.startswith("/open") or self.path.startswith("/settings"):
             org = self.headers.get("Origin") or ""
-            local = (not org) or org == "null" or org.startswith("http://127.0.0.1") or org.startswith("http://localhost")
+            local = (not org) or org == "null" or bool(re.match(r"^http://(127\.0\.0\.1|localhost)(:\d+)?$", org))
             if self.headers.get("X-Kalshi") != "1" or not local:
                 return self._send(403, json.dumps({"error": "forbidden"}))
             try:
