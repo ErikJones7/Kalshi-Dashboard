@@ -39,7 +39,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-24v"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-24w"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -1182,7 +1182,8 @@ def book_levels(ticker, side, env):
             p, q = _f(lv[0]), _f(lv[1])
             if p is None or q is None:
                 return None
-            out.append((p * 100 if (isinstance(lv[0], str) and "." in lv[0]) else p, q))
+            dollars = (isinstance(lv[0], str) and "." in lv[0]) or (isinstance(lv[0], float) and 0 < lv[0] < 1)      # "0.06" or 0.06 are dollars; 6 is cents
+            out.append((p * 100 if dollars else p, q))
         return out
     except Exception:
         return None
@@ -1228,7 +1229,10 @@ def live_ask(m, side, levels):
         if top is not None:
             c["order book"] = 100 - top
     c = {k: v for k, v in c.items() if v is not None and 0 < v <= 100}
-    note = ", ".join("%s %d¢" % (k, round(v)) for k, v in c.items())
+    shown = ", ".join("%d¢ x%g" % (round(p), q) for p, q in sorted(levels, reverse=True)[:3]) if levels else ""
+    note = ", ".join("%s %d¢" % (k, round(v)) for k, v in c.items()) + (("; best bids on the other side: " + shown) if shown else ("; the book is empty" if levels is not None else ""))
+    if levels is not None:        # the order book is what an order actually matches against, so it decides when it can be read
+        return c.get("order book"), note
     return (min(c.values()) if c else None), note
 
 
@@ -1324,7 +1328,7 @@ def _place_order(body):
         depth = depth_at(levels, price)
         if depth is not None:
             if depth < 1:
-                raise TradeError("Nothing is for sale at %d¢ or better right now, so nothing was bought." % price)
+                raise TradeError("Nothing is for sale at %d¢ or better right now, so nothing was bought. (%s)" % (price, ask_note))
             if depth < count:                              # a fill-or-kill order for more than is available would just be killed
                 count = int(depth)
                 row["count"] = count
