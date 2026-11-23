@@ -155,7 +155,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-24o</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-24p</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -212,7 +212,7 @@ body{transition:margin-left .14s ease-out}
     <div class="simctl">
       <label>Bet at <input type="number" id="simAt" min="5" max="300" step="5">s left</label>
       <label>Min confidence <input type="number" id="simMin" min="50" max="99.9" step="1">%</label>
-      <label title="Set every coin to the same allocated amount">Allocated $ <input type="number" id="simRealAll" min="0" step="0.01" style="width:90px"></label><button id="simRealAllB">Set all coins</button>
+      <label title="With nothing allocated yet, this amount is split evenly across all coins. If some money is already allocated, it sets every coin to this amount.">Allocated $ <input type="number" id="simRealAll" min="0" step="0.01" style="width:90px"></label><button id="simRealAllB">Set all coins</button>
       <button id="simOnBtn">Start real betting</button>
     </div>
   </div>
@@ -314,6 +314,7 @@ body{transition:margin-left .14s ease-out}
 /* ============================ config ============================ */
 const WINDOW=900, MARK=600, HIST_LEN=36000, LAG=10, STALE=45, HZ=30;
 const BASIS_FEED=0.5e-4, BASIS_KALSHI=3e-4;
+const DROPPED=new Set(["ADA","BCH","TON"]);      // coins that are no longer tracked anywhere
 const DEFAULT_SYMS=["BTC","ETH","SOL","XRP","DOGE","BNB","HYPE","NEAR","ZEC"];
 const KALSHI="https://api.elections.kalshi.com/trade-api/v2";
 const SPANS={"1m":60,"5m":300,"10m":600,"15m":900,"30m":1800,"1h":3600,"10h":36000};
@@ -422,7 +423,7 @@ async function discover(){
   let list=DEFAULT_SYMS.slice();
   try{
     const d=await kalshiGet("/series?category=Crypto");
-    const f=(d.series||[]).map(s=>s.ticker||"").filter(t=>/^KX[A-Z0-9]+15M$/.test(t)).map(t=>t.slice(2,-3));
+    const f=(d.series||[]).map(s=>s.ticker||"").filter(t=>/^KX[A-Z0-9]+15M$/.test(t)).map(t=>t.slice(2,-3)).filter(c=>!DROPPED.has(c));
     if(f.length) list=[...new Set(f)].sort();
   }catch(e){}
   syms=list;
@@ -1505,8 +1506,17 @@ async function acctRefresh(full){
     else acct.sum=null;
     acct.orders=await aget("/account/orders");for(const r of acct.orders)if(r.res)liveRes[r.ticker]=r.res;
     acct.bud=(await aget("/account/budget")).budget||{};
+    releaseDropped();
   }catch(e){acct.err=e.message||"Couldn't reach your account.";if(!acct.info)acct.sum=null}
   acct.busy=false;renderAcctMenu();if($("kaw").style.display!=="none")renderKa();
+}
+let dropBusy=false;
+async function releaseDropped(){      // money allocated to a coin that is no longer tracked goes back to cash (once nothing is open on it)
+  if(dropBusy||!acct.bud||!acct.bud.sim)return;
+  const ks=Object.keys(acct.bud.sim).filter(k=>DROPPED.has(k)&&acct.bud.sim[k].bank>0&&!(acct.bud.sim[k].open>0));
+  if(!ks.length)return;dropBusy=true;
+  try{for(const k of ks){const d=await apost("/account/config",{budget:{src:"sim",key:k,alloc:0,start:0}});if(d.ok){acct.bud=d.budget||acct.bud;realEvent("Timed bets ("+k+"): coin no longer tracked, its allocation went back to your cash")}}}
+  catch(e){}finally{dropBusy=false}
 }
 const money=v=>v==null?"–":"$"+(+v).toFixed(2);
 function renderAcctMenu(){
@@ -1630,16 +1640,14 @@ function realGuard(s){
   setT($("autoOnBtn"),real.auto?"Stop real betting":"Start real betting");setT($("simOnBtn"),real.sim?"Stop real betting":"Start real betting");
   $("autoOnBtn").classList.toggle("arm",real.auto);$("simOnBtn").classList.toggle("arm",real.sim);
 }
-const armT={};
 async function realSwitch(k,on){
   const name=k==="auto"?"Auto mode":"Timed bets";
   if(!on){real[k]=false;realEvent(name+" real betting off");return}
   if(real.pend)await real.pend.catch(()=>{});
   if(!realReady()){realEvent("Can't start yet: connect your account and turn betting on in Menu, then Kalshi account.");return}
   const i=acct.info,tot=Object.values((acct.bud&&acct.bud[k])||{}).reduce((t,b)=>t+Math.max(b.avail,0),0);
-  if(!(tot>=1)){realEvent(name+": allocate some real money first (type an amount in the Allocated $ box and press Set), then press Start again.");return}
-  if(!armT[k]||Date.now()-armT[k]>6000){armT[k]=Date.now();realEvent(name+": press Start real betting again within 6 seconds to confirm. It will place "+(i.env==="demo"?"DEMO":"REAL")+" bets using only its allocated $"+tot.toFixed(2)+".");return}
-  armT[k]=0;real[k]=true;realEvent(name+" real betting ON");
+  if(!(tot>=1)){realEvent(name+": allocate some real money first (type an amount in the Allocated $ box and press Set), then press Start real betting.");return}
+  real[k]=true;realEvent(name+" real betting ON");
 }
 function realAlloc(src,key,v,el,prev,quiet){      // set a mode's (or one coin's) real allocation; it is the bankroll itself, so it moves with wins and losses
   const name=src==="auto"?"Auto mode":"Timed bets"+(key!=="*"?" ("+key+")":"");
@@ -1665,6 +1673,16 @@ $("autoRealStart").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();$("autoR
 $("autoRealSet").onclick=()=>{const el=$("autoRealStart"),b=budOf("auto","*");realAlloc("auto","*",parseFloat(el.value),el,b?money2(b.bank):0)};
 $("simRealAllB").onclick=async()=>{
   const v=parseFloat($("simRealAll").value);if(!(v>=0))return;
+  if(real.pend)await real.pend.catch(()=>{});
+  const none=!syms.some(x=>{const b=budOf("sim",x);return b&&b.bank>0});
+  if(none&&v>0&&syms.length){      // nothing allocated yet: the amount is the total, split evenly across every coin (leftover cents go to the first coins)
+    const sm=acct.sum,cash=sm&&sm.ok?sm.balance-allocFree():null;
+    if(cash!=null&&v>cash+1e-9){realEvent("Timed bets: "+money(v)+" is more than your unused cash ("+money(Math.max(cash,0))+"). Nothing was changed.");return}
+    const cents=Math.round(v*100),base=Math.floor(cents/syms.length),extra=cents-base*syms.length;
+    for(let i=0;i<syms.length;i++){const x=syms[i],amt=(base+(i<extra?1:0))/100,b=budOf("sim",x);
+      if(!(await realAlloc("sim",x,amt,null,b?money2(b.bank):0,true)))break;
+      const el=$("rs_"+x);if(el)el.value=amt.toFixed(2)}
+    return}
   for(const x of syms){const b=budOf("sim",x);if(!(await realAlloc("sim",x,v,null,b?money2(b.bank):0,true)))break}
 };
 $("acStop").onclick=async()=>{      // one switch for all real betting: ON stops every real mode, OFF allows real bets again (each mode still has to be started)
@@ -1704,6 +1722,7 @@ function renderRealTimed(){
       $("rset_"+s).onclick=go;el.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();go()}}})}
   const rows=realOf("sim"),T={bank:0,avail:0,w:0,l:0,net:0,open:0},ev=real.events.filter(e=>e.includes("· Timed bet")).slice(0,3);
   setH($("trNote"),(acct.stale?'<b class="miss">'+escH(staleMsg)+"</b><br>":"")+escH("Each coin bets its whole real bankroll at "+simAt+" s left when the win chance is at least "+Math.round(simMin*100)+"%. The Allocated $ box is its bankroll: it moves up and down with its wins and losses. Type a new amount for a coin and press Set (or Enter): a smaller number sends money back to your cash, a bigger one adds more. A coin that loses everything stays at $0 until you allocate more. Money you haven't allocated is never touched.")+(flashFor("· Timed bet")?"<br>"+escH(flashFor("· Timed bet")):""));
+  setT($("simRealAllB"),syms.some(x=>{const b=budOf("sim",x);return b&&b.bank>0})?"Set all coins":"Split across coins");
   for(const s of syms){const b=budOf("sim",s),inp=$("rs_"+s);if(!inp)continue;
     if(document.activeElement!==inp)inp.value=b?money2(b.bank):0;
     setT($("rb_"+s),b?$$(b.avail):"–");setT($("rw_"+s),b?b.w+" / "+b.l:"–");const n=$("rn_"+s);setT(n,b?$$(b.net):"–");setC(n,b?cls(b.net):"");

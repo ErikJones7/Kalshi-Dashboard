@@ -21,11 +21,11 @@ KALSHI ACCOUNT AND LIVE BETTING (optional)
   recorded in data\live_orders.jsonl. Use the Demo account option to try it with fake money first.
   REAL-MONEY VIEWS: the Timed bets card and the Auto mode card each have a "Real money" button that swaps the card for a
   real-money version that looks and works like the fake-money one. Type an amount in its Allocated $ box (Auto mode: one box;
-  Timed bets: one per coin, or "Set all coins") and press Set or Enter. That money is its bankroll: it can only bet that amount,
+  Timed bets: one per coin, or the box at the top: with nothing allocated yet it splits that total evenly across all coins; once money is allocated it sets every coin to that amount) and press Set or Enter. That money is its bankroll: it can only bet that amount,
   and the amount goes up and down with its wins and losses. The rest of your Kalshi cash is never touched (for example $50 of a
   $90 account leaves $40 untouched). If it wins $10 the box shows $60; type 50 and press Set and the extra $10 goes back to your
   cash. Type a bigger number to add more (never more than your free cash), or 0 to take everything back. The amount can't go
-  below what is in a bet that hasn't settled. Then press "Start real betting" (press it a second time to confirm).
+  below what is in a bet that hasn't settled. Then press "Start real betting" once.
   Real bets are placed only when the fake-money twin bets, and a mode can never bet more than its allocated money. They switch off whenever you
   restart, and "Stop all real betting" turns everything off at once. The Kalshi account card shows your cash, what is allocated,
   what is currently bet, and your real wins and losses (taken from Kalshi's own market results). Once a real bet has gone through, the helper replaces its own estimates with Kalshi's records: the price and fee actually paid, the
@@ -39,6 +39,9 @@ KALSHI ACCOUNT AND LIVE BETTING (optional)
 
 MAC / LINUX
   Double-click "Kalshi Dashboard.command" (needs Python 3). Updating works the same way.
+
+COINS
+  ADA, BCH and TON are no longer tracked. Any money that was allocated to them goes back to your cash automatically.
 
 FILES
   kalshi_helper.py            the helper (fetches Kalshi data, saves your data)
