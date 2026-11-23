@@ -39,7 +39,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-24h"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-24l"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -984,6 +984,39 @@ def market_check(ticker, env):
     return m, close
 
 
+def book_depth(ticker, side, price, env):
+    """How many contracts could be bought right now at `price` cents or better, from Kalshi's public order book (None if it can't be read).
+    Buying YES at p is matched by NO bids at 100-p or more, and buying NO at p by YES bids at 100-p or more."""
+    try:
+        base = DEMO_BASE if env == "demo" else UPSTREAM
+        st, body = fetch_upstream(base + "/markets/" + urllib.parse.quote(ticker) + "/orderbook")
+        if st >= 400:
+            return None
+        d = json.loads(body.decode("utf-8", "ignore") or "{}")
+        ob = d.get("orderbook_fp") if isinstance(d.get("orderbook_fp"), dict) else d.get("orderbook")
+        if not isinstance(ob, dict):
+            return None
+        opp = "no" if side == "yes" else "yes"
+        levels = None
+        for k in (opp + "_dollars", opp, opp + "_fp"):
+            if isinstance(ob.get(k), list):
+                levels = ob[k]
+                break
+        if levels is None:
+            return None
+        need, tot = 100 - price, 0.0
+        for lv in levels:
+            p, q = _f(lv[0]), _f(lv[1])
+            if p is None or q is None:
+                return None
+            pc = p * 100 if (isinstance(lv[0], str) and "." in lv[0]) else p
+            if pc >= need - 1e-9:
+                tot += q
+        return tot
+    except Exception:
+        return None
+
+
 def _ask_cents(m, side):
     def q(k):
         v = _f(m.get(k + "_dollars"))
@@ -1063,6 +1096,17 @@ def _place_order(body):
         # Kalshi's V2 orders are always quoted on the YES side: buying YES is a "bid" at the YES price, and buying NO is an "ask" (selling
         # YES) at 100 minus the NO price, which is the same position. Fill-or-kill: it fills completely at this price or better, or not at all.
         yes_px = price if side == "yes" else 100 - price
+        depth = book_depth(ticker, side, price, env)
+        if depth is not None:
+            if depth < 1:
+                raise TradeError("Nothing is for sale at %d¢ or better right now, so nothing was bought." % price)
+            if depth < count:                              # a fill-or-kill order for more than is available would just be killed
+                count = int(depth)
+                row["count"] = count
+                row["note"] = "reduced to the %d contracts available" % count
+                fee = est_fee(count, price)
+                cost = count * price / 100.0 + fee
+                row["est_cost"] = round(cost, 4)
         order = {"ticker": ticker, "side": "bid" if side == "yes" else "ask", "count": "%d.00" % count, "price": "%.2f" % (yes_px / 100.0),
                  "time_in_force": "fill_or_kill", "self_trade_prevention_type": "taker_at_cross",
                  "client_order_id": "kd-%d-%s" % (int(time.time() * 1000), os.urandom(3).hex())}

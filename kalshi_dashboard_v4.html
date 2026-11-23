@@ -149,7 +149,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-24k</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-24l</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1467,9 +1467,9 @@ $("avw").addEventListener("click",e=>{if(e.target.id==="avw")$("avw").style.disp
 const escH=v=>String(v==null?"":v).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 let acct={info:null,sum:null,orders:[],bud:{},err:"",busy:false}, lv={armed:null,msg:"",sel:null};
 // real-money mirrors: in memory only, so they are always OFF after a restart and have to be switched on on purpose
-let real={sim:false,auto:false,autoView:false,simView:false,events:[],evT:[],q:Promise.resolve()};
+let real={sim:false,auto:false,autoView:false,simView:false,events:[],evT:[],autoLast:null,q:Promise.resolve()};
 let liveRes={};
-const HELPER_EXPECT="2026-11-24h";      // the helper build this page needs (changes only when the helper program itself changes)
+const HELPER_EXPECT="2026-11-24l";      // the helper build this page needs (changes only when the helper program itself changes)
 const staleMsg="The helper program that is running is older than this page. Fully close it (Ctrl+Shift+Esc, end pythonw.exe / python.exe) and reopen the dashboard from its icon, or some real-money controls won't work right.";
 const oldHelper="The helper that is running is an older version that doesn't know about Kalshi accounts. Fully close it and reopen the dashboard from its icon: press Ctrl+Shift+Esc, open the Details tab, end every pythonw.exe (or python.exe) entry, then double-click the Kalshi Dashboard icon.";
 const acctNeed="Open the dashboard from its icon (the address starts with http://127.0.0.1) to use your Kalshi account.";
@@ -1575,22 +1575,32 @@ const budOf=(src,key)=>(acct.bud&&acct.bud[src]&&acct.bud[src][key])||null;
 function realEvent(t){real.events.unshift(new Date().toLocaleTimeString()+" · "+t);real.evT.unshift(Date.now());if(real.events.length>300){real.events.length=300;real.evT.length=300}}
 function flashFor(m){      // the newest message for a card, without its time, and only while it is fresh
   for(let i=0;i<real.events.length;i++){if(Date.now()-real.evT[i]>20000)return"";if(!m||real.events[i].includes(m))return real.events[i].replace(/^.*? · /,"")}return""}
+const killTxt=m=>/insufficient resting volume/i.test(m||"")?"not enough contracts for sale at that price, nothing was bought":(m||"not placed");
 function realMirror(src,sym,side,stake,meta){
-  const tag=(src==="auto"?"Auto":"Timed bet")+" "+sym+" "+side;
-  if(!realReady()){realEvent(tag+": not placed (account not ready)");return}
+  const tag=(src==="auto"?"Auto":"Timed bet")+" "+sym+" "+side,au=src==="auto";
+  const note=(t,x)=>{realEvent(tag+": "+t);if(au)real.autoLast=Object.assign({t:Date.now(),win:winStart,sym,side,text:sym+" "+side+": "+t},x||{})};
+  if(!realReady()){note("not placed (account not ready)");return}
   real.q=real.q.then(async()=>{       // one at a time, each with the freshest quote
     const pl=lvPlan(sym,side,stake,{cushion:1});
-    if(pl.err){realEvent(tag+": not placed ("+pl.err+")");return}
+    if(pl.err){note("not placed ("+pl.err+")");return}
+    note("placing "+pl.count+" contracts at up to "+pl.price+"¢ (about "+money(pl.cost)+")",{tk:pl.ticker,price:pl.price,pending:true});
     try{
       const d=await apost("/account/order",{ticker:pl.ticker,side:pl.side,count:pl.count,price:pl.price,src,w:meta.w,sym,conf:meta.p});
-      if(d.ok&&d.filled){realEvent(tag+": bought "+d.fill_count+" for "+money(d.cost));if(src==="auto")real.autoBet=true;
+      if(d.ok&&d.filled){note("bought "+d.fill_count+" contracts at up to "+pl.price+"¢ for "+money(d.cost),{tk:pl.ticker,price:pl.price,bought:true,cost:d.cost,fc:d.fill_count});if(au)real.autoBet=true;
         if(acct.info)acct.info.spent_today=(acct.info.spent_today||0)+d.cost;if(acct.sum&&acct.sum.ok&&acct.sum.balance!=null)acct.sum.balance-=d.cost;
-        const bk=budOf(src,src==="auto"?"*":sym);if(bk){bk.avail-=d.cost;bk.open+=d.cost}}
-      else realEvent(tag+": "+(d.ok?"not filled (the price moved), nothing bought":(d.error||"not placed")))
-    }catch(e){realEvent(tag+": "+(e.message||"failed"))}
+        const bk=budOf(src,au?"*":sym);if(bk){bk.avail-=d.cost;bk.open+=d.cost}}
+      else note(d.ok?"NOT filled (the price moved), nothing was bought":"NOT placed. "+killTxt(d.error))
+    }catch(e){note("NOT placed. "+killTxt(e.message||"failed"))}
     acctRefresh(true);
   }).catch(()=>{});
 }
+function realLastBet(){      // what the last real auto bet was and how it turned out
+  const L=real.autoLast;let s="–";
+  if(L&&L.bought){const res=liveRes[L.tk],won=res?res===(L.side==="UP"?"yes":"no"):null;
+    s=L.sym+" "+L.side+" · "+L.fc+" @ "+L.price+"¢ · "+(won==null?"waiting for result":won?"WON +"+$$(L.fc-L.cost):"LOST −"+$$(L.cost))}
+  else if(L)s=L.text;
+  else{const r=realOf("auto")[0];if(r)s=r.sym+" "+(r.r.side==="yes"?"UP":"DOWN")+" · "+r.r.fill_count+" @ "+r.r.price_cents+"¢ · "+(r.won==null?(r.open?"open":"settling"):r.won?"WON "+sgn(r.net):"LOST "+sgn(r.net))}
+  return s}
 function realAuto(best,two,picks,wEnd){          // the same sizing rule as fake-money auto mode, applied to its real bankroll
   if(!realReady()){realEvent("Auto: not placed (account not ready)");return}
   const b=budOf("auto","*");if(!b||!(b.avail>=1)){realEvent("Auto: not placed (its real bankroll is "+money(b?Math.max(b.avail,0):0)+")");return}
@@ -1656,10 +1666,10 @@ function renderRealAuto(){
   const b=budOf("auto","*"),rows=realOf("auto"),inp=$("autoRealStart"),ev=real.events.filter(e=>e.includes("· Auto")).slice(0,3);
   if(document.activeElement!==inp)inp.value=b?money2(b.bank):0;
   const tot=b?b.w+b.l:0,dd=b&&b.peak>0?Math.max(0,1-b.bank/b.peak):0;let samples=0;for(const k in autoSt.learn)samples+=autoSt.learn[k].n;
-  const st=!b?"Allocate some real money to begin":!real.auto?"Real betting is off. Press Start real betting to begin. Fake-money Auto mode keeps running either way.":(autoNote||"Waiting for the next window");
+  const L=real.autoLast,st=!b?"Allocate some real money to begin":!real.auto?"Real betting is off. Press Start real betting to begin. Fake-money Auto mode keeps running either way.":(L&&L.win===winStart?L.text:(autoNote==="Bet placed"?"Waiting for the real bet":autoNote)||"Waiting for the next window");
   const cell=(l,v,c)=>`<div>${l}<b${c?` class="${c}"`:""}>${v}</b></div>`;
   setH($("arStats"),cell("Allocated",b?$$(b.bank):"–")+cell("Free to bet",b?$$(b.avail):"–")+cell("Net",b?$$(b.net):"–",b?cls(b.net):"")+cell("Wins / losses",b?b.w+" / "+b.l:"–")+
-    cell("Hit rate",tot?Math.round(b.w/tot*1000)/10+"%":"–")+cell("Windows skipped",b?realSkip().n:"–")+cell("Currently bet",b?$$(b.open):"–")+cell("Below peak",Math.round(dd*1000)/10+"%")+
+    cell("Hit rate",tot?Math.round(b.w/tot*1000)/10+"%":"–")+cell("Windows skipped",b?realSkip().n:"–")+cell("Currently bet",b?$$(b.open):"–")+cell("Last real bet",b?realLastBet():"–")+cell("Below peak",Math.round(dd*1000)/10+"%")+
     cell("Min confidence now",(g=>g==null?"none":Math.round(g*1000)/10+"%")(autoGate(1)))+cell("Learned from",samples+" samples")+cell("Status",st));
   setH($("arNote"),(acct.stale?'<b class="miss">'+escH(staleMsg)+"</b><br>":"")+escH(flashFor("· Auto")));
 }
