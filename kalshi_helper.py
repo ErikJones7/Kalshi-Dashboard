@@ -39,7 +39,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-24n"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-24o"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -409,7 +409,7 @@ def fetch_upstream(url):
 # never sent to the dashboard page or anywhere else. The only requests that are ever signed are the three GET calls in
 # ACCT_PATHS (balance, positions, fills): nothing in this file can place, change or cancel an order.
 KEYS_DIR = os.path.join(HERE, "keys")
-ACCT_PATHS = ("/portfolio/balance", "/portfolio/positions", "/portfolio/fills")
+ACCT_PATHS = ("/portfolio/balance", "/portfolio/positions", "/portfolio/fills", "/portfolio/settlements")
 DEMO_BASE = "https://external-api.demo.kalshi.co/trade-api/v2"
 PROD_BASES = [UPSTREAM, "https://external-api.kalshi.com/trade-api/v2"]
 KEY_EXT = (".pem", ".key", ".txt", ".p8")
@@ -866,18 +866,120 @@ def _resolve_worker(todo):
         _res["busy"] = False
 
 
+ACTUALS_FILE = "live_actuals.json"
+_act = {"d": None, "busy": False, "last": 0.0, "tries": {}}
+
+
+def _act_cache():
+    if _act["d"] is None:
+        try:
+            with open(os.path.join(DATA, ACTUALS_FILE), "r", encoding="utf-8") as f:
+                _act["d"] = json.load(f)
+        except Exception:
+            _act["d"] = {}
+    return _act["d"]
+
+
+def _fill_price(r, side):
+    py, pn = _usd(r, "yes_price_dollars", "yes_price"), _usd(r, "no_price_dollars", "no_price")
+    p = py if side == "yes" else pn
+    if p is None:
+        p = (1 - pn if side == "yes" else 1 - py) if (pn if side == "yes" else py) is not None else None
+    return p
+
+
+def _actuals_worker(fills, settles):
+    """Replaces our own estimates with what Kalshi actually recorded: the fills (price and fee per contract) and, once a market has
+    settled, the payout. Anything Kalshi doesn't return in a form we can read is left as the estimate."""
+    try:
+        d = _act_cache()
+        changed = False
+        for oid, ticker, side in fills[:4]:
+            try:
+                st, data = acct_get("/portfolio/fills", "order_id=%s&limit=100" % urllib.parse.quote(str(oid)))
+                cnt = cost = fee = 0.0
+                if st < 400:
+                    for r in (data.get("fills") or []):
+                        if r.get("order_id") not in (None, oid):
+                            continue
+                        c = _f(r.get("count_fp"))
+                        c = _f(r.get("count")) if c is None else c
+                        p = _fill_price(r, side)
+                        if not c or p is None:
+                            continue
+                        cnt += c
+                        cost += c * p
+                        fee += _f(r.get("fee_cost")) or 0.0
+                if cnt > 0:
+                    d["f|" + str(oid)] = {"count": cnt, "cost": round(cost, 4), "fees": round(fee, 4)}
+                    changed = True
+            except Exception:
+                pass
+        for env, ticker in settles[:4]:
+            try:
+                st, data = acct_get("/portfolio/settlements", "ticker=%s&limit=20" % urllib.parse.quote(ticker))
+                if st < 400:
+                    for r in (data.get("settlements") or []):
+                        if (r.get("ticker") or r.get("market_ticker")) != ticker:
+                            continue
+                        rev = _usd(r, "revenue_dollars", "revenue")
+                        if rev is not None:
+                            d["s|%s|%s" % (env, ticker)] = {"payout": round(rev, 4)}
+                            changed = True
+                            break
+            except Exception:
+                pass
+        if changed:
+            os.makedirs(DATA, exist_ok=True)
+            with open(os.path.join(DATA, ACTUALS_FILE), "w", encoding="utf-8") as f:
+                json.dump(d, f)
+    finally:
+        _act["busy"] = False
+
+
 def annotate(rows):
-    """Adds Kalshi's result ("yes"/"no") to each filled row once its market has settled, and fetches missing ones in the background."""
-    d, now, todo = _res_cache(), time.time(), []
+    """Adds Kalshi's result ("yes"/"no") to each filled row once its market has settled, then replaces our estimates with Kalshi's own
+    numbers (price and fees actually paid, payout) as they become available. Missing ones are fetched in the background."""
+    d, a, now, todo, tf, ts = _res_cache(), _act_cache(), time.time(), [], [], []
     for r in rows:
         r["res"] = d.get("%s|%s" % (r.get("env"), r.get("ticker"))) if r.get("filled") else None
         if r.get("filled") and not r["res"] and now > (r.get("w") or (r.get("t") or now) + 900) + 15:
             k = (r.get("env"), r.get("ticker"))
             if k not in todo:
                 todo.append(k)
+        if not r.get("filled"):
+            continue
+        oid = r.get("order_id")
+        f = a.get("f|" + str(oid)) if oid else None
+        if f:
+            r["fill_count"] = f["count"]
+            r["cost"] = f["cost"]
+            r["fees"] = f["fees"]
+            r["cost_total"] = round(f["cost"] + f["fees"], 4)
+            r["actual"] = True
+        elif oid and now - (r.get("t") or now) > 2 and _act["tries"].get(("f", oid), 0) < 6:
+            tf.append((oid, r.get("ticker"), r.get("side")))
+        fc, ct = r.get("fill_count") or 0, r.get("cost_total") or 0
+        if fc and ct:
+            r["avg_cents"] = round((r.get("cost") or ct) / fc * 100, 1)
+            r["mult"] = round(fc / ct, 3)               # what each $1 paid (fees included) pays back if it wins
+        if r["res"]:
+            sp = a.get("s|%s|%s" % (r.get("env"), r.get("ticker")))
+            won = r["res"] == r.get("side")
+            r["payout"] = sp["payout"] if sp else (fc if won else 0.0)
+            r["payout_actual"] = bool(sp)
+            if not sp and (r.get("env"), r.get("ticker")) not in ts and _act["tries"].get(("s", r.get("ticker")), 0) < 6:
+                ts.append((r.get("env"), r.get("ticker")))
     if todo and not _res["busy"] and now - _res["last"] > 6:
         _res["busy"], _res["last"] = True, now
         threading.Thread(target=_resolve_worker, args=(todo,), daemon=True).start()
+    if (tf or ts) and not _act["busy"] and now - _act["last"] > 8:
+        _act["busy"], _act["last"] = True, now
+        for oid, _t, _s in tf[:4]:
+            _act["tries"][("f", oid)] = _act["tries"].get(("f", oid), 0) + 1
+        for _e, tk in ts[:4]:
+            _act["tries"][("s", tk)] = _act["tries"].get(("s", tk), 0) + 1
+        threading.Thread(target=_actuals_worker, args=(tf, ts), daemon=True).start()
     return rows
 
 
@@ -899,7 +1001,7 @@ def budget_stats(env, rows=None):
             net, peak, w, l = 0.0, max(start, 0.0), 0, 0
             for r in sorted([r for r in mine if r.get("res")], key=lambda r: (r.get("w") or r.get("t") or 0)):
                 won = r["res"] == r.get("side")
-                net += ((r.get("fill_count") or 0) - (r.get("cost_total") or 0)) if won else -(r.get("cost_total") or 0)
+                net += (r.get("payout") or 0) - (r.get("cost_total") or 0)
                 w, l = w + (1 if won else 0), l + (0 if won else 1)
                 peak = max(peak, start + net)
             opn = [r for r in mine if not r.get("res")]
@@ -1157,6 +1259,8 @@ def _place_order(body):
             fees = fc * per_fee if per_fee is not None else est_fee(int(fc), price)
         row.update(order_id=o.get("order_id"), status="executed" if fc > 0 else "not filled", filled=bool(fc > 0), fill_count=fc,
                    cost=round(spend, 4), fees=round(fees, 4), cost_total=round(spend + fees, 4))
+        if row["filled"]:                       # shortly after a fill, pick up Kalshi's own record of the price and fee actually paid
+            threading.Timer(3.0, lambda: annotate(live_rows())).start()
         acct_cache["data"] = None
         return {"ok": True, "filled": row["filled"], "fill_count": fc, "cost": row["cost_total"], "status": row["status"],
                 "message": ("Bought %g contracts for $%.2f." % (fc, row["cost_total"])) if row["filled"] else "Not filled: the price moved before it could complete. Nothing was bought."}

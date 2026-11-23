@@ -28,7 +28,10 @@ KALSHI ACCOUNT AND LIVE BETTING (optional)
   below what is in a bet that hasn't settled. Then press "Start real betting" (press it a second time to confirm).
   Real bets are placed only when the fake-money twin bets, and a mode can never bet more than its allocated money. They switch off whenever you
   restart, and "Stop all real betting" turns everything off at once. The Kalshi account card shows your cash, what is allocated,
-  what is currently bet, and your real wins and losses (taken from Kalshi's own market results). The "Activity log" button in the
+  what is currently bet, and your real wins and losses (taken from Kalshi's own market results). Once a real bet has gone through, the helper replaces its own estimates with Kalshi's records: the price and fee actually paid, the
+  multiplier that gives, and the payout when the market settles. Real wins, losses, net and bankroll use those figures.
+  The Auto mode and Timed bets cards show the real-money version at all times, with the fake-money version in a dropdown at the bottom.
+  The "Activity log" button in the
   Kalshi account panel opens a card with everything the real-money modes did, with times.
   The helper restarts itself when its program file is replaced (for example by an update), and the page reloads to match it.
   The key can place real bets: keep the keys folder private and never share it or the zip of this folder. If a key is ever exposed,
