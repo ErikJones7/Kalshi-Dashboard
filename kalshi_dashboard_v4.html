@@ -1,0 +1,1399 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kalshi Crypto Predictor</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23000'/%3E%3Crect x='14' y='26' width='10' height='22' rx='2' fill='%2323a55a'/%3E%3Crect x='27' y='14' width='10' height='30' rx='2' fill='%23fb7185'/%3E%3Crect x='40' y='20' width='10' height='28' rx='2' fill='%2323a55a'/%3E%3C/svg%3E">
+<style>
+:root{color-scheme:dark;--bg:#000;--fg:#ececef;--mut:#8e9099;--card:#121214;--bd:#27282d;--up:#34d399;--dn:#fb7185;--ac:#818cf8;--finbg:rgba(129,140,248,.13);--sel:#23a55a;--hl:rgba(35,165,90,.14);--upbg:rgba(52,211,153,.15);--dnbg:rgba(251,113,133,.15)}
+@media (prefers-color-scheme:light){:root:not([data-theme]){color-scheme:light;--bg:#f3f5f9;--fg:#111827;--mut:#64708a;--card:#fff;--bd:#e1e6ef;--up:#059669;--dn:#e11d48;--ac:#4f46e5;--finbg:rgba(79,70,229,.09);--sel:#16a34a;--hl:rgba(22,163,74,.10);--upbg:rgba(5,150,105,.12);--dnbg:rgba(225,29,72,.10)}}
+:root[data-theme=light]{color-scheme:light;--bg:#f3f5f9;--fg:#111827;--mut:#64708a;--card:#fff;--bd:#e1e6ef;--up:#059669;--dn:#e11d48;--ac:#4f46e5;--finbg:rgba(79,70,229,.09);--sel:#16a34a;--hl:rgba(22,163,74,.10);--upbg:rgba(5,150,105,.12);--dnbg:rgba(225,29,72,.10)}
+:root[data-theme=dark]{color-scheme:dark;--bg:#000;--fg:#ececef;--mut:#8e9099;--card:#121214;--bd:#27282d;--up:#34d399;--dn:#fb7185;--ac:#818cf8;--finbg:rgba(129,140,248,.13);--sel:#23a55a;--hl:rgba(35,165,90,.14);--upbg:rgba(52,211,153,.15);--dnbg:rgba(251,113,133,.15)}
+*{box-sizing:border-box}
+body{margin:0 auto;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,sans-serif;padding:16px;max-width:1150px}
+h1{font-size:17px;margin:0}
+.hdr{padding:12px 14px;margin-bottom:12px;display:flex;flex-direction:column;gap:10px}
+.hdr1{display:flex;gap:10px 16px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.hdr1 .pills{display:flex;gap:6px;flex-wrap:wrap}
+.pill.clock{color:var(--fg);font-weight:600;font-variant-numeric:tabular-nums}
+.hdr2{display:flex;gap:10px 14px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--bd);padding-top:10px}
+.grp{display:flex;gap:8px 12px;align-items:center;flex-wrap:wrap;background:rgba(127,127,127,.08);border:1px solid var(--bd);border-radius:10px;padding:5px 10px}
+.grp.right{margin-left:auto;background:none;border:none;padding:0}
+.grp .gl{color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+.grp label{display:flex;gap:5px;align-items:center;color:var(--mut);font-size:13px}
+.grp input[type=number]{width:60px;padding:4px 6px}
+.grp select{padding:4px 8px;font-weight:600}
+.grp button{padding:4px 9px;font-size:13px}
+.bld{font-size:11px;color:var(--mut)}
+.menu{position:relative}
+.menupanel{position:absolute;right:0;top:calc(100% + 6px);width:min(340px,86vw);background:var(--card);border:1px solid var(--bd);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.45);padding:6px;z-index:50;display:none}
+.menupanel.open{display:block}
+.mi{padding:8px 10px;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.mi+.mi{border-top:1px solid var(--bd)}
+.mt{color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+.mi button,.mi select{width:100%;text-align:left;font-size:13px;padding:6px 9px}
+.mi label{display:flex;gap:8px;align-items:flex-start;font-size:13px;line-height:1.35}
+.mi input[type=range]{width:100%;padding:0;accent-color:var(--sel)}
+.mi .s{margin:0;word-break:break-all}
+.top{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+select,button,input{background:var(--card);color:var(--fg);border:1px solid var(--bd);border-radius:8px;padding:6px 10px;font-size:14px;transition:border-color .15s,background .15s}
+input[type=checkbox]{accent-color:var(--sel)}
+button{cursor:pointer}button:hover{border-color:var(--sel);background:var(--hl)}
+select:focus,input:focus,button:focus-visible{outline:2px solid var(--sel);outline-offset:1px;border-color:var(--sel)}input[type=number]{width:70px}
+.pill{border:1px solid var(--bd);border-radius:999px;padding:3px 10px;color:var(--mut);font-size:13px}
+.pill.ok{color:var(--up)}.pill.bad{color:var(--dn)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin-bottom:12px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.k{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+.v{font-size:24px;font-weight:600;margin-top:2px}
+.s{color:var(--mut);font-size:12px;margin-top:3px}
+.up{color:var(--up)}.dn{color:var(--dn)}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:right;padding:6px 8px;border-bottom:1px solid var(--bd)}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--mut);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+tr.sel{background:var(--hl)}
+td.hot{font-weight:700;border-radius:6px}td.hot.up{background:var(--upbg)}td.hot.dn{background:var(--dnbg)}
+canvas{width:100%;height:340px;display:block}
+.note{color:var(--mut);font-size:12px;margin-top:10px}
+#msg{margin-bottom:12px;display:none}
+.bar{height:8px;background:var(--bd);border-radius:6px;overflow:hidden;margin-top:8px}
+.bar>i{display:block;height:100%;background:var(--sel)}
+.lg{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--mut);margin:6px 0 4px}.lg b{font-weight:600}
+.seg{display:flex;gap:4px}.seg button{padding:3px 9px;font-size:12px}.seg button.on{background:var(--sel);color:#fff;border-color:var(--sel)}.seg button.on:hover{background:var(--sel)}
+#sig{position:fixed;left:12px;top:64px;width:300px;max-width:calc(100vw - 24px);max-height:calc(100vh - 80px);overflow:auto;z-index:30;display:none}
+.sigrow{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:10px 30px 10px 12px;border-radius:12px;margin-bottom:8px;font-size:13px;border:2px solid;background:var(--card);box-shadow:0 6px 20px rgba(0,0,0,.35)}
+.sigrow.up{border-color:var(--up);box-shadow:0 6px 20px rgba(0,0,0,.35),inset 0 0 0 999px var(--upbg)}
+.sigrow.dn{border-color:var(--dn);box-shadow:0 6px 20px rgba(0,0,0,.35),inset 0 0 0 999px var(--dnbg)}
+.sigrow.auto{border-color:var(--sel);box-shadow:0 6px 20px rgba(0,0,0,.35),inset 0 0 0 999px var(--hl)}
+.sigrow.fin{border-color:var(--ac);box-shadow:0 6px 20px rgba(0,0,0,.35),inset 0 0 0 999px var(--finbg)}
+.sigrow.pick{border-color:#f5b942;box-shadow:0 6px 20px rgba(0,0,0,.35),inset 0 0 0 999px rgba(245,185,66,.12)}
+.swbtn{margin-top:4px;padding:5px 12px;font-size:13px;font-weight:600;border-radius:8px;background:var(--sel);color:#fff;border-color:var(--sel)}
+.sigrow b{font-size:15px}.sigrow .big{font-size:20px;font-weight:700}
+.sigrow .x{position:absolute;top:4px;right:6px;padding:0 7px;font-size:16px;line-height:20px;border-radius:6px}
+.top2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px;margin-bottom:12px}
+.card.final{border-width:2px;border-color:var(--ac)}
+#tgtV{font-size:30px}.edit{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}.edit input{width:150px}
+.card.final.up{border-color:var(--up)}.card.final.dn{border-color:var(--dn)}
+.card.final.up .v{color:var(--up)}.card.final.dn .v{color:var(--dn)}
+.card.final .v{font-size:30px}
+.mini td,.mini th{padding:4px 8px;font-size:13px}
+.autostats{display:flex;gap:8px 26px;flex-wrap:wrap}.autostats div{display:flex;flex-direction:column;font-size:12px;color:var(--mut)}.autostats b{font-size:16px;color:var(--fg);font-weight:600}
+.simhead{display:flex;justify-content:space-between;align-items:center;gap:10px 16px;flex-wrap:wrap;margin-bottom:10px}
+.simctl{display:flex;gap:8px 14px;align-items:center;flex-wrap:wrap}
+.simctl label{display:flex;gap:6px;align-items:center;color:var(--mut);font-size:13px}
+.simctl input[type=number]{width:72px;padding:4px 6px}.simctl select,.simctl button{padding:4px 9px;font-size:13px}
+.simtbl td,.simtbl th{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.simtbl td:first-child,.simtbl th:first-child{text-align:left;font-weight:600}
+.simtbl .gs{border-left:1px solid var(--bd)}
+.simtbl th.grp2{text-align:center;color:var(--fg);font-weight:600;text-transform:none;font-size:13px}
+.simtbl tr.tot td{font-weight:600;border-top:1px solid var(--bd)}
+.simtbl td.dim{color:var(--mut)}
+.simtbl input{width:78px;padding:3px 6px;font-size:13px}
+.hit{color:var(--up)}.miss{color:var(--dn)}
+</style></head><body>
+
+<div id="sig"></div>
+
+<header class="hdr card">
+  <div class="hdr1">
+    <h1>Kalshi 15-minute crypto predictor</h1>
+    <div class="pills">
+      <span class="pill clock" id="clock">–</span>
+      <span class="pill" id="phase">–</span>
+      <span class="pill" id="feed">Connecting…</span>
+      <span class="pill" id="kal">Kalshi target: –</span>
+      <span class="pill" id="sav" title="Signal, final-call and calibration data are saved to the data folder next to kalshi_helper.py">Data folder: –</span>
+    </div>
+  </div>
+  <div class="hdr2">
+    <div class="grp"><span class="gl">Coin</span><select id="sel"></select></div>
+    <div class="grp"><span class="gl">Alerts</span>
+      <label title="A signal fires when the calibrated probability is at least this high, in either direction">Signal at <input type="number" id="thr" min="55" max="99.9" step="0.5" value="97">%</label>
+      <label title="Seconds before the window ends when the final prediction alert appears">Final call at <input type="number" id="finS" min="5" max="120" step="5" value="60">s</label>
+      <label><input type="checkbox" id="snd"> Sound</label>
+      <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:96px">s</label>
+      <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
+    </div>
+    <div class="grp right"><div class="menu"><button id="menuBtn">Menu &#9662;</button><div class="menupanel" id="menuPanel">
+        <div class="mi"><div class="mt">Folders</div><button id="mData">Open data folder</button><button id="mApp">Open program folder</button><div class="s" id="mPath"></div></div>
+        <div class="mi"><div class="mt">Data</div><button id="mView">View all signal data</button></div>
+        <div class="mi"><div class="mt">Appearance</div><select id="mTheme"><option value="auto">Match my system</option><option value="dark">Dark</option><option value="light">Light</option></select></div>
+        <div class="mi"><div class="mt">Alert volume</div><input type="range" id="mVol" min="0" max="100" step="5"></div>
+        <div class="mi"><div class="mt">Helper</div><label><input type="checkbox" id="mKeep"> Keep the helper running after this window closes</label></div>
+        <div class="mi"><div class="mt">Updates</div><div class="s" id="mVer"></div>
+          <input type="text" id="mUrl" placeholder="Update address (https://…)" spellcheck="false" style="width:100%;font-size:12px">
+          <input type="password" id="mTok" placeholder="Access token (only for a private repository)" style="width:100%;font-size:12px">
+          <div style="display:flex;gap:6px;width:100%"><button id="mChk" style="text-align:center">Check for updates</button><button id="mUpd" style="text-align:center" disabled>Install</button></div>
+          <div class="s" id="mUpdMsg"></div></div>
+        <div class="mi"><button id="mReset">Reset dashboard settings</button></div>
+      </div></div><span class="bld" id="build">build 2026-11-22z · 30x simulation</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+  </div>
+</header>
+
+<div class="card" id="msg"></div>
+<div class="top2">
+  <div class="card" id="tgtCard"><div class="k" id="tgtK">Target price</div><div class="v" id="tgtV">–</div><div class="s" id="tgtS"></div>
+    <div class="edit"><input id="tgtIn" type="text" inputmode="decimal" placeholder="edit target price"><button id="tgtSet">Set target</button><button id="tgtAuto" style="display:none">Back to auto</button></div></div>
+  <div class="card final" id="finCard"><div class="k">Final prediction</div><div class="v">–</div></div>
+</div>
+<div class="grid" id="cards"></div>
+
+<div class="card" style="margin-bottom:12px">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+    <div class="k">Price in $: actual (left of now) and projected (right of now)</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><div class="seg" id="yseg"><button data-y="auto">Y: Auto</button></div><div class="seg" id="seg"></div><label><input type="checkbox" id="tgAvg"> Average line</label><label><input type="checkbox" id="tgPavg"> Average projection</label></div>
+  </div>
+  <div class="lg" id="lg"></div>
+  <canvas id="cv" width="1000" height="340"></canvas>
+  <div class="s" id="cvnote"></div>
+</div>
+
+<div class="card" id="autoCard" style="margin-bottom:12px">
+  <div class="simhead">
+    <div class="k" id="autoK">Auto mode</div>
+    <div class="simctl">
+      <label><input type="checkbox" id="autoOn"> On</label>
+      <label>Start $ <input type="number" id="autoStart" min="1" step="10"></label>
+      <label>Max bet <input type="number" id="autoCap" min="1" max="100" step="1">%</label>
+      <button id="autoReset">Reset bankroll</button><button id="autoForget">Reset learning</button>
+    </div>
+  </div>
+  <div class="autostats" id="autoStats"></div>
+</div>
+
+<div class="card" id="pickCard" style="margin-bottom:12px">
+  <div class="simhead"><div class="k" id="pickK">Best pick record</div></div>
+  <div style="overflow:auto"><table class="mini simtbl" id="pickTbl"></table></div>
+</div>
+
+<div class="card" id="simCard" style="margin-bottom:12px">
+  <div class="simhead">
+    <div class="k">Simulated bets</div>
+    <div class="simctl">
+      <label>Start $ <input type="number" id="simAll" min="0" step="10"></label><button id="simAllB">Apply to all</button>
+      <label>Bet at <input type="number" id="simAt" min="5" max="300" step="5">s left</label>
+      <label>Min confidence <input type="number" id="simMin" min="50" max="99.9" step="1">%</label>
+      <label>After a loss <select id="simMode"><option value="restart">Restart from start $</option><option value="zero">Stay at $0</option></select></label>
+      <button id="simReset">Reset</button>
+    </div>
+  </div>
+  <div style="overflow:auto"><table class="mini simtbl" id="simTbl"></table></div>
+</div>
+
+<div class="grid">
+  <div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><div class="k">Signal track record, all coins (does the 97% hold up?)</div><button id="vwBtn">View all signal data</button></div><div id="track"></div></div>
+  <div class="card"><div class="k">Calibration check</div><div id="calib"></div></div>
+</div>
+
+<div id="vw" style="display:none;position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.65);overflow:auto;padding:16px">
+  <div class="card" style="max-width:1150px;margin:0 auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <b style="font-size:17px">All signal track data</b>
+      <div style="display:flex;gap:8px"><button id="vwCsv">Download CSV (filtered)</button><button id="vwClose">Close</button></div>
+    </div>
+    <div class="s" id="vwWhere" style="margin:6px 0"></div>
+    <div id="vwSum"></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:10px 0">
+      <label>Coin <select id="vwCoin"></select></label>
+      <label>Result <select id="vwRes"><option value="">All</option><option value="HIT">Hits</option><option value="MISS">Misses</option><option value="LIVE">Live</option></select></label>
+      <label>Min model % <input type="number" id="vwMin" min="50" max="100" step="0.5" value="50" style="width:70px"></label>
+      <span class="s" id="vwCnt"></span>
+    </div>
+    <div style="overflow:auto;max-height:55vh"><table class="mini" id="vwTbl"></table></div>
+  </div>
+</div>
+<details class="card" id="diagBox" style="margin-bottom:12px"><summary class="k" style="cursor:pointer">Data sources &amp; diagnostics (where each coin's price comes from)</summary><div id="diag" style="margin-top:8px"></div></details>
+<div class="note">Statistical estimate, not financial advice. The model estimates probabilities; it cannot guarantee any outcome. The spot feed (Coinbase) is not identical to Kalshi's CF Benchmarks RTI settlement price, and "edge" ignores fees and spread. Prices come from Coinbase, Kraken, OKX and Hyperliquid; Kalshi targets come through the helper.</div>
+<details class="card" id="tblBox" style="margin-bottom:12px" open><summary class="k" style="cursor:pointer">All coins: prices, targets, moves and forecasts (click to collapse)</summary><div style="overflow:auto"><table id="tbl"></table></div></details>
+
+<script>
+"use strict";
+/* ============================ config ============================ */
+const WINDOW=900, MARK=600, HIST_LEN=36000, LAG=10, STALE=45, HZ=30;
+const BASIS_FEED=0.5e-4, BASIS_KALSHI=3e-4;
+const DEFAULT_SYMS=["BTC","ETH","SOL","XRP","DOGE","BNB","HYPE","NEAR","ZEC"];
+const KALSHI="https://api.elections.kalshi.com/trade-api/v2";
+const SPANS={"1m":60,"5m":300,"10m":600,"15m":900,"30m":1800,"1h":3600,"10h":36000};
+const $=id=>document.getElementById(id);
+
+/* ============================ state ============================ */
+const ls={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},
+          set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+let syms=[], hist={}, latest={}, strike={}, quote=null, quoteBy={};
+let lastTick=null, winStart=null, sim=false, built=false;
+let selected=(()=>{try{return localStorage.getItem("k15sel")||"BTC"}catch(e){return "BTC"}})();
+let chartSpan=ls.get("k15span",900), thr=ls.get("k15thr",0.97), soundOn=ls.get("k15snd2",true);
+if(!Object.values(SPANS).includes(chartSpan))chartSpan=900;
+let yMan=null, lastY=null, lastCh=null;
+let predC=[], predA=[], predSel=null;       // predicted remaining log-move of selected / of average, aligned with hist
+let res={}, fired=new Set(), lastCal={}, rot=0, pendSig=[], pendCal=[];
+let sigHist=ls.get("k15sig",[]), calSamples=ls.get("k15cal",[]), platt={a:1,b:0};
+let dismissed=new Set(), lastSigHtml="", targetOv={};
+let helperPage="", savErr="", hBase=null, hOutbox={sig:[],cal:[],fin:[],sim:[]}, savState="checking";
+const SIM_CP=[60];   // one bankroll slot per coin; the real bet time is simAt
+let simAt=ls.get("k15simat",60);
+const AB=[0.5,0.6,0.7,0.8,0.85,0.9,0.93,0.96,0.98,1.01], A_CP=[240,180,120,90,60,40];
+function newAuto(st){return {cap:0.2,on:false,start:st,bank:st,peak:st,w:0,l:0,net:0,streak:0,pause:0,skipped:0,windows:0,learn:{},coin:{}}}
+let autoSt=(()=>{const a=ls.get("k15auto",null);return a&&a.learn?a:newAuto(100)})();
+let curAutoAlert=null, autoNewFlag=false;
+let pendAuto=[], pendASnap=[], autoSnap=new Set(), autoDone=false, autoNote="", autoStab={}, autoG=0, autoRefr={};
+const AUTO_MIN=0.88, AUTO_EDGE=0.03, AUTO_KELLY=0.25;
+let simBusy=new Set(), simMin=ls.get("k15simmin",0.90), simWait=new Set(), simDef=ls.get("k15simdef",100), simMode=ls.get("k15simmode","restart"), simSt=ls.get("k15sim",{start:{},tr:{}}), simLog=ls.get("k15simlog",[]), pendSim=[], simFired=new Set(), simKey="";
+let showAvg=ls.get("k15showavg",true), showPavg=ls.get("k15showpavg",true);
+let pickHist=ls.get("k15pickh",[]), pendPick=[];
+let pickTimes=ls.get("k15pickt",[300,180,60]), pickFired=new Set(), curPicks=[];
+let finAll=new Set(), finFired=new Set(), pendFin=[], finHist=ls.get("k15finh",[]), finSec=ls.get("k15fins2",60);
+let kalshiStatus="–", kalshiBlockedUntil=0;
+
+/* ============================ helpers ============================ */
+const bpv=x=>isFinite(x)?x*1e4:null;
+const mean=a=>a.reduce((x,y)=>x+y,0)/a.length;
+const sg=x=>1/(1+Math.exp(-x));
+const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
+const logit=p=>{p=clamp(p,0.001,0.999);return Math.log(p/(1-p))};
+// pool of standard normals (fast Monte Carlo)
+const ZP=new Float32Array(1<<18);
+(function(){for(let i=0;i<ZP.length;i+=2){const u=Math.random()||1e-12,v=Math.random(),r=Math.sqrt(-2*Math.log(u));ZP[i]=r*Math.cos(2*Math.PI*v);ZP[i+1]=r*Math.sin(2*Math.PI*v)}})();
+let zs=(Math.random()*4294967296)>>>0;
+const zr=()=>{zs=(Math.imul(zs,1664525)+1013904223)>>>0;return ZP[zs>>>14]};
+
+/* ============================ live price sources ============================ */
+const CB="https://api.exchange.coinbase.com", KR="https://api.kraken.com/0/public", OKX="https://www.okx.com/api/v5/market", HLI="https://api.hyperliquid.xyz/info";
+const ORDER=["cb","kr","okx","hl"], NAMES={cb:"Coinbase",kr:"Kraken",okx:"OKX",hl:"Hyperliquid",kalshi:"Kalshi (target price)"}, FRESH=8;
+const PX={}, curSrc={}, BF={}, minVol={}, SRC={};
+ORDER.concat(["kalshi"]).forEach(k=>SRC[k]={ws:"–",rest:"–",msgs:0,last:0,err:""});
+let cbSet=null, krMap={}, bfLeft=0; const bootMs=Date.now();
+const nowS=()=>Date.now()/1000;
+const BASEMAP={XBT:"BTC",XDG:"DOGE"};
+function setPx(src,sym,price){
+  if(sim||!(price>0)||!hist[sym])return;
+  (PX[sym]=PX[sym]||{})[src]={px:price,ts:nowS()}; SRC[src].msgs++; SRC[src].last=nowS();
+}
+function chooseAll(){
+  const now=nowS();
+  for(const s of syms){const o=PX[s]; if(!o){delete latest[s];continue}
+    const age=k=>o[k]?now-o[k].ts:1e9; let k=curSrc[s];
+    if(!(k&&age(k)<=FRESH)){
+      k=ORDER.find(x=>age(x)<=FRESH)||null;
+      if(!k){let bst=1e9;for(const x of ORDER)if(age(x)<bst){bst=age(x);k=x} if(bst>STALE)k=null}
+    }
+    if(k){curSrc[s]=k;latest[s]={px:o[k].px,ts:o[k].ts}}else{delete latest[s];delete curSrc[s]}
+  }
+}
+async function jget(url,opt){const r=await fetch(url,opt);if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}
+// Kalshi: prefer the local helper (kalshi_helper.py) because browsers usually block direct calls; fall back to direct.
+let kBase=null;
+function kalshiBases(){
+  const own=(/^https?:$/.test(location.protocol)&&/^(127\.0\.0\.1|localhost)$/.test(location.hostname))?[location.origin+"/kalshi"]:[];
+  return own.concat(["http://127.0.0.1:8787/kalshi",KALSHI]);
+}
+async function kalshiGet(path){
+  const bases=kBase?[kBase]:kalshiBases(); let last;
+  for(const b of bases){
+    try{
+      const r=await fetch(b+path);
+      if(!r.ok){let t="";try{t=(await r.text()).slice(0,140)}catch(_){}throw new Error("HTTP "+r.status+(t?" "+t:""))}
+      const j=await r.json(); kBase=b; SRC.kalshi.ws=b===KALSHI?"direct":"via helper"; return j;
+    }catch(e){last=e}
+  }
+  kBase=null; throw last||new Error("failed to fetch");
+}
+
+const OKXP="https://www.okx.com/api/v5/public";
+let okxSet=null, excluded=[];
+async function discover(){
+  let list=DEFAULT_SYMS.slice();
+  try{
+    const d=await kalshiGet("/series?category=Crypto");
+    const f=(d.series||[]).map(s=>s.ticker||"").filter(t=>/^KX[A-Z0-9]+15M$/.test(t)).map(t=>t.slice(2,-3));
+    if(f.length) list=[...new Set(f)].sort();
+  }catch(e){}
+  syms=list;
+  const known=new Set(DEFAULT_SYMS); let got=0;
+  try{const p=await jget(CB+"/products");cbSet=new Set(p.filter(x=>x.status==="online"&&!x.trading_disabled).map(x=>x.id));
+      cbSet.forEach(id=>{if(/-USD$/.test(id))known.add(id.slice(0,-4))});got++}catch(e){SRC.cb.err="product list: "+e.message}
+  try{
+    const d=(await jget(KR+"/AssetPairs")).result||{};
+    for(const key in d){const w=d[key].wsname||""; if(!/\/USD$/.test(w))continue;
+      let base=w.split("/")[0]; base=BASEMAP[base]||base; known.add(base);
+      if(list.includes(base)&&!krMap[base])krMap[base]={key,alt:d[key].altname||key,ws:base+"/USD"}}
+    got++;
+  }catch(e){SRC.kr.err="pair list: "+e.message}
+  try{const d=await jget(OKXP+"/instruments?instType=SPOT");okxSet=new Set();
+      for(const x of d.data||[])if(/-USDT$/.test(x.instId)){const c=x.instId.slice(0,-5);okxSet.add(c);known.add(c)} got++}catch(e){SRC.okx.err="instrument list: "+e.message}
+  try{const d=await jget(HLI,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:"meta"})});
+      for(const x of d.universe||[])known.add(x.name); got++}catch(e){SRC.hl.err="market list: "+e.message}
+  // Kalshi also lists non-coin markets (e.g. crypto "competition"/"leader" markets); keep only symbols some exchange trades
+  if(got>0){excluded=list.filter(s=>!known.has(s));syms=list.filter(s=>known.has(s))}
+  syms.forEach(s=>hist[s]=[]);
+  if(!syms.includes(selected)) selected=syms[0];
+}
+
+/* ---- websockets (each source reconnects on its own) ---- */
+function wsRun(key,url,onOpen,onMsg){
+  let tries=0;
+  const go=()=>{
+    SRC[key].ws="connecting"; let ws;
+    try{ws=new WebSocket(url)}catch(e){SRC[key].ws="failed";SRC[key].err=String(e);setTimeout(go,15000);return}
+    ws.onopen=()=>{tries=0;SRC[key].ws="connected";SRC[key].err="";try{onOpen(ws)}catch(e){SRC[key].err=String(e)}};
+    ws.onmessage=ev=>{try{onMsg(JSON.parse(ev.data))}catch(e){}};
+    ws.onerror=()=>{SRC[key].err="connection error (blocked by browser/network, or offline)"};
+    ws.onclose=()=>{clearInterval(ws._t);SRC[key].ws="reconnecting";setTimeout(go,Math.min(30000,2000*(++tries)))};
+  };
+  go();
+}
+function startFeeds(){
+  const cbList=syms.filter(s=>!cbSet||cbSet.has(s+"-USD"));
+  if(cbList.length)wsRun("cb","wss://ws-feed.exchange.coinbase.com",ws=>cbList.forEach(s=>ws.send(JSON.stringify({type:"subscribe",product_ids:[s+"-USD"],channels:["ticker"]}))),
+    d=>{if(d.type==="ticker"&&d.price)setPx("cb",String(d.product_id).replace("-USD",""),+d.price);else if(d.type==="error")SRC.cb.err=d.message||"error"});
+  const krList=Object.keys(krMap).length?Object.values(krMap).map(x=>x.ws):syms.map(s=>s+"/USD");
+  wsRun("kr","wss://ws.kraken.com/v2",ws=>ws.send(JSON.stringify({method:"subscribe",params:{channel:"ticker",symbol:krList}})),
+    d=>{if(d.channel==="ticker"&&Array.isArray(d.data))for(const x of d.data){let b=String(x.symbol).split("/")[0];b=BASEMAP[b]||b;setPx("kr",b,+(x.last??x.ask))}
+        else if(d.error)SRC.kr.err=String(d.error)});
+  wsRun("okx","wss://ws.okx.com:8443/ws/v5/public",ws=>{syms.filter(s=>!okxSet||okxSet.has(s)).forEach(s=>ws.send(JSON.stringify({op:"subscribe",args:[{channel:"tickers",instId:s+"-USDT"}]})));ws._t=setInterval(()=>{try{ws.send("ping")}catch(e){}},20000)},
+    d=>{if(d.data&&d.arg&&d.arg.channel==="tickers")for(const x of d.data)setPx("okx",String(x.instId).split("-")[0],+x.last);else if(d.event==="error")SRC.okx.err="OKX: "+(d.msg||"error")});
+  wsRun("hl","wss://api.hyperliquid.xyz/ws",ws=>ws.send(JSON.stringify({method:"subscribe",subscription:{type:"allMids"}})),
+    d=>{if(d.channel==="allMids"&&d.data&&d.data.mids)for(const s of syms)if(d.data.mids[s]!=null)setPx("hl",s,+d.data.mids[s])});
+}
+/* ---- REST polling keeps every source's timestamp fresh and covers blocked websockets ---- */
+async function pollCB(){
+  const rs=await Promise.allSettled(syms.filter(s=>!cbSet||cbSet.has(s+"-USD")).map(async s=>{const d=await jget(`${CB}/products/${s}-USD/ticker`);setPx("cb",s,+d.price)}));
+  SRC.cb.rest=rs.some(x=>x.status==="fulfilled")?"ok":(rs.length?"failing":"–");
+  if(rs.length&&SRC.cb.rest==="failing")SRC.cb.err=String(rs[0].reason&&rs[0].reason.message||"request failed");
+}
+async function pollKR(){
+  const ms=Object.entries(krMap); if(!ms.length)return;
+  try{
+    const d=(await jget(`${KR}/Ticker?pair=${ms.map(([c,x])=>x.alt).join(",")}`)).result||{};
+    const look={};ms.forEach(([c,x])=>{look[x.key]=c;look[x.alt]=c});
+    for(const k in d){const c=look[k];if(c&&d[k].c)setPx("kr",c,+d[k].c[0])}
+    SRC.kr.rest="ok";
+  }catch(e){SRC.kr.rest="failing";SRC.kr.err=e.message}
+}
+async function pollHL(){
+  try{const d=await jget(HLI,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:"allMids"})});
+    for(const s of syms)if(d[s]!=null)setPx("hl",s,+d[s]); SRC.hl.rest="ok"}
+  catch(e){SRC.hl.rest="failing";SRC.hl.err=e.message}
+}
+function startPolling(){
+  const loop=(fn,ms)=>{const go=async()=>{if(!sim){try{await fn()}catch(e){}}setTimeout(go,ms)};setTimeout(go,ms)};
+  pollCB();pollKR();pollHL();
+  loop(pollCB,3000);loop(pollKR,3000);loop(pollHL,3000);
+}
+
+/* ---- history backfill from 1-minute candles (so charts and the target price exist the moment the page opens) ---- */
+async function candlesFor(s,nowSec){
+  const out=[]; const add=(t,o,c)=>{if(isFinite(t)&&o>0&&c>0)out.push({t,o,c})};
+  const attempts=[
+    ["cb",async()=>{ if(cbSet&&!cbSet.has(s+"-USD"))return;
+      let end=nowSec;
+      for(let k=0;k<2;k++){const start=end-18000;
+        const rows=await jget(`${CB}/products/${s}-USD/candles?granularity=60&start=${new Date(start*1000).toISOString()}&end=${new Date(end*1000).toISOString()}`);
+        for(const r of rows)add(+r[0],+r[3],+r[4]); if(rows.length<250)break; end=start}}],
+    ["kr",async()=>{const m=krMap[s];if(!m)return;
+      const d=await jget(`${KR}/OHLC?pair=${m.alt}&interval=1`);const rows=d.result&&(d.result[m.key]||d.result[m.alt]||Object.values(d.result).find(Array.isArray))||[];
+      for(const r of rows)add(+r[0],+r[1],+r[4])}],
+    ["okx",async()=>{const d=await jget(`${OKX}/candles?instId=${s}-USDT&bar=1m&limit=300`);
+      for(const r of d.data||[])add(+r[0]/1000,+r[1],+r[4])}],
+    ["hl",async()=>{const d=await jget(HLI,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:"candleSnapshot",req:{coin:s,interval:"1m",startTime:(nowSec-36000)*1000,endTime:nowSec*1000}})});
+      for(const r of d||[])add(+r.t/1000,+r.o,+r.c)}]
+  ];
+  for(const [src,fn] of attempts){
+    out.length=0;
+    try{await fn()}catch(e){BF[s]={src:"–",n:0,err:src+": "+e.message};continue}
+    if(out.length>=30){BF[s]={src,n:out.length};return out}
+  }
+  if(!BF[s]||!BF[s].err)BF[s]={src:"–",n:0,err:"no candles from any source"};
+  return null;
+}
+function buildSeries(c,nowSec){
+  c=c.filter(x=>x.t<nowSec).sort((a,b)=>a.t-b.t); if(c.length<10)return null;
+  const kn=c.map(x=>[x.t,Math.log(x.o)]), L=c[c.length-1];
+  kn.push([Math.max(Math.min(L.t+60,nowSec),L.t+1),Math.log(L.c)]);
+  const t0=Math.max(kn[0][0],nowSec-HIST_LEN),out=[];let j=0;
+  for(let t=t0;t<nowSec;t++){
+    while(j<kn.length-2&&kn[j+1][0]<=t)j++;
+    const [ta,va]=kn[j],[tb,vb]=kn[j+1];
+    out.push(t>=tb?vb:va+(vb-va)*Math.max(0,t-ta)/Math.max(tb-ta,1));
+  }
+  // volatility per sqrt(second) from the last ~90 one-minute closes
+  const cl=c.slice(-91).map(x=>Math.log(x.c)),rs=[];for(let k=1;k<cl.length;k++)rs.push(cl[k]-cl[k-1]);
+  const vol=rs.length>=10?Math.max(Math.sqrt(mean(rs.map(x=>x*x))/60),1e-7):0;
+  return {t0,out,vol};
+}
+async function backfillAll(){
+  const nowSec=Math.floor(Date.now()/1000), res_={};
+  await Promise.all(syms.map((s,i)=>new Promise(r=>setTimeout(r,i*150)).then(async()=>{
+    const c=await candlesFor(s,nowSec); if(c){const b=buildSeries(c,nowSec);if(b){res_[s]=b;minVol[s]=b.vol}}})));
+  const t0s=Object.values(res_).map(x=>x.t0); if(!t0s.length)return false;
+  const tStart=Math.min(...t0s),len=Math.min(nowSec-tStart,HIST_LEN);
+  for(const s of syms){const b=res_[s];
+    hist[s]=b?new Array(len-b.out.length).fill(NaN).concat(b.out):new Array(len).fill(NaN)}
+  predC=new Array(len).fill(null);predA=new Array(len).fill(null);
+  bfLeft=len;lastTick=nowSec-1;
+  return true;
+}
+function fallbackAn(sym){const v=minVol[sym];return v>0?{beta:NaN,corr:NaN,sigma:v,drift:0,lead:null,driftA:0,leadA:null,prior:true}:null}
+
+/* ---- practice simulation: a virtual clock running 30x, so a 15-minute window passes every 30 seconds ---- */
+const SIM_SPEED=30;
+let simBase=null, simBeta=null, simVT=null, REAL=null;
+function synthQuote(sym,r,wEnd){      // a made-up Kalshi market: roughly agrees with the model, plus noise and a 4-cent spread
+  const l=logit(Math.min(0.99,Math.max(0.01,r.pCal))),m=sg(l*0.9+zr()*0.5);
+  const ask=Math.min(0.99,Math.max(0.02,m+0.02)),bid=Math.min(0.98,Math.max(0.01,m-0.02));
+  return {sym,close:wEnd,ts:Date.now()/1000,yes_bid:bid,yes_ask:ask,no_bid:1-ask,no_ask:1-bid,last:m}
+}
+function simPrices(){
+  const f=zr()*1.6e-4;
+  syms.forEach(s=>{simBase[s]*=Math.exp(simBeta[s]*f+zr()*1.2e-4);latest[s]={px:simBase[s],ts:Date.now()/1000}});
+}
+function simAdvance(){
+  if(!syms.length)return;
+  if(simVT===null){
+    simBase={};simBeta={};syms.forEach((s,i)=>{simBase[s]=50*(i+1)**2;simBeta[s]=0.6+Math.random()});
+    simVT=Math.floor(Date.now()/1000/WINDOW)*WINDOW-420;                  // start 7 minutes before a window opens, with history already built
+    for(let k=0;k<420;k++){simVT++;simPrices();step(simVT,true)}
+  }
+  for(let k=1;k<=SIM_SPEED;k++){simVT++;simPrices();const s=step(simVT,k<SIM_SPEED);if(s)render(s)}
+}
+function enterSim(){
+  REAL={sigHist,calSamples,finHist,platt,simSt,simLog,pendSig,pendCal,pendFin,pendSim,hOutbox,autoSt,pendAuto,pendASnap,pickHist,pendPick};
+  pickHist=[];pendPick=[];
+  {const on=autoSt.on,cp_=autoSt.cap;autoSt=newAuto(autoSt.start);autoSt.on=on;autoSt.cap=cp_;pendAuto=[];pendASnap=[]}
+  sigHist=[];calSamples=[];finHist=[];platt={a:1,b:0};simLog=[];simSt={start:Object.assign({},REAL.simSt.start),tr:{}};
+  pendSig=[];pendCal=[];pendFin=[];pendSim=[];hOutbox={sig:[],cal:[],fin:[],sim:[]};
+  simVT=null;winStart=null;simKey="";
+}
+function exitSim(){
+  if(!REAL)return;
+  ({sigHist,calSamples,finHist,platt,simSt,simLog,pendSig,pendCal,pendFin,pendSim,hOutbox,autoSt,pendAuto,pendASnap,pickHist,pendPick}=REAL);REAL=null;
+  simVT=null;winStart=null;simKey="";
+  Promise.race([backfillAll(),new Promise(r=>setTimeout(r,20000))]).catch(()=>{});
+}
+
+async function refreshMarket(sym,end,isSel){
+  const d=await kalshiGet(`/markets?series_ticker=KX${sym}15M&status=open&limit=20`); const now=Date.now()/1000; let best=null,bct=1e18;
+  for(const m of d.markets||[]){const ct=Date.parse(m.close_time)/1000; if(ct>now-1&&ct<bct){bct=ct;best=m}}
+  SRC.kalshi.rest="ok";SRC.kalshi.err="";SRC.kalshi.msgs++;SRC.kalshi.last=now;
+  if(!best||Math.abs(bct-end)>5)return;       // this window's market isn't listed yet; try again next second
+  let fs=parseFloat(best.floor_strike);
+  if(!isFinite(fs)){const txt=[best.yes_sub_title,best.subtitle,best.title,best.rules_primary].join(" ");const m=txt.match(/\$\s*([\d,]+(?:\.\d+)?)/);if(m)fs=parseFloat(m[1].replace(/,/g,""))}
+  if(isFinite(fs)&&fs>0){strike[sym]={end,v:fs};SRC.kalshi.strike=SRC.kalshi.strike||{};SRC.kalshi.strike[sym]=fs}
+  {
+    const q=(b)=>{let v=best[b+"_dollars"]; if(v!=null&&v!=="")return parseFloat(v); v=best[b]; return v==null?null:parseFloat(v)/100};
+    const qq={sym,close:bct,ts:now,yes_bid:q("yes_bid"),yes_ask:q("yes_ask"),no_bid:q("no_bid"),no_ask:q("no_ask"),last:q("last_price")};
+    quoteBy[sym]=qq; if(isSel)quote=qq;
+  }
+  kalshiStatus="live";
+}
+const lastTry={};
+function simStart(sym){const v=simSt.start[sym];return v==null?simDef:v}
+function simTr(sym,cp){const t=simSt.tr[sym]=simSt.tr[sym]||{};return t[cp]=t[cp]||{bank:simStart(sym),w:0,l:0,net:0}}
+function simSave(){if(sim)return;ls.set("k15sim",simSt);ls.set("k15simdef",simDef);ls.set("k15simmode",simMode);ls.set("k15simlog",simLog.slice(-300))}
+function finRec(r,q,wEnd,tick){   // attach Kalshi's live multipliers at the moment the final call was made
+  if(q&&Math.abs(q.close-wEnd)<=5&&Date.now()/1000-q.ts<=12&&q.yes_ask!=null){
+    const m=mults(q.yes_ask,q.yes_bid,q.no_ask);r.ask=q.yes_ask;r.bid=q.yes_bid;r.mUp=m.up;r.mDn=m.dn;r.m=r.side==="UP"?m.up:m.dn}
+  return r}
+// payout multiplier = $1 payout / price paid. UP buys YES at the YES ask; DOWN buys NO at the NO ask (= 1 - YES bid)
+function sideMult(x){if(x.ask==null||x.ask==="")return null;const m=mults(+x.ask,x.bid===""||x.bid==null?null:+x.bid,null);return x.side==="UP"?m.up:m.dn}
+function mults(yAsk,yBid,nAsk){
+  const na=(nAsk!=null&&isFinite(nAsk)&&nAsk>0)?nAsk:(yBid!=null?1-yBid:null);
+  return {up:(yAsk>0&&yAsk<1)?1/yAsk:null,dn:(na>0&&na<1)?1/na:null}}
+const mx=v=>v==null?"–":v.toFixed(2)+"x";
+async function kalshiLoop(){
+  if(!sim&&Date.now()>kalshiBlockedUntil){
+    try{
+      const now=Date.now()/1000,end=(Math.floor(now/WINDOW)+1)*WINDOW,jobs=[];
+      for(const s of syms){const h=strike[s],need=!h||h.end!==end,isSel=s===selected;
+        const near=(end-now)<=Math.max(finSec,300)+15&&now-(lastTry[s]||0)>=3;   // live multipliers for every coin around its final-call time
+        if(isSel||near||(need&&now-(lastTry[s]||0)>5)){lastTry[s]=now;jobs.push(refreshMarket(s,end,isSel))}}
+      await Promise.all(jobs);
+    }catch(e){kalshiStatus="unreachable";SRC.kalshi.rest="failing";SRC.kalshi.err=(e&&e.message)||"request failed";kalshiBlockedUntil=Date.now()+10000}
+  }
+  setTimeout(kalshiLoop,1000);
+}
+
+/* ============================ forecasting engine ============================ */
+// Return features for every coin over the last ~1900 s
+function buildFeat(){
+  const N=hist[syms[0]].length, M=Math.min(N-bfLeft,1900); if(M<200)return null;
+  const i0=N-M, R={}, S={}, C={};
+  for(const L of [10,30,120]){
+    R[L]=syms.map(s=>{const h=hist[s],a=new Float64Array(M).fill(NaN);for(let t=L;t<M;t++)a[t]=h[i0+t]-h[i0+t-L];return a});
+    const sum=new Float64Array(M),cnt=new Float64Array(M);
+    for(const a of R[L])for(let t=0;t<M;t++){const v=a[t];if(v===v){sum[t]+=v;cnt[t]++}}
+    S[L]=sum;C[L]=cnt;
+  }
+  return {N,M,i0,R,S,C};
+}
+function oth(F,L,i){ // average L-second return of all coins except i
+  const a=F.R[L][i],s=F.S[L],c=F.C[L],out=new Float64Array(F.M);
+  for(let t=0;t<F.M;t++){const v=a[t],has=v===v;const cc=c[t]-(has?1:0);out[t]=cc>0?(s[t]-(has?v:0))/cc:NaN}
+  return out;
+}
+function inv3(m){
+  const [a,b,c]=m[0],[d,e,f]=m[1],[g,h,i]=m[2];
+  const A=e*i-f*h,B=-(d*i-f*g),C=d*h-e*g,det=a*A+b*B+c*C;
+  if(!isFinite(det)||Math.abs(det)<1e-12)return null;
+  return [[A/det,-(b*i-c*h)/det,(b*f-c*e)/det],[B/det,(a*i-c*g)/det,-(a*f-c*d)/det],[C/det,-(a*h-b*g)/det,(a*e-b*d)/det]];
+}
+function fitRidge(X,Y){
+  const n=X.length,s=[0,0,0];
+  for(const x of X)for(let p=0;p<3;p++)s[p]+=x[p]*x[p];
+  for(let p=0;p<3;p++)s[p]=Math.sqrt(s[p]/n)||1;
+  const A=[[0,0,0],[0,0,0],[0,0,0]],b=[0,0,0];
+  for(let k=0;k<n;k++){const x=X[k],y=Y[k];for(let p=0;p<3;p++){const xp=x[p]/s[p];b[p]+=xp*y;for(let q=0;q<3;q++)A[p][q]+=xp*x[q]/s[q]}}
+  for(let p=0;p<3;p++)A[p][p]+=0.05*n;
+  const iv=inv3(A); if(!iv)return null;
+  return {w:[0,1,2].map(p=>(iv[p][0]*b[0]+iv[p][1]*b[1]+iv[p][2]*b[2])/s[p])};
+}
+// walk-forward test: fit on the first 70%, score on the last 30%
+function fitModel(X,Y){
+  const n=X.length; if(n<100)return null;
+  const nTr=Math.floor(n*0.7), tr=fitRidge(X.slice(0,nTr),Y.slice(0,nTr)); if(!tr)return null;
+  let sse=0,sst=0,sp=0,sy=0,spp=0,syy=0,spy=0,m=0;
+  for(let k=nTr;k<n;k++){const p=tr.w[0]*X[k][0]+tr.w[1]*X[k][1]+tr.w[2]*X[k][2],y=Y[k];
+    sse+=(y-p)**2;sst+=y*y;sp+=p;sy+=y;spp+=p*p;syy+=y*y;spy+=p*y;m++}
+  const cov=spy/m-(sp/m)*(sy/m),vp=spp/m-(sp/m)**2,vy=syy/m-(sy/m)**2;
+  const r=(vp>0&&vy>0)?cov/Math.sqrt(vp*vy):0, neff=Math.max(m/HZ,2.5);   // overlapping 30s returns -> fewer independent obs
+  const t=r*Math.sqrt(neff-2)/Math.sqrt(Math.max(1-r*r,1e-6));
+  const full=fitRidge(X,Y); if(!full)return null;
+  return {w:full.w,r,r2:1-sse/sst,t,n,neff};
+}
+function analyze(F,i,needAvg){
+  const {M,i0}=F; if(!F)return null;
+  const R10=F.R[10][i],R30=F.R[30][i],R120=F.R[120][i];
+  const O10=oth(F,10,i),O30=oth(F,30,i),O120=oth(F,120,i);
+  // beta and correlation of 10-second returns vs the average of the others
+  let n=0,sa=0,sb=0,saa=0,sbb=0,sab=0;
+  for(let t=Math.max(LAG,M-1800);t<M;t++){const a=R10[t],b=O10[t];if(a===a&&b===b){n++;sa+=a;sb+=b;saa+=a*a;sbb+=b*b;sab+=a*b}}
+  if(n<150)return null;
+  const va=saa/n-(sa/n)**2,vb=sbb/n-(sb/n)**2,cv=sab/n-(sa/n)*(sb/n); if(va<=0||vb<=0)return null;
+  const beta=clamp(cv/vb,0,3), corr=cv/Math.sqrt(va*vb);
+  // volatility: exponentially weighted (half-life 120 s) squared 10 s returns
+  let sw=0,sr=0,w=1;
+  for(let k=0;k<900&&k<M-LAG;k++){const r=R10[M-1-k];if(r===r){sw+=w;sr+=w*r*r}w*=0.99424}
+  const sigma=Math.max(Math.sqrt(sr/Math.max(sw,1e-9)/LAG),1e-7);
+  // lead-lag regression: next-30s return vs [others' 30s return, own 30s return, own 120s excess vs beta*others]
+  const hs=hist[syms[i]],X=[],Y=[],Ya=[];
+  for(let t=120;t<=M-1-HZ;t++){
+    const f1=O30[t],f2=R30[t],f3=R120[t]-beta*O120[t],y=hs[i0+t+HZ]-hs[i0+t],ya=O30[t+HZ];
+    if(f1===f1&&f2===f2&&f3===f3&&y===y&&ya===ya){X.push([f1,f2,f3]);Y.push(y);Ya.push(ya)}
+  }
+  const fnow=[O30[M-1],R30[M-1],R120[M-1]-beta*O120[M-1]], cap=3*sigma*Math.sqrt(HZ);
+  const doFit=(T)=>{const fm=fitModel(X,T);if(!fm||!fnow.every(isFinite))return {d:0,lead:fm};
+    const yh=fm.w[0]*fnow[0]+fm.w[1]*fnow[1]+fm.w[2]*fnow[2], sh=(fm.r>0&&fm.t>1)?1-1/(fm.t*fm.t):0;
+    return {d:clamp(yh*sh,-cap,cap),lead:{...fm,yh,shrink:sh}}};
+  const a=doFit(Y), av=needAvg?doFit(Ya):{d:0,lead:null};
+  return {beta,corr,sigma,drift:a.d,lead:a.lead,driftA:av.d,leadA:av.lead};
+}
+// Monte Carlo of the exact settlement rule (average of the last 60 one-second prices)
+function mc(x0,tau,sigma,drift30,known,target,floor,np,fanPts){
+  const X=new Float64Array(np),mult=new Float64Array(np),acc=new Float64Array(np);
+  for(let p=0;p<np;p++){X[p]=x0;mult[p]=Math.exp(0.3*zr()-0.045)}   // random volatility level per path -> fat tails
+  const steps=[];
+  if(tau>60){const rem=tau-60,nC=Math.floor(rem/5);for(let k=0;k<nC;k++)steps.push(5);const r=rem-5*nC;if(r>1e-9)steps.push(r);for(let k=0;k<60;k++)steps.push(1)}
+  else for(let k=0;k<tau;k++)steps.push(1);
+  const nFine=Math.min(60,tau), firstFine=steps.length-nFine;
+  const Hd=Math.min(HZ,tau), rate=Hd>0?drift30*Math.min(1,tau/HZ)/Hd:0;
+  let t=0,nextRec=0; const recEvery=fanPts?tau/fanPts:0, fan=fanPts?{t:[],q:[]}:null, tmp=fanPts?new Float64Array(np):null;
+  const rec=()=>{tmp.set(X);tmp.sort();fan.t.push(t);fan.q.push([0.025,0.16,0.5,0.84,0.975].map(q=>tmp[Math.min(np-1,Math.floor(q*np))]))};
+  if(fan){rec();nextRec=recEvery}
+  for(let si=0;si<steps.length;si++){
+    const dt=steps[si],sq=sigma*Math.sqrt(dt),dd=rate*Math.max(0,Math.min(t+dt,Hd)-t);
+    for(let p=0;p<np;p++)X[p]+=dd+sq*mult[p]*zr();
+    t+=dt;
+    if(si>=firstFine)for(let p=0;p<np;p++)acc[p]+=Math.exp(X[p]);
+    if(fan&&t>=nextRec-1e-9){rec();nextRec+=recEvery}
+  }
+  let ks=0;for(const v of known)ks+=Math.exp(v);
+  const cnt=known.length+nFine,S=new Float64Array(np);let above=0,ms=0;
+  for(let p=0;p<np;p++){let s=cnt>0?(ks+acc[p])/cnt:Math.exp(X[p]);s*=Math.exp(floor*zr());S[p]=s;ms+=s;if(s>=target)above++}
+  const sorted=Float64Array.from(S).sort(),q=f=>sorted[Math.min(np-1,Math.floor(f*np))];
+  return {pRaw:(above+0.5)/(np+1),meanS:ms/np,q:[q(.025),q(.16),q(.5),q(.84),q(.975)],fan};
+}
+function calibBins(){
+  return [[0.5,0.7],[0.7,0.9],[0.9,0.97],[0.97,1.001]].map(([lo,hi])=>{
+    let c=0,cor=0,pp=0;
+    for(const s of calSamples){const p=calibrate(sg(s.x)),cf=Math.max(p,1-p);if(cf>=lo&&cf<hi){c++;cor+=((p>=0.5)===(s.y===1))?1:0;pp+=cf}}
+    return {lo,hi,n:c,acc:c?cor/c:null,pred:c?pp/c:null}});
+}
+function calibrate(p){return clamp(sg(platt.a*logit(p)+platt.b),0.001,0.999)}
+function fitPlatt(S){
+  let a=1,b=0;const lam=3;
+  if(S.length<20)return {a,b};
+  for(let it=0;it<20;it++){
+    let g0=lam*(a-1),g1=lam*b,h00=lam,h01=0,h11=lam;
+    for(const s of S){const p=sg(a*s.x+b),d=0.1*(p-s.y),v=0.1*p*(1-p);g0+=d*s.x;g1+=d;h00+=v*s.x*s.x;h01+=v*s.x;h11+=v}
+    const det=h00*h11-h01*h01; if(Math.abs(det)<1e-12)break;
+    const da=(g0*h11-g1*h01)/det,db=(h00*g1-h01*g0)/det;a-=da;b-=db;if(Math.abs(da)+Math.abs(db)<1e-7)break;
+  }
+  return {a:clamp(a,0.2,3),b:clamp(b,-2,2)};
+}
+platt=fitPlatt(calSamples);
+
+function forecast(i,an,tau,anchorLn,asrc,wantFan){
+  const h=hist[syms[i]],x0=h[h.length-1];
+  const known=tau<60?h.slice(-(60-tau)).filter(isFinite):[];
+  const r=mc(x0,tau,an.sigma,an.drift,known,Math.exp(anchorLn),asrc==="feed"?BASIS_FEED:BASIS_KALSHI,wantFan?2000:800,wantFan?40:0);
+  if(asrc==="page"){r.pCal=null;r.pRaw=null}else r.pCal=calibrate(r.pRaw);
+  return r;
+}
+
+/* ============================ data folder (via the helper) ============================ */
+const hCands=()=>((/^https?:$/.test(location.protocol)&&/^(127\.0\.0\.1|localhost)$/.test(location.hostname))?[location.origin]:[]).concat(["http://127.0.0.1:8787"]);
+async function findHelper(){
+  for(const b of hCands()){try{const r=await fetch(b+"/ping");if(r.ok){const d=await r.json();
+      if(d.app==="kalshi-helper"){ if(!d.data){savErr="An old helper version is still running. Quit it and reopen the dashboard";hBase=null;return false} hBase=b;savErr="";helperPage=d.page||"";return true}}}catch(e){savErr=e.message||"cannot reach helper"}}
+  hBase=null;return false;
+}
+async function hpost(path,obj){const r=await fetch(hBase+path,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify(obj)});if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}
+async function hget(path){const r=await fetch(hBase+path);if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}
+async function saveToHelper(){
+  if(sim)return;
+  if(!hBase&&!(await findHelper())){savState="off";return}
+  const o=hOutbox;hOutbox={sig:[],cal:[],fin:[],sim:[]};
+  try{await hpost("/data/save",{sig:o.sig,cal:o.cal,fin:o.fin,sim:o.sim,simstate:{simSt,simDef,simMode,autoSt,pickHist:pickHist.slice(-1500)},summary:{platt,bins:calibBins(),samples_in_browser:calSamples.length}});savState="ok"}
+  catch(e){savErr=e.message||"save error";hBase=null;savState="err";hOutbox.sig.push(...o.sig);hOutbox.cal.push(...o.cal);hOutbox.fin.push(...o.fin);hOutbox.sim.push(...o.sim)}
+}
+setInterval(()=>{if(hBase)fetch(hBase+"/alive").catch(()=>{})},20000);
+window.addEventListener("pagehide",()=>{try{if(hBase)navigator.sendBeacon(hBase+"/bye","x")}catch(e){}});   // lets the helper close itself when this window closes   // tells the helper this page is still open
+async function syncHelper(){      // at startup: upload anything only the browser has, then adopt the folder's full history
+  if(!(await findHelper())){savState="off";return}
+  try{
+    await hpost("/data/save",{sig:sigHist,cal:calSamples,fin:finHist,sim:simLog});
+    const st=await hget("/data/state");
+    if(st.sig&&st.sig.length)sigHist=st.sig.slice(-5000);
+    if(st.cal&&st.cal.length)calSamples=st.cal.slice(-15000);
+    if(st.fin&&st.fin.length)finHist=st.fin.slice(-2000);
+    if(st.sim&&st.sim.length)simLog=st.sim.slice(-300);
+    if(st.simstate&&st.simstate.autoSt&&st.simstate.autoSt.learn){autoSt=st.simstate.autoSt;ls.set("k15auto",autoSt)}
+    if(st.simstate&&Array.isArray(st.simstate.pickHist)&&st.simstate.pickHist.length>pickHist.length){pickHist=st.simstate.pickHist;ls.set("k15pickh",pickHist)}
+    if(st.simstate&&st.simstate.simSt){simSt=st.simstate.simSt;if(st.simstate.simDef!=null)simDef=st.simstate.simDef;if(st.simstate.simMode)simMode=st.simstate.simMode;ls.set("k15sim",simSt)}
+    platt=fitPlatt(calSamples);savState="ok";autoSeed();
+  }catch(e){savErr=e.message||"sync error";hBase=null;savState="err"}
+}
+
+/* ============================ window bookkeeping ============================ */
+function finalizeWindow(elNow){
+  const fin={};
+  const getFinal=sym=>{
+    if(sym in fin)return fin[sym];
+    const h=hist[sym],end=h.length-1-elNow,seg=h.slice(Math.max(0,end-59),end+1).filter(isFinite);
+    return fin[sym]=seg.length>=30?Math.log(mean(seg.map(Math.exp))):null;
+  };
+  for(const s of pendSig){const f=getFinal(s.sym);if(f==null)continue;s.up=f>=s.anchorLn;s.hit=(s.side==="UP")===s.up;sigHist.push(s);if(!sim)hOutbox.sig.push(s)}
+  for(const c of pendCal){const f=getFinal(c.sym);if(f==null)continue;const rec={x:Math.round(c.x*100)/100,y:f>=c.anchorLn?1:0,w:c.w,s:c.sym,t:c.t};calSamples.push(rec);if(!sim)hOutbox.cal.push(rec)}
+  for(const s of pendFin){const f=getFinal(s.sym);if(f==null)continue;s.up=f>=s.anchorLn;s.hit=(s.side==="UP")===s.up;finHist.push(s);if(!sim)hOutbox.fin.push(s)}
+  for(const b of pendSim){const f=getFinal(b.sym);if(f==null)continue;
+    b.up=f>=b.anchorLn;b.hit=(b.side==="UP")===b.up;const tr=simTr(b.sym,SIM_CP[0]);
+    b.payout=b.hit?b.stake*b.mult:0;b.pnl=b.payout-b.stake;tr.net+=b.pnl;
+    if(b.hit){tr.bank=b.payout;tr.w++}else{tr.l++;tr.bank=simMode==="restart"?simStart(b.sym):0}
+    b.bank=tr.bank;b.cp=b.at||b.cp;simLog.push(b);if(!sim)hOutbox.sim.push(b)}
+  for(const c of pendASnap){const f=getFinal(c.sym);if(f==null)continue;const hit=(c.side==="UP")===(f>=c.anchorLn)?1:0,k=c.tb+"|"+c.bi,L=autoSt.learn[k]=autoSt.learn[k]||{n:0,w:0};L.n++;L.w+=hit;
+    if(c.conf>=0.8){const C=autoSt.coin[c.sym]=autoSt.coin[c.sym]||{n:0,w:0,e:0};C.n++;C.w+=hit;C.e+=c.conf}}
+  pendASnap=[];
+  for(const b of pendPick){const f=getFinal(b.sym);if(f==null||!isFinite(b.anchorLn))continue;b.hit=(b.side==="UP")===(f>=b.anchorLn);pickHist.push(b)}
+  pendPick=[];if(pickHist.length>1500)pickHist=pickHist.slice(-1500);if(!sim)ls.set("k15pickh",pickHist);
+  if(pendAuto.length){let wp=0;
+    for(const b of pendAuto){const f=getFinal(b.sym);if(f==null)continue;
+      b.up=f>=b.anchorLn;b.hit=(b.side==="UP")===b.up;b.payout=b.hit?b.stake*b.mult:0;b.pnl=b.payout-b.stake;wp+=b.pnl;
+      autoSt.net+=b.pnl;autoSt.bank+=b.pnl;if(b.hit)autoSt.w++;else autoSt.l++;autoSt.windows++;
+      b.bank=autoSt.bank;b.cp="AUTO";simLog.push(b);if(!sim)hOutbox.sim.push(b)}
+    autoSt.peak=Math.max(autoSt.peak,autoSt.bank);
+    if(wp<0){autoSt.streak++;if(autoSt.streak>=3){autoSt.pause=2;autoSt.streak=0}}else if(wp>0)autoSt.streak=0;
+    if(autoSt.bank<1){autoSt.on=false;autoNote="Bankroll used up"}}
+  pendAuto=[];autoSave();
+  pendSim=[];if(simLog.length>300)simLog=simLog.slice(-300);simSave();
+  pendSig=[];pendCal=[];
+  if(finHist.length>2000)finHist=finHist.slice(-2000);if(!sim)ls.set("k15finh",finHist);pendFin=[];
+  if(sigHist.length>5000)sigHist=sigHist.slice(-5000);
+  if(calSamples.length>15000)calSamples=calSamples.slice(-15000);
+  platt=fitPlatt(calSamples);
+  if(!sim){ls.set("k15sig",sigHist);ls.set("k15cal",calSamples);saveToHelper()}
+}
+
+/* ============================ 1 Hz step ============================ */
+function step(tick,light){
+  if(!syms.length)return null;
+  const now=Date.now()/1000,n=syms.length;
+  const nt=lastTick===null?1:Math.max(0,Math.min(tick-lastTick,HIST_LEN));
+  if(!sim)chooseAll();
+  for(let k=0;k<nt;k++){
+    const full=hist[syms[0]].length>=HIST_LEN;
+    for(const s of syms){const p=latest[s],h=hist[s];h.push(p&&now-p.ts<STALE?Math.log(p.px):NaN);if(h.length>HIST_LEN)h.shift()}
+    if(full&&bfLeft>0)bfLeft--;
+    predC.push(null);predA.push(null);if(predC.length>HIST_LEN){predC.shift();predA.shift()}
+  }
+  lastTick=tick;
+  const wStart=tick-tick%WINDOW,wEnd=wStart+WINDOW,el=tick-wStart,tau=Math.max(wEnd-tick,0);
+  if(wStart!==winStart){if(winStart!==null)finalizeWindow(el);winStart=wStart;res={};fired=new Set();lastCal={};finFired=new Set();if(autoSt.on&&!autoDone&&winStart!==null){autoSt.skipped++}autoDone=false;curAutoAlert=null;autoNote="";autoStab={};autoG=0;autoSnap=new Set();if(autoSt.on&&autoSt.pause>0){autoSt.pause--;autoDone=true;autoNote="Sitting out this window after losses"}pickFired=new Set();curPicks=[];finAll=new Set();simFired=new Set();simWait=new Set();simBusy=new Set()}
+  if(light)return null;
+  if(predSel!==selected){predC.fill(null);predA.fill(null);predSel=selected}
+  const N=hist[syms[0]].length, active=el>=MARK;
+  const last=syms.map(s=>hist[s][N-1]), valid=last.map(isFinite);
+  const anchor=Array(n).fill(NaN), asrc=Array(n).fill(""), mark=Array(n).fill(NaN);
+  syms.forEach((s,i)=>{
+    const h=hist[s];
+    const st=strike[s];
+    if(st&&st.end===wEnd&&st.v){anchor[i]=Math.log(st.v);asrc[i]="kalshi"}
+    else if(N>el&&isFinite(h[N-1-el])){anchor[i]=h[N-1-el];asrc[i]="feed"}
+    else{for(let t=Math.max(0,N-1-el);t<N;t++){if(isFinite(h[t])){anchor[i]=h[t];asrc[i]="page";break}}}
+    if(active&&N>el-MARK&&isFinite(h[N-1-(el-MARK)]))mark[i]=h[N-1-(el-MARK)];
+  });
+  syms.forEach((s,i)=>{const o=targetOv[s];if(o&&o.w===wStart){anchor[i]=Math.log(o.v);asrc[i]="manual"}});
+  const mvS=last.map((x,i)=>x-anchor[i]), mvM=last.map((x,i)=>x-mark[i]);
+  const okM=last.map((x,i)=>valid[i]&&isFinite(mark[i]));
+  const L5=Math.min(300,N-1), roll=syms.map((s,i)=>L5<5?NaN:last[i]-hist[s][N-1-L5]);
+  const mv5=active?mvM:roll, ok5=active?okM:last.map((x,i)=>valid[i]&&isFinite(roll[i]));
+  const selI=syms.indexOf(selected);
+
+  // ---- analysis + forecasts (selected every second, three other coins per second in rotation)
+  const F=buildFeat(), toRun=[]; let selAn=null, newSignal=false;
+  if(selI>=0)toRun.push(selI);
+  const perSec=Math.min(6,Math.max(3,Math.ceil(n/4)));
+  if(sim){for(let i=0;i<n;i++)if(i!==selI)toRun.push(i)}                 // fast practice run: look at every coin each time
+  else for(let k=0;k<perSec;k++){rot=(rot+1)%n;if(rot!==selI&&!toRun.includes(rot))toRun.push(rot)}
+  for(const i of toRun){
+    const isSel=i===selI; if(!valid[i])continue; if(!isSel&&!valid[i])continue;
+    const an=(F&&analyze(F,i,isSel))||fallbackAn(syms[i]); if(!an)continue; if(isSel)selAn=an;
+    if(!isFinite(anchor[i]))continue;
+    const r=forecast(i,an,tau,anchor[i],asrc[i],isSel);
+    Object.assign(r,{tick,tau,anchorLn:anchor[i],asrc:asrc[i],an,P:Math.exp(last[i])});
+    const sym=syms[i]; res[sym]=r;
+    if(sim&&r.pCal!=null)quoteBy[sym]=synthQuote(sym,r,wEnd);
+    if(r.pRaw!=null&&tick-(lastCal[sym]||0)>=15&&tau>=5){lastCal[sym]=tick;pendCal.push({sym,x:logit(r.pRaw),anchorLn:anchor[i],w:wStart,t:tick})}
+    if(r.pCal!=null&&tau>=1){
+      const side=r.pCal>=thr?"UP":r.pCal<=1-thr?"DOWN":null;
+      if(side){const key=wStart+"|"+sym+"|"+side;
+        if(!fired.has(key)){fired.add(key);if(isSel)newSignal=true;
+          const q0=quoteBy[sym],q=(q0&&Math.abs(q0.close-wEnd)<=5&&Date.now()/1000-q0.ts<=12)?q0:null;
+          pendSig.push(finRec({w:wStart,sym,side,tick,tau,p:side==="UP"?r.pCal:1-r.pCal,raw:side==="UP"?r.pRaw:1-r.pRaw,anchorLn:anchor[i],ask:q?q.yes_ask:null,bid:q?q.yes_bid:null},q,wEnd,tick))}}
+    }
+  }
+
+  // ---- table rows
+  const avg=(arr,mask)=>{const v=arr.filter((x,i)=>mask[i]&&isFinite(x));return v.length?mean(v):NaN};
+  const okS=last.map((x,i)=>valid[i]&&isFinite(anchor[i])), notSel=syms.map((s,i)=>i!==selI);
+  const avgAll5=avg(mv5,ok5);
+  const rows=syms.map((s,i)=>{const r=res[s],fresh=r&&tick-r.tick<=8&&r.pCal!=null;
+    return {sym:s,price:valid[i]?Math.exp(last[i]):null,target:isFinite(anchor[i])?Math.exp(anchor[i]):null,tsrc:asrc[i]||null,move_start_bps:valid[i]?bpv(mvS[i]):null,
+      move_mark_bps:ok5[i]?bpv(mv5[i]):null,vs_avg_bps:ok5[i]?bpv(mv5[i]-avgAll5):null,anchor:asrc[i]||null,
+      p_up:fresh?r.pCal:null}});
+  const summary={avg_all_start_bps:bpv(avg(mvS,okS)),avg_others_start_bps:bpv(avg(mvS,okS.map((x,i)=>x&&notSel[i]))),
+    avg_all_mark_bps:bpv(avgAll5),avg_others_mark_bps:bpv(avg(mv5,ok5.map((x,i)=>x&&notSel[i])))};
+
+  // ---- selected-coin prediction object
+  let pred=null,reason=null,q=null;
+  if(quote&&quote.sym===selected&&now-quote.ts<6&&Math.abs(quote.close-wEnd)<=5)q=quote;
+  const rS=res[selected], rSok=rS&&rS.tick===tick&&selI>=0;
+  if(selI<0||!valid[selI])reason="Selected coin has no fresh price yet.";
+  else if(!isFinite(anchor[selI]))reason="No window-open price or Kalshi target for this coin yet.";
+  else if(!rSok)reason="Waiting for the first live prices and recent history for this coin.";
+  else{
+    const an=rS.an,P=rS.P,oth5=[];for(let j=0;j<n;j++)if(j!==selI&&ok5[j])oth5.push(mv5[j]);
+    const known=asrc[selI]!=="page", base=anchor[selI], mdn=rS.q[2];
+    pred={price:P,mean:rS.meanS,median:mdn,lo68:rS.q[1],hi68:rS.q[3],lo95:rS.q[0],hi95:rS.q[4],
+      target:known?Math.exp(base):null,target_src:asrc[selI],p_raw:rS.pRaw,p_cal:rS.pCal,
+      direction:known?(rS.pCal>=0.5?"UP":"DOWN"):null,confidence:known?Math.max(rS.pCal,1-rS.pCal):null,tau,
+      prior:!!an.prior,beta:an.beta,corr:an.corr,sigma_bps_per_min:an.sigma*Math.sqrt(60)*1e4,
+      coin_move_bps:mv5[selI]*1e4,others_move_bps:oth5.length?mean(oth5)*1e4:null,
+      drift_bps:an.drift*1e4,lead:an.lead,
+      pred_final_bps:(Math.log(mdn)-base)*1e4,signal:known&&(rS.pCal>=thr||rS.pCal<=1-thr)};
+    if(known&&q&&q.yes_ask!=null&&q.yes_bid!=null){pred.edge_yes=rS.pCal-q.yes_ask;pred.edge_no=(1-rS.pCal)-(1-q.yes_bid)}
+    predC[N-1]=Math.log(mdn/P); predA[N-1]=selAn?selAn.driftA*Math.min(1,tau/HZ):null;
+  }
+
+  // ---- final prediction for the selected coin (fires once per window, in the last finSec seconds)
+  let finalCall=null,newFinal=false;
+  if(tau<=finSec&&tau>=1){
+    for(let i=0;i<n;i++){const sym=syms[i];if(i===selI)continue;const r=res[sym],fk=wStart+"|"+sym;
+      if(!r||r.pCal==null||r.tick<tick-8||r.tau>finSec||finAll.has(fk)||!isFinite(r.anchorLn))continue;
+      finAll.add(fk);const side=r.pCal>=0.5?"UP":"DOWN";
+      pendFin.push(finRec({w:wStart,sym,side,p:side==="UP"?r.pCal:1-r.pCal,final:r.q[2],anchorLn:r.anchorLn,tau:r.tau,sel:false},quoteBy[sym],wEnd,tick))}
+  }
+  if(tau<=simAt&&tau>=1)for(const cp of SIM_CP){
+    if(!(tau<=simAt))continue;                       // from the checkpoint on, keep checking until confident enough
+    for(let i=0;i<n;i++){const sym=syms[i],r=res[sym],k=wStart+"|"+sym+"|"+cp;
+      if(!r||r.pCal==null||r.tick<tick-8||simFired.has(k)||!isFinite(r.anchorLn))continue;
+      if(simBusy.has(k))continue;
+      if(Math.max(r.pCal,1-r.pCal)<simMin){simWait.add(sym+"|"+cp);continue}
+      let q=quoteBy[sym];
+      if(!q||Math.abs(q.close-wEnd)>5||Date.now()/1000-q.ts>2||q.yes_ask==null){   // about to bet: get Kalshi's price right now, bet on the next second
+        simBusy.add(k);refreshMarket(sym,wEnd,sym===selected).catch(()=>{}).then(()=>simBusy.delete(k));continue}
+      const side=r.pCal>=0.5?"UP":"DOWN",m=mults(q.yes_ask,q.yes_bid,q.no_ask),mult=side==="UP"?m.up:m.dn;
+      if(!mult)continue;
+      simWait.delete(sym+"|"+cp);simFired.add(k);const tr=simTr(sym,cp);if(!(tr.bank>0))continue;     // busted and set to stay at $0
+      pendSim.push({w:wStart,sym,cp,at:simAt,side,p:side==="UP"?r.pCal:1-r.pCal,tau:r.tau,anchorLn:r.anchorLn,ask:q.yes_ask,bid:q.yes_bid,mult,stake:tr.bank})}
+  }
+  autoStep(tick,tau,wStart,wEnd);
+
+  // ---- best pick (once per window, at pickSec left): highest confidence x Kalshi multiplier across all coins
+  const newPicks=[];
+  for(const T of pickTimes){
+  if(pickFired.has(T)||tau>T||tau<1||n<1)continue;
+  if(tau<T-30){pickFired.add(T);continue}      // opened too late for this one
+  {
+    const rows=[];let fresh=0;
+    for(let i=0;i<n;i++){const sym=syms[i],r=res[sym],q=quoteBy[sym];
+      if(!r||r.pCal==null||r.tick<tick-8)continue;fresh++;
+      const side=r.pCal>=0.5?"UP":"DOWN",conf=side==="UP"?r.pCal:1-r.pCal;
+      const qOk=q&&q.yes_ask!=null&&Math.abs(q.close-wEnd)<=5&&(sim||Date.now()/1000-q.ts<=20);
+      const m=qOk?mults(q.yes_ask,q.yes_bid,q.no_ask):null,mult=m?(side==="UP"?m.up:m.dn):null;
+      rows.push({sym,side,conf,mult,ev:mult?conf*mult-1:null,score:mult?Math.pow(conf,2)*mult:null})}
+    if(fresh>=n||tau<=T-6){
+      pickFired.add(T);
+      const ok=rows.filter(x=>x.conf>=simMin&&x.mult).sort((a,b)=>b.score-a.score);
+      const rest=rows.slice().sort((a,b)=>b.conf-a.conf);
+      const pkx={w:wStart,T,tau,min:simMin,top:ok[0]||null,more:ok.slice(1,3),closest:ok.length?null:rest[0]||null};curPicks.push(pkx);newPicks.push(pkx);if(pkx.top)pendPick.push({w:wStart,T,sym:pkx.top.sym,side:pkx.top.side,conf:pkx.top.conf,mult:pkx.top.mult,anchorLn:res[pkx.top.sym].anchorLn})}
+  }}
+  if(pred&&tau<=finSec&&tau>=1){
+    finalCall={w:wStart,sym:selected,tau,final:pred.median,lo:pred.lo68,hi:pred.hi68,target:pred.target,price:pred.price,
+      side:pred.direction,p:pred.confidence};
+    const fk=wStart+"|"+selected;
+    if(!finFired.has(fk)){finFired.add(fk);newFinal=true;
+      if(pred.target!=null)pendFin.push(finRec({w:wStart,sym:selected,side:pred.direction,p:pred.confidence,final:pred.median,anchorLn:anchor[selI],tau,sel:true},quoteBy[selected]||quote,wEnd,tick))}
+  }
+
+  // ---- chart (past) + projection (future)
+  let chart=null;
+  if(selI>=0&&N>1){
+    const nView=Math.min(chartSpan+1,N),s0=N-nView,stride=Math.max(1,Math.ceil(nView/900));
+    const ff=arr=>{for(let i=s0;i<N;i++)if(isFinite(arr[i]))return arr[i];return NaN};
+    const baseC=ff(hist[selected]),bases=syms.map(s=>ff(hist[s])),baseP=Math.exp(baseC);
+    const idxs=[];for(let i=s0;i<N;i+=stride)idxs.push(i);if(idxs[idxs.length-1]!==N-1)idxs.push(N-1);
+    const xs=[],coin=[],avgL=[],pc=[],pa=[];
+    for(const i of idxs){
+      xs.push(i-(N-1));
+      const v=hist[selected][i],c=isFinite(v)?Math.exp(v):null;
+      let sum=0,cnt=0;syms.forEach((s,j)=>{if(j===selI||!isFinite(bases[j]))return;const x=hist[s][i];if(isFinite(x)){sum+=x-bases[j];cnt++}});
+      const a=(cnt&&isFinite(baseP))?baseP*Math.exp(sum/cnt):null;
+      coin.push(c);avgL.push(a);
+      pc.push(c!=null&&predC[i]!=null?c*Math.exp(predC[i]):null);
+      pa.push(a!=null&&predA[i]!=null?a*Math.exp(predA[i]):null);
+    }
+    const fut=Math.min(tau,Math.max(chartSpan*2,120));
+    let fan=null,avgF=null,fin=null;
+    if(pred&&rS.fan){
+      fan={t:rS.fan.t,q:rS.fan.q.map(r=>r.map(Math.exp))};
+      const la=avgL[avgL.length-1];
+      if(la!=null&&selAn){const e=la*Math.exp(selAn.driftA*Math.min(1,tau/HZ));avgF=[[0,la],[Math.min(HZ,tau),e],[tau,e]]}
+      fin={tau,c:rS.q[2],lo:rS.q[1],hi:rS.q[3],a:avgF?avgF[2][1]:null};
+    }
+    chart={xs,coin,avg:avgL,pcoin:pc,pavg:pa,span:chartSpan,fut,have:N-1,tick,wStart,wEnd,src:asrc[selI],
+      tY:isFinite(anchor[selI])?Math.exp(anchor[selI]):null,fan,avgF,fin,sel:selected};
+  }
+
+  // ---- signals + track record
+  const signals=[];
+  for(const s of syms){const r=res[s];if(!r||tick-r.tick>8||r.pCal==null)continue;
+    const side=r.pCal>=thr?"UP":r.pCal<=1-thr?"DOWN":null;
+    if(side)signals.push({w:wStart,sym:s,side,p:side==="UP"?r.pCal:1-r.pCal,raw:side==="UP"?r.pRaw:1-r.pRaw,tau,final:r.q[2],lo:r.q[1],hi:r.q[3],target:Math.exp(r.anchorLn),price:r.P,
+      yes_ask:s===selected&&q?q.yes_ask:null,yes_bid:s===selected&&q?q.yes_bid:null,no_ask:s===selected&&q?q.no_ask:null})}
+  const done=sigHist, hits=done.filter(x=>x.hit).length;
+  const recent=pendSig.map(x=>({...x,pending:true})).concat(done.slice(-12)).slice(-12).reverse();
+  const track={n:done.length,hits,avgP:done.length?mean(done.map(x=>x.p)):null,pending:pendSig.length,recent,fin:{n:finHist.filter(x=>x.sel!==false).length,hits:finHist.filter(x=>x.sel!==false&&x.hit).length}};
+  const bins=calibBins();
+
+  return {tick,elapsed:el,remaining:tau,phase:active?"active":"watch",to_active:Math.max(0,MARK-el),
+    selected,coins:rows,summary,pred,reason,quote:q,chart,live:valid.filter(Boolean).length,total:n,sim,
+    srcCount:(()=>{const o={};for(const s of syms)if(curSrc[s])o[curSrc[s]]=(o[curSrc[s]]||0)+1;return o})(),
+    signals,newSignal,finalCall,newFinal,picks:curPicks,newPicks,autoAlert:curAutoAlert,newAutoAlert:(()=>{const v=autoNewFlag;autoNewFlag=false;return v})(),track,calib:{a:platt.a,b:platt.b,n:calSamples.length,bins},thr};
+}
+
+/* ============================ rendering ============================ */
+const fx=(v,d)=>(v!=null&&isFinite(v))?v.toFixed(d):"–";
+const axf=(v,range)=>{const d=Math.max(0,Math.min(8,Math.ceil(-Math.log10(Math.max(range,1e-12)/4))+1));return v.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d})};
+const f=p=>p==null?"–":p>=1000?p.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}):p>=1?p.toFixed(4):p.toFixed(6);
+const b=v=>v==null?"–":(v>=0?"+":"")+v.toFixed(1);
+const c=v=>v==null?"":v>=0?"up":"dn";
+const mmss=s=>String(Math.floor(s/60)).padStart(2,"0")+":"+String(Math.floor(s%60)).padStart(2,"0");
+const pc=v=>v==null?"–":(v*100).toFixed(1)+"%";
+const card=(k,v,s,cl)=>`<div class="card"><div class="k">${k}</div><div class="v ${cl||""}">${v}</div><div class="s">${s||""}</div></div>`;
+const COL={coin:"#4c8dff",avg:"#f5a524",pcoin:"#ec4899",pavg:"#2dd4bf"};
+let actx=null;
+let volMul=ls.get("k15vol",1);
+function tone(freq,at,dur,type,vol){vol=Math.max(0.0001,vol*volMul);try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();
+  const o=actx.createOscillator(),g=actx.createGain(),t0=actx.currentTime+at;o.type=type;o.frequency.value=freq;
+  g.gain.setValueAtTime(0.0001,t0);g.gain.exponentialRampToValueAtTime(vol,t0+0.02);g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+  o.connect(g);g.connect(actx.destination);o.start(t0);o.stop(t0+dur+0.02)}catch(e){}}
+// "sig" = two quick square-wave beeps (97% signal). "fin" = rising four-note chime (final prediction).
+function unlockAudio(){try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();if(actx.state==="suspended")actx.resume()}catch(e){}}
+["pointerdown","keydown","touchstart"].forEach(ev=>window.addEventListener(ev,unlockAudio,{passive:true}));
+function beep(kind,delay){unlockAudio();const d=delay||0;
+  if(kind==="fin")[[523,0],[659,.2],[784,.4],[1047,.6]].forEach(([f_,t])=>tone(f_,d+t,.32,"sine",.18));
+  else if(kind==="auto")[[523,0],[784,.14],[1047,.28]].forEach(([f_,t])=>tone(f_,d+t,.18,"sine",.2));
+  else if(kind==="pick")[[659,0],[880,.15],[659,.3],[1175,.45]].forEach(([f_,t])=>tone(f_,d+t,.2,"triangle",.16));
+  else [[880,0],[880,.22]].forEach(([f_,t])=>tone(f_,d+t,.16,"square",.09))}
+
+function draw(ch){
+  const cv=$("cv"),dpr=window.devicePixelRatio||1,cw=cv.clientWidth||1000,chh=cv.clientHeight||340;
+  if(cv.width!==Math.round(cw*dpr)){cv.width=Math.round(cw*dpr);cv.height=Math.round(chh*dpr)}
+  const x=cv.getContext("2d"); x.setTransform(dpr,0,0,dpr,0,0); x.clearRect(0,0,cw,chh);
+  if(!ch){$("lg").innerHTML="";$("cvnote").textContent="Waiting for prices…";return}
+  const fg=getComputedStyle(document.body).color, mut="#8e9099", span=ch.span, fut=ch.fut, tick=ch.tick, tot=span+fut;
+  const padL=84,padR=100,padT=14,padB=24,W=cw-padL-padR,H=chh-padT-padB;
+  const vals=[].concat(ch.coin,showAvg?ch.avg:[],ch.pcoin,showPavg?ch.pavg:[]).filter(v=>v!=null);
+  if(ch.tY!=null)vals.push(ch.tY);
+  if(ch.fan)ch.fan.t.forEach((t,k)=>{if(t<=fut)vals.push(ch.fan.q[k][0],ch.fan.q[k][4])});
+  if(ch.avgF&&showPavg)ch.avgF.forEach(([t,v])=>{if(t<=fut)vals.push(v)});
+  if(!vals.length){$("cvnote").textContent="Waiting for data…";return}
+  let lo=Math.min(...vals),hi=Math.max(...vals); {const mid=(hi+lo)/2,ms=Math.abs(mid)*4e-4;if(hi-lo<ms){hi=mid+ms/2;lo=mid-ms/2}} const pd=(hi-lo)*0.08;hi+=pd;lo-=pd;
+  {let nowV=null;for(let i=ch.coin.length-1;i>=0;i--)if(ch.coin[i]!=null&&isFinite(ch.coin[i])){nowV=ch.coin[i];break}
+   if(nowV!=null){const h=Math.max(hi-nowV,nowV-lo);hi=nowV+h;lo=nowV-h}}      // auto: the current price stays in the middle
+  if(yMan){lo=yMan.lo;hi=yMan.hi}
+  lastY={lo,hi};
+  const px=t=>padL+(t+span)/tot*W, py=v=>padT+(1-(v-lo)/(hi-lo))*H;
+  x.font="11px system-ui,sans-serif";x.textBaseline="middle";
+  // last-5-minute zones of each 15-minute window (past and future)
+  x.fillStyle="rgba(128,128,160,.11)";
+  for(let w=Math.floor((tick-span)/900)*900-900;w<=tick+fut;w+=900){
+    const a=Math.max(w+600-tick,-span),e=Math.min(w+900-tick,fut); if(e>a)x.fillRect(px(a),padT,px(e)-px(a),H)}
+  x.lineWidth=1;
+  for(let k=0;k<=4;k++){const v=lo+(hi-lo)*k/4,y=py(v);x.strokeStyle="rgba(128,128,150,.18)";x.beginPath();x.moveTo(padL,y);x.lineTo(padL+W,y);x.stroke();
+    x.fillStyle=mut;x.textAlign="right";x.fillText("$"+axf(v,hi-lo),padL-6,y)}
+  for(let k=0;k<=4;k++){const t=-span+tot*k/4,d=new Date((tick+t)*1000);
+    const lab=tot<=900?d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit"}):d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+    x.fillStyle=mut;x.textAlign=k===0?"left":k===4?"right":"center";x.fillText(lab,px(t),chh-8)}
+  x.save();x.beginPath();x.rect(padL,padT-14,W+2,H+14);x.clip();
+  // target / window-open line for this window
+  if(ch.tY!=null){const x0=Math.max(ch.wStart-tick,-span),x1=Math.min(ch.wEnd-tick,fut);
+    x.setLineDash([5,4]);x.strokeStyle=fg;x.globalAlpha=.6;x.lineWidth=1.2;x.beginPath();x.moveTo(px(x0),py(ch.tY));x.lineTo(px(x1),py(ch.tY));x.stroke();x.globalAlpha=1;x.setLineDash([]);
+    x.fillStyle=mut;x.textAlign="left";x.fillText(ch.src==="page"?"price when page opened":"target",px(x0)+4,py(ch.tY)-8)}
+  // now + window end markers
+  x.strokeStyle="rgba(128,128,150,.7)";x.lineWidth=1;x.beginPath();x.moveTo(px(0),padT);x.lineTo(px(0),padT+H);x.stroke();
+  x.fillStyle=mut;x.textAlign="center";x.fillText("now",px(0),padT-4);
+  const tEnd=ch.wEnd-tick;
+  if(tEnd>0&&tEnd<=fut){x.setLineDash([2,3]);x.beginPath();x.moveTo(px(tEnd),padT);x.lineTo(px(tEnd),padT+H);x.stroke();x.setLineDash([]);x.fillText("window ends",px(tEnd),padT-4)}
+  // projected fan for the selected coin (68% and 95%)
+  if(ch.fan){
+    const pts=ch.fan.t.map((t,k)=>k).filter(k=>ch.fan.t[k]<=fut);
+    const band=(a,bq,col)=>{x.fillStyle=col;x.beginPath();pts.forEach((k,j)=>{const X=px(ch.fan.t[k]),Y=py(ch.fan.q[k][a]);j?x.lineTo(X,Y):x.moveTo(X,Y)});
+      for(let j=pts.length-1;j>=0;j--){const k=pts[j];x.lineTo(px(ch.fan.t[k]),py(ch.fan.q[k][bq]))}x.closePath();x.fill()};
+    band(0,4,"rgba(236,72,153,.10)");band(1,3,"rgba(236,72,153,.20)");
+    x.setLineDash([6,4]);x.strokeStyle=COL.pcoin;x.lineWidth=1.8;x.beginPath();pts.forEach((k,j)=>{const X=px(ch.fan.t[k]),Y=py(ch.fan.q[k][2]);j?x.lineTo(X,Y):x.moveTo(X,Y)});x.stroke();x.setLineDash([]);
+  }
+  if(ch.avgF&&showPavg){x.setLineDash([6,4]);x.strokeStyle=COL.pavg;x.lineWidth=1.8;x.beginPath();let st=false;
+    ch.avgF.forEach(([t,v])=>{const tt=Math.min(t,fut),X=px(tt),Y=py(v);st?x.lineTo(X,Y):x.moveTo(X,Y);st=true});x.stroke();x.setLineDash([])}
+  const line=(arr,col,dash,w)=>{x.setLineDash(dash);x.strokeStyle=col;x.lineWidth=w;x.lineJoin="round";x.beginPath();let st=false;
+    arr.forEach((v,i)=>{if(v==null){st=false;return}const X=px(ch.xs[i]),Y=py(v);st?x.lineTo(X,Y):x.moveTo(X,Y);st=true});x.stroke();x.setLineDash([])};
+  if(showPavg)line(ch.pavg,COL.pavg,[7,4],1.6); line(ch.pcoin,COL.pcoin,[7,4],1.8);
+  if(showAvg)line(ch.avg,COL.avg,[],2); line(ch.coin,COL.coin,[],2.2);
+  x.restore();
+  // target price label on the right edge
+  if(ch.tY!=null){
+    let ty=py(ch.tY),arrow="";if(ty<padT+14){ty=padT+14;arrow=" \u25B2"}else if(ty>padT+H-14){ty=padT+H-14;arrow=" \u25BC"}
+    const bx=padL+W+4,bw=padR-8,bh=30;
+    x.strokeStyle=fg;x.globalAlpha=.7;x.lineWidth=1.2;x.beginPath();x.moveTo(padL+W,py(ch.tY)<padT||py(ch.tY)>padT+H?ty:py(ch.tY));x.lineTo(bx,ty);x.stroke();x.globalAlpha=1;
+    x.fillStyle=fg;x.textAlign="left";x.font="10px system-ui,sans-serif";x.fillText((ch.src==="manual"?"your target":"target")+arrow,bx+6,ty-7);
+    x.font="bold 11px system-ui,sans-serif";x.fillText("$"+f(ch.tY),bx+6,ty+7);x.font="11px system-ui,sans-serif";
+  }
+  // predicted finish markers (only when the window end is inside the view)
+  if(ch.fin&&ch.fin.tau<=fut){[[ch.fin.c,COL.pcoin],[showPavg?ch.fin.a:null,COL.pavg]].forEach(([v,cl])=>{if(v==null)return;
+    x.fillStyle=cl;x.beginPath();x.arc(px(ch.fin.tau),py(v),4.5,0,7);x.fill();x.textAlign="right";x.fillText("$"+f(v),px(ch.fin.tau)-8,py(v)-9)})}
+  $("lg").innerHTML=`<span><b style="color:${COL.coin}">━</b> ${ch.sel} actual</span>${showAvg?`<span><b style="color:${COL.avg}">━</b> average of other coins</span>`:""}<span><b style="color:${COL.pcoin}">╍</b> ${ch.sel} predicted</span>${showPavg?`<span><b style="color:${COL.pavg}">╍</b> average, predicted</span>`:""}`;
+  const note=[];
+  if(ch.have<span)note.push("Only "+mmss(Math.floor(ch.have))+" of history so far.");
+  if(ch.fan&&ch.fin&&ch.fin.tau>fut)note.push("Window ends in "+mmss(ch.fin.tau)+" (beyond this view).");
+  $("cvnote").textContent=note.join(" ");
+}
+
+function render(s){
+  if(!built){built=true;$("sel").onchange=e=>{selected=e.target.value;quote=null;yMan=null;try{localStorage.setItem("k15sel",selected)}catch(_){}tickNow()}}
+  const selKey=s.coins.map(r=>r.sym+(r.price!=null?"1":"0")).join();
+  if(selKey!==window.__selKey){window.__selKey=selKey;
+    $("sel").innerHTML=s.coins.map(r=>`<option value="${r.sym}">${r.sym}${r.price!=null?"":" – No data"}</option>`).join("")}
+  $("sel").value=s.selected;
+  $("clock").textContent="Time left "+mmss(s.remaining);
+  $("phase").textContent=s.phase==="active"?"LAST 5 MIN – predicting":"Predicting · last 5 minutes start in "+mmss(s.to_active);
+  const fe=$("feed");fe.textContent=s.live+"/"+s.total+" coins live"+(s.sim?" (SIMULATED "+SIM_SPEED+"x)":Object.keys(s.srcCount).length?" · "+Object.entries(s.srcCount).map(([k,v])=>NAMES[k]+" "+v).join(", "):"");fe.className="pill "+(s.live>0?"ok":"bad");
+  {const sv=$("sav");sv.textContent=savState==="ok"?"Data folder: saving":savState==="off"?(savErr?"Data folder: "+savErr:"Data folder: helper not running (saved in browser only)"):savState==="err"?"Data folder: save failed ("+savErr+"), will retry":"Data folder: checking…";sv.title=savErr?("Reason: "+savErr):(helperPage?"Page served from: "+helperPage+" · ":"")+"Signal, final-call and calibration data are saved to the data folder next to kalshi_helper.py";sv.className="pill "+(savState==="ok"?"ok":savState==="checking"?"":"bad")}
+  $("kal").textContent="Kalshi target: "+(kalshiStatus==="live"?"Live":kalshiStatus==="unreachable"?"Unreachable":"–");
+
+  // popups (left side): only for the selected coin. Other coins still feed the track record and calibration.
+  const sg_=$("sig"), shown=s.signals.filter(x=>x.sym===s.selected&&!dismissed.has(x.w+"|"+x.sym+"|"+x.side));
+  const fc=(s.finalCall&&s.finalCall.sym===s.selected&&!dismissed.has("fin|"+s.finalCall.w+"|"+s.finalCall.sym))?s.finalCall:null;
+  let html="";
+  if(fc)html+=`<div class="sigrow fin"><button class="x" data-k="fin|${fc.w}|${fc.sym}" title="dismiss">&times;</button>
+      <b>FINAL PREDICTION · ${fc.sym} · ${mmss(fc.tau)} left</b>
+      <span class="big">$${f(fc.final)}</span>
+      <span class="${fc.side==="UP"?"up":"dn"}"><b>${fc.side?(fc.side==="UP"?"Finishes ABOVE target":"Finishes BELOW target")+" · "+pc(fc.p):"Target not known"}</b></span>
+      <span>68% range $${f(fc.lo)} – $${f(fc.hi)}</span>
+      ${fc.target!=null?`<span>Target $${f(fc.target)} · now $${f(fc.price)}</span>`:`<span>Now $${f(fc.price)}</span>`}</div>`;
+  const pks=(s.picks||[]).filter(x=>!dismissed.has("pick|"+x.w+"|"+x.T));
+  for(const pk of pks){const t=pk.top,rw=x=>`${x.sym} ${x.side==="UP"?"UP":"DOWN"} · ${pc(x.conf)} · ${mx(x.mult)} · ${(x.ev>=0?"+":"")+Math.round(x.ev*100)}%`;
+    html+=`<div class="sigrow pick"><button class="x" data-k="pick|${pk.w}|${pk.T}" title="dismiss">&times;</button>
+      <b>BEST PICK · ${mmss(pk.T)} left</b>`+(t?`<span class="big ${t.side==="UP"?"up":"dn"}">${t.sym} ${t.side==="UP"?"ABOVE":"BELOW"} target</span>
+      <span>Confidence <b>${pc(t.conf)}</b> · Kalshi <b>${mx(t.mult)}</b></span>
+      <span>Expected return ${(t.ev>=0?"+":"")+Math.round(t.ev*100)}% per $1</span>`+(t.sym!==s.selected?`<button class="swbtn" data-sw="${t.sym}" data-k="pick|${pk.w}|${pk.T}">Switch to ${t.sym}</button>`:`<span style="color:var(--mut)">Already viewing ${t.sym}</span>`)+pk.more.map(x=>`<span style="color:var(--mut)">Next: ${rw(x)}</span>`).join("")
+      :`<span class="big">No coin at ${pc(pk.min)}+</span>`+(pk.closest?`<span>Closest: ${pk.closest.sym} ${pk.closest.side==="UP"?"ABOVE":"BELOW"} · ${pc(pk.closest.conf)}</span>`:"")+`<span style="color:var(--mut)">Waiting for confidence</span>`)+`</div>`}
+  const aa=(s.autoAlert&&!dismissed.has("auto|"+s.autoAlert.w))?s.autoAlert:null;
+  if(aa)html+=`<div class="sigrow auto"><button class="x" data-k="auto|${aa.w}" title="dismiss">&times;</button>
+      <b>AUTO MODE BET · ${mmss(aa.tau)} left</b>`+aa.bets.map(b=>`<span class="big ${b.side==="UP"?"up":"dn"}">${b.sym} ${b.side==="UP"?"ABOVE":"BELOW"} target</span>
+      <span>Stake <b>${$$(b.stake)}</b> @ <b>${mx(b.mult)}</b> · Confidence ${pc(b.conf)}</span>`).join("")+
+      (aa.bets[0].sym!==s.selected?`<button class="swbtn" data-sw="${aa.bets[0].sym}" data-k="auto|${aa.w}">Switch to ${aa.bets[0].sym}</button>`:"")+`</div>`;
+  html+=shown.map(x=>`<div class="sigrow ${x.side==="UP"?"up":"dn"}"><button class="x" data-k="${x.w}|${x.sym}|${x.side}" title="dismiss">&times;</button>
+      <b>${Math.round(s.thr*1000)/10}% SIGNAL</b>
+      <span class="big ${x.side==="UP"?"up":"dn"}">${x.sym} ${x.side==="UP"?"ABOVE":"BELOW"} target</span>
+      <span>Final prediction: <b>$${f(x.final)}</b></span>
+      <span>68%: $${f(x.lo)} – $${f(x.hi)}</span>
+      <span>Target $${f(x.target)} · now $${f(x.price)}</span>
+      <span>Model ${pc(x.p)} (raw ${pc(x.raw)}) · ${mmss(x.tau)} left</span>
+      ${x.yes_ask!=null?(()=>{const m=mults(x.yes_ask,x.yes_bid,x.no_ask);return `<span>Kalshi live: UP <b>${mx(m.up)}</b> · DOWN <b>${mx(m.dn)}</b></span>`})():""}</div>`).join("");
+  if(html){sg_.style.display="block";if(html!==lastSigHtml){sg_.innerHTML=html;lastSigHtml=html}}
+  else{sg_.style.display="none";if(lastSigHtml){sg_.innerHTML="";lastSigHtml=""}}
+  if(soundOn){if(s.newSignal&&shown.length)beep("sig");if(s.newFinal&&fc)beep("fin",s.newSignal&&shown.length?0.7:0);if(s.newAutoAlert&&aa)beep("auto",(s.newSignal&&shown.length?0.7:0)+(s.newFinal&&fc?1.0:0)+(s.newPicks&&s.newPicks.length&&pks.length?1.0:0));if(s.newPicks&&s.newPicks.length&&pks.length)beep("pick",(s.newSignal&&shown.length?0.7:0)+(s.newFinal&&fc?1.0:0))}
+
+  const p=s.pred,q=s.quote,m=$("msg");
+  const noFeed=!s.sim&&s.live===0&&Date.now()-bootMs>12000;
+  m.style.display=((s.reason&&!p)||noFeed)?"block":"none";
+  m.textContent=noFeed?"No live prices are arriving. Your browser or network may be blocking the exchange connections (ad blocker, VPN, firewall, or opening the file in a restricted viewer). If you're viewing this inside a preview window, download the file and open it in its own Chrome/Edge/Firefox tab (the address bar should start with file:///). Open 'Data sources' below to see exactly what failed, or press Simulate to test the page.":(s.reason||"");
+  if(noFeed&&!window.__dopen){window.__dopen=1;$("diagBox").open=true}
+  let h="";
+  renderTop(s);
+  if(p){
+    const sigNow=p.signal;
+    if(p.target!=null){
+      h+=card(Math.round(s.thr*1000)/10+"% signal",sigNow?(p.direction+" – FIRED"):"none yet",
+        `Model: ${p.direction} ${pc(p.confidence)} (P(Up) ${pc(p.p_cal)}, raw ${pc(p.p_raw)}) · ${p.tau}s left`+(sigNow?"":` · needs ≥ ${Math.round(s.thr*1000)/10}%`),sigNow?(p.direction==="UP"?"up":"dn"):"");
+    } else {
+      h+=card("Now",f(p.price),"Kalshi's target isn't known for this window (page opened mid-window).");
+      h+=card("Signal","–","Signals need the real target; they start next window.");
+    }
+    h+=card("Coin vs others (last 5 min, rolling)",b(p.coin_move_bps)+" vs "+b(p.others_move_bps)+" bps","");
+    const L=p.lead;
+    h+=p.prior?card("Lead-lag edge","warming up",""):
+      card("Lead-lag edge",L?`t = ${L.t.toFixed(1)}`:"–","");
+    if(q&&q.yes_ask!=null&&q.yes_bid!=null&&p.edge_yes!=null){const m=mults(q.yes_ask,q.yes_bid,q.no_ask);
+      h+=card("Kalshi live multipliers",`<div>UP ${mx(m.up)}</div><div>DOWN ${mx(m.dn)}</div>`,"")}
+  }
+  $("cards").innerHTML=h; lastCh=s.chart; draw(s.chart);
+
+  let t="<tr><th>Coin</th><th>Price</th><th>Target</th><th>Since start (bps)</th><th>"+(s.phase==="active"?"Since 10:00 mark (bps)":"Last 5 min, rolling (bps)")+"</th><th>Vs avg of all (bps)</th><th>P(Up)</th></tr>";
+  t+=s.coins.map(r=>{const hot=r.p_up!=null&&(r.p_up>=s.thr||r.p_up<=1-s.thr);
+    return `<tr class="${r.sym===s.selected?"sel":""}"${r.price==null?` style="opacity:.45" title="no price from any exchange"`:""}><td>${r.sym}</td><td>${f(r.price)}</td><td title="${r.tsrc==="manual"?"manually entered":r.tsrc==="kalshi"?"Kalshi strike":r.tsrc==="feed"?"price at window open":r.tsrc==="page"?"price when page opened":""}">${f(r.target)}${r.tsrc==="page"?"*":""}</td><td class="${c(r.move_start_bps)}">${b(r.move_start_bps)}</td><td class="${c(r.move_mark_bps)}">${b(r.move_mark_bps)}</td><td class="${c(r.vs_avg_bps)}">${b(r.vs_avg_bps)}</td><td class="${hot?"hot "+(r.p_up>=0.5?"up":"dn"):""}">${r.p_up==null?"–":pc(r.p_up)}</td></tr>`}).join("");
+  t+=`<tr><td><b>Average (all)</b></td><td></td><td></td><td>${b(s.summary.avg_all_start_bps)}</td><td>${b(s.summary.avg_all_mark_bps)}</td><td></td><td></td></tr>`;
+  t+=`<tr><td><b>Average (ex-selected)</b></td><td></td><td></td><td>${b(s.summary.avg_others_start_bps)}</td><td>${b(s.summary.avg_others_mark_bps)}</td><td></td><td></td></tr>`;
+  $("tbl").innerHTML=t;
+
+  // track record
+  const T=s.track;
+  let tr=`<div class="v">${T.n?(T.hits+" / "+T.n+" correct"):"No settled signals yet"}</div><div class="s">${T.n?`Hit rate ${(100*T.hits/T.n).toFixed(1)}% (model said ${(100*T.avgP).toFixed(1)}%)`:""}${T.pending?` · ${T.pending} live this window`:""}</div>`;
+  tr+=`<div class="s" style="margin-top:6px">Final calls: ${T.fin&&T.fin.n?T.fin.hits+" / "+T.fin.n+" correct ("+(100*T.fin.hits/T.fin.n).toFixed(1)+"%)":"None scored yet"}</div>`;
+  if(T.recent.length){tr+='<table class="mini"><tr><th>Window</th><th>Coin</th><th>Call</th><th>Model</th><th>Kalshi multiplier</th><th>Result</th></tr>'+
+    T.recent.map(x=>`<tr><td>${new Date((x.w+900)*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</td><td>${x.sym}</td><td>${x.side}</td><td>${pc(x.p)} @${mmss(x.tau)}</td><td>${mx(sideMult(x))}</td><td class="${x.pending?"":x.hit?"hit":"miss"}">${x.pending?"LIVE":x.hit?"HIT":"MISS"}</td></tr>`).join("")+"</table>"}
+  $("track").innerHTML=tr;
+  renderSim();
+  const C=s.calib;
+  let cb=`<div class="s">${C.n} scored samples</div>`;
+  cb+='<table class="mini"><tr><th>Confidence</th><th>Samples</th><th>Model said</th><th>Actually right</th></tr>'+
+    C.bins.map(x=>`<tr><td>${Math.round(x.lo*100)}–${x.hi>1?100:Math.round(x.hi*100)}%</td><td>${x.n}</td><td>${x.pred==null?"–":pc(x.pred)}</td><td>${x.acc==null?"–":pc(x.acc)}</td></tr>`).join("")+"</table>";
+  cb+=`<div class="s" style="margin-top:8px"><button id="clr" style="padding:2px 8px;font-size:12px">Clear saved data</button></div>`;
+  $("calib").innerHTML=cb;
+  renderDiag(s);
+}
+function renderTop(s){
+  const sr=s.coins.find(r=>r.sym===s.selected),p=s.pred;
+  if(sr){
+    const srcTxt={kalshi:"Kalshi's exact strike",feed:"estimate, not Kalshi's strike",page:"price when page opened, not Kalshi's strike"}[sr.tsrc]||"";
+    const d=(sr.target&&sr.price)?(sr.price>=sr.target?"above":"below")+" target by "+Math.abs((sr.price/sr.target-1)*1e4).toFixed(1)+" bps ($"+f(Math.abs(sr.price-sr.target))+")":"";
+    $("tgtK").textContent="Target price · "+s.selected;
+    $("tgtV").textContent=sr.target!=null?"$"+f(sr.target):"–";
+    $("tgtV").className="v "+(sr.target&&sr.price?(sr.price>=sr.target?"up":"dn"):"");
+    const kh=(sr.tsrc!=="kalshi"&&sr.tsrc!=="manual"&&SRC.kalshi.err)?"<br><span style=\"color:var(--dn)\">Couldn't reach Kalshi ("+SRC.kalshi.err+"), so this is an estimate.</span>":"";
+    $("tgtS").innerHTML=[srcTxt,d?"Now $"+f(sr.price)+" · "+d:""].filter(Boolean).join("<br>")+kh;
+    $("tgtAuto").style.display=sr.tsrc==="manual"?"":"none";
+  }
+  const fc=$("finCard");
+  if(p){
+    fc.className="card final "+(p.direction==="UP"?"up":p.direction==="DOWN"?"dn":"");
+    fc.innerHTML=`<div class="k">Final prediction · ${s.selected} · ${mmss(p.tau)} left</div>
+      <div class="v">$${f(p.median)} <span style="font-size:16px">${p.direction?(p.direction==="UP"?"finishes ABOVE target":"finishes BELOW target")+" · "+pc(p.confidence):"(target not known)"}</span></div>
+      <div class="s">68% range $${f(p.lo68)} – $${f(p.hi68)} · 95% range $${f(p.lo95)} – $${f(p.hi95)}</div>`;
+  } else {fc.className="card final";fc.innerHTML=`<div class="k">Final prediction · ${s.selected}</div><div class="v">–</div><div class="s">${s.reason||"Waiting for data…"}</div>`}
+}
+function renderDiag(s){
+  const now=nowS(), st=k=>{const x=SRC[k];return `<tr><td>${NAMES[k]}</td><td>${x.ws}</td><td>${x.rest}</td><td>${x.msgs}</td><td>${x.last?Math.round(now-x.last)+"s ago":"–"}</td><td style="text-align:left;color:var(--mut)">${x.err||""}</td></tr>`};
+  const framed=(()=>{try{return window.top!==window.self}catch(e){return true}})(), proto=location.protocol;
+  let t=`<div class="s" style="margin-bottom:8px">Page opened as: <b>${proto}//${location.host||"(local file)"}</b> · ${framed?'<span class="miss"><b>inside a frame/preview</b> – browsers block exchange connections here; download the file and open it in its own browser tab':'<span class="hit">own browser tab</span>'}</span></div>`;
+  t+='<table class="mini"><tr><th>Source</th><th>WebSocket</th><th>REST</th><th>Updates</th><th>Last</th><th style="text-align:left">Last error</th></tr>'+ORDER.concat(["kalshi"]).map(st).join("")+"</table><br>";
+  t+='<table class="mini"><tr><th>Coin</th><th>Using</th>'+ORDER.map(k=>`<th>${NAMES[k]}</th>`).join("")+'<th>History loaded from</th></tr>';
+  for(const c of syms){const o=PX[c]||{};
+    t+=`<tr><td>${c}</td><td>${curSrc[c]?NAMES[curSrc[c]]:"<span class=miss>none</span>"}</td>`+ORDER.map(k=>`<td>${o[k]?f(o[k].px):"–"}</td>`).join("")+`<td>${BF[c]&&BF[c].n?NAMES[BF[c].src]+" ("+BF[c].n+" min)":"<span class=miss>none</span> "+((BF[c]&&BF[c].err)||"")}</td></tr>`}
+  t+="</table>";
+  if(excluded.length)t+=`<div class="s" style="margin-top:8px">Ignored Kalshi markets that are not tradable coins on any exchange: ${excluded.join(", ")}</div>`;
+  $("diag").innerHTML=t;
+}
+function tickNow(){if(sim&&simVT===null)return;const s=step(sim?simVT:Math.floor(Date.now()/1000)); if(s)render(s)}
+
+/* ============================ auto mode ============================ */
+function autoSave(){if(!sim)ls.set("k15auto",autoSt)}
+const abin=c=>{let i=0;while(i<AB.length-2&&c>=AB[i+1])i++;return i}, atb=t=>t>150?0:t>75?1:2;
+// learned estimate of the real win chance: the model's number, pulled toward what actually happened in similar situations
+function autoEst(sym,conf,tau){
+  const L=autoSt.learn[atb(tau)+"|"+abin(conf)]||{n:0,w:0},K=25,a=K*conf+L.w,b=K*(1-conf)+(L.n-L.w),m=a/(a+b),sd=Math.sqrt(m*(1-m)/(a+b+1));
+  const C=autoSt.coin[sym]||{n:0,w:0,e:0},adj=(C.w-C.e)/(C.n+60);
+  return {p:clamp(m+adj,0.01,0.999),lb:clamp(m+adj-sd,0.01,0.999),n:L.n}}
+// learn from the real saved history too (final calls and 97% signals from before auto mode existed), once
+function autoSeed(){
+  if(sim||autoSt.seeded)return;
+  const rows=[].concat(finHist,sigHist).filter(x=>x&&x.p!=null&&x.tau!=null&&x.hit!=null&&x.p>=0.5&&x.tau>=5);
+  if(!rows.length)return;
+  const cut=autoSt.seedW||Infinity;
+  for(const x of rows){if(x.w>=cut)continue;const k=atb(x.tau)+"|"+abin(x.p),L=autoSt.learn[k]=autoSt.learn[k]||{n:0,w:0};L.n++;L.w+=x.hit?1:0;
+    if(x.p>=0.8&&x.sym){const C=autoSt.coin[x.sym]=autoSt.coin[x.sym]||{n:0,w:0,e:0};C.n++;C.w+=x.hit?1:0;C.e+=x.p}}
+  autoSt.seeded=true;autoSave();
+}
+setTimeout(autoSeed,25000);
+function autoStep(tick,tau,wStart,wEnd){
+  if(tau<1)return;
+  if(!sim&&autoSt.seedW==null){autoSt.seedW=wStart}
+  // learning data: every coin at several points of each window, whether or not a bet is placed
+  for(const sym of syms){const r=res[sym];if(!r||r.pCal==null||r.tick<tick-8||!isFinite(r.anchorLn))continue;
+    const side=r.pCal>=0.5?"UP":"DOWN",conf=side==="UP"?r.pCal:1-r.pCal;
+    for(const cp of A_CP){const k=wStart+"|"+sym+"|"+cp;if(tau>cp||autoSnap.has(k))continue;autoSnap.add(k);
+      pendASnap.push({sym,side,conf,anchorLn:r.anchorLn,tb:atb(r.tau),bi:abin(conf)})}}
+  if(!autoSt.on||autoDone||tau>240)return;
+  if(tau<25){autoDone=true;autoNote="No good bet this window";return}
+  const now=Date.now()/1000,cands=[];let refr=0,waiting=0;
+  for(const sym of syms){const r=res[sym];if(!r||r.pCal==null||r.tick<tick-8||!isFinite(r.anchorLn))continue;
+    const side=r.pCal>=0.5?"UP":"DOWN",conf=side==="UP"?r.pCal:1-r.pCal,st=autoStab[sym];
+    if(!st||st.side!==side||conf<AUTO_MIN)autoStab[sym]={side,n:conf>=AUTO_MIN?1:0,t:r.tick};
+    else if(st.t!==r.tick){st.n++;st.t=r.tick}
+    if(conf<AUTO_MIN||autoStab[sym].n<4){continue}
+    waiting++;
+    const q=quoteBy[sym];
+    if(!q||Math.abs(q.close-wEnd)>5||q.yes_ask==null||now-q.ts>3){
+      if(refr<2&&now-(autoRefr[sym]||0)>2){refr++;autoRefr[sym]=now;refreshMarket(sym,wEnd,sym===selected).catch(()=>{})}continue}
+    const m=mults(q.yes_ask,q.yes_bid,q.no_ask),mult=side==="UP"?m.up:m.dn;if(!mult)continue;
+    const c=1/mult,cost=c+0.07*c*(1-c),e=autoEst(sym,conf,r.tau),edge=e.lb-cost;
+    if(edge<AUTO_EDGE)continue;
+    const f=edge/(1-cost)*AUTO_KELLY,g=e.lb*Math.log(1+f*(1-cost)/cost)+(1-e.lb)*Math.log(1-f);
+    cands.push({sym,side,conf,e,cost,edge,f,g,tau:r.tau,anchorLn:r.anchorLn,ask:q.yes_ask,bid:q.yes_bid})}
+  if(!cands.length){autoNote=waiting?"Checking prices":"Waiting for a steady, confident signal";return}
+  cands.sort((a,b)=>b.g-a.g);const best=cands[0];autoG=Math.max(autoG,best.g);
+  autoNote="Best so far: "+best.sym+" "+best.side+" · "+pc(best.e.lb)+" safe estimate";
+  if(!(best.g>=0.9*autoG)||!(tau<=150||best.edge>=0.08))return;      // buy once the signal is steady and not fading
+  const dd=1-autoSt.bank/Math.max(autoSt.peak,1e-9),scale=Math.max(0.25,Math.min(1,1-dd/0.4));   // bet smaller while below the peak
+  const two=cands[1]&&cands[1].g>=0.9*best.g?cands[1]:null;
+  const tot=Math.min(autoSt.cap||0.2,best.f*scale*(two?1.3:1)),picks=two?[best,two]:[best];
+  const place=[];for(const x of picks){const stake=Math.floor(autoSt.bank*tot/picks.length*100)/100;if(stake>=1)place.push({x,stake})}
+  autoDone=true;
+  if(!place.length){autoNote="Edge too small to bet";return}
+  for(const {x,stake} of place)pendAuto.push({w:wStart,sym:x.sym,side:x.side,p:x.e.p,lb:x.e.lb,edge:x.edge,tau:x.tau,anchorLn:x.anchorLn,ask:x.ask,bid:x.bid,mult:1/x.cost,stake,split:place.length>1});
+  curAutoAlert={w:wStart,tau,bets:place.map(({x,stake})=>({sym:x.sym,side:x.side,stake,mult:1/x.cost,conf:x.conf,lb:x.e.lb,edge:x.edge}))};autoNewFlag=true;
+  autoNote="Bet placed";autoSave()}
+
+/* ============================ simulated bets ============================ */
+const $$=v=>(v<0?"-$":"$")+Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+function resetSimCoin(sym,v){simSt.start[sym]=v;simSt.tr[sym]={};SIM_CP.forEach(cp=>{simSt.tr[sym][cp]={bank:v,w:0,l:0,net:0}})}
+function renderAuto(){
+  const a=autoSt,tot=a.w+a.l,ob=pendAuto,dd=a.peak>0?Math.max(0,1-a.bank/a.peak):0;let samples=0;for(const k in a.learn)samples+=a.learn[k].n;
+  $("autoK").textContent=sim?"Auto mode · "+SIM_SPEED+"x practice run (not saved)":"Auto mode";
+  $("autoOn").checked=a.on;{const i=$("autoStart");if(document.activeElement!==i)i.value=a.start;const c=$("autoCap");if(document.activeElement!==c)c.value=Math.round((a.cap||0.2)*1000)/10}
+  const st=!a.on?"Off":ob.length?"Open: "+ob.map(b=>`${b.sym} ${b.side} ${$$(b.stake)} @ ${mx(b.mult)}`).join(" + "):(autoNote||"Waiting for the next window");
+  const cell=(l,v,c)=>`<div>${l}<b${c?` class="${c}"`:""}>${v}</b></div>`;
+  $("autoStats").innerHTML=cell("Bankroll",$$(a.bank))+cell("Net",$$(a.net),a.net>0?"hit":a.net<0?"miss":"")+cell("Wins / losses",a.w+" / "+a.l)+
+    cell("Hit rate",tot?Math.round(a.w/tot*1000)/10+"%":"–")+cell("Windows skipped",a.skipped)+cell("Below peak",Math.round(dd*1000)/10+"%")+cell("Learned from",samples+" samples")+cell("Status",st);
+}
+function renderPicks(){
+  $("pickK").textContent=sim?"Best pick record · "+SIM_SPEED+"x practice run (not saved)":"Best pick record";
+  const by={};for(const x of pickHist){(by[x.T]=by[x.T]||[]).push(x)}
+  const keys=[...new Set([60,180,300].concat(pickTimes,Object.keys(by).map(Number)))].sort((a,b)=>a-b),all=[].concat(...keys.map(k=>by[k]||[]));
+  const row=(lab,a,cls)=>{const n=a.length,w=a.filter(x=>x.hit).length,net=a.reduce((t,x)=>t+(x.hit?x.mult-1:-1),0),ac=n?a.reduce((t,x)=>t+x.conf,0)/n:0;
+    return `<tr${cls?` class="${cls}"`:""}><td>${lab}</td><td>${n}</td><td>${w} / ${n-w}</td><td>${n?pc(w/n):"–"}</td><td>${n?pc(ac):"–"}</td><td class="${net>0?"hit":net<0?"miss":""}">${n?(net>=0?"+":"-")+"$"+Math.abs(net).toFixed(2):"–"}</td></tr>`};
+  $("pickTbl").innerHTML='<tr><th>Time left</th><th>Picks</th><th>Wins / losses</th><th>Hit rate</th><th>Avg confidence</th><th>Net per $1 each</th></tr>'+
+    keys.map(k=>row(k%60===0?k/60+(k===60?" minute":" minutes"):k+" seconds",by[k]||[])).join("")+row("All",all,"tot");
+}
+function renderSim(){
+  renderAuto();renderPicks();
+  {const k=$("simCard").querySelector(".k");if(k)k.textContent=sim?"Simulated bets · "+SIM_SPEED+"x practice run (not saved)":"Simulated bets"}
+  const key=syms.join();
+  if(key!==simKey){simKey=key;
+    $("simTbl").innerHTML='<tr><th>Coin</th><th>Start $</th>'+SIM_CP.map(()=>'<th class="gs">Bankroll</th><th>W / L</th><th>Net</th><th>Open bet</th>').join("")+"</tr>"+
+      syms.map(s=>`<tr><td>${s}</td><td><input type="number" min="0" step="10" id="ss_${s}"></td>`+SIM_CP.map(cp=>`<td class="gs" id="sb_${s}_${cp}"></td><td id="sw_${s}_${cp}"></td><td id="sn_${s}_${cp}"></td><td class="dim" id="so_${s}_${cp}"></td>`).join("")+"</tr>").join("")+
+      `<tr class="tot"><td>All</td><td></td>`+SIM_CP.map(cp=>`<td class="gs" id="tb_${cp}"></td><td id="tw_${cp}"></td><td id="tn_${cp}"></td><td></td>`).join("")+"</tr>";
+    syms.forEach(s=>{$("ss_"+s).onchange=e=>{const v=parseFloat(e.target.value);if(v>=0){resetSimCoin(s,v);simSave();saveToHelper()}else e.target.value=simStart(s)}});
+  }
+  const tot={};SIM_CP.forEach(cp=>tot[cp]={b:0,w:0,l:0,n:0});
+  for(const s of syms){const inp=$("ss_"+s);if(inp&&document.activeElement!==inp)inp.value=simStart(s);
+    for(const cp of SIM_CP){const t=simTr(s,cp),ob=pendSim.find(b=>b.sym===s),T_=tot[cp];T_.b+=t.bank;T_.w+=t.w;T_.l+=t.l;T_.n+=t.net;
+      $("sb_"+s+"_"+cp).textContent=$$(t.bank);$("sw_"+s+"_"+cp).textContent=t.w+" / "+t.l;
+      const nn=$("sn_"+s+"_"+cp);nn.textContent=$$(t.net);nn.className=t.net>0?"hit":t.net<0?"miss":"";
+      $("so_"+s+"_"+cp).textContent=ob?`${ob.side} ${$$(ob.stake)} @ ${mx(ob.mult)}`:simWait.has(s+"|"+cp)?"Waiting":"–"}}
+  for(const cp of SIM_CP){$("tb_"+cp).textContent=$$(tot[cp].b);$("tw_"+cp).textContent=tot[cp].w+" / "+tot[cp].l;const e=$("tn_"+cp);e.textContent=$$(tot[cp].n);e.className=tot[cp].n>0?"hit":tot[cp].n<0?"miss":""}
+}
+try{if(localStorage.getItem("k15tblopen")==="0")$("tblBox").open=false}catch(e){}
+$("tblBox").addEventListener("toggle",()=>{try{localStorage.setItem("k15tblopen",$("tblBox").open?"1":"0")}catch(e){}});
+$("tgAvg").checked=showAvg;$("tgPavg").checked=showPavg;
+$("tgAvg").onchange=e=>{showAvg=e.target.checked;ls.set("k15showavg",showAvg);if(lastCh)draw(lastCh)};
+$("tgPavg").onchange=e=>{showPavg=e.target.checked;ls.set("k15showpavg",showPavg);if(lastCh)draw(lastCh)};
+$("simAt").value=simAt;$("simAt").onchange=e=>{const v=parseInt(e.target.value);if(v>=5&&v<=300){simAt=v;ls.set("k15simat",v)}else e.target.value=simAt};
+$("autoCap").value=Math.round((autoSt.cap||0.2)*1000)/10;
+$("autoCap").onchange=e=>{const v=parseFloat(e.target.value);if(v>=1&&v<=100){autoSt.cap=v/100;autoSave();saveToHelper()}else e.target.value=Math.round((autoSt.cap||0.2)*1000)/10};
+$("autoOn").onchange=e=>{autoSt.on=e.target.checked;if(autoSt.on&&autoSt.bank<1)autoSt.bank=autoSt.start;autoSave();saveToHelper()};
+$("autoStart").onchange=e=>{const v=parseFloat(e.target.value);if(v>=1){Object.assign(autoSt,{start:v,bank:v,peak:v,w:0,l:0,net:0,streak:0,pause:0,skipped:0,windows:0});autoSave();saveToHelper()}else e.target.value=autoSt.start};
+$("autoReset").onclick=()=>{if(confirm("Reset the auto bankroll and its win/loss record? What it has learned is kept.")){Object.assign(autoSt,{bank:autoSt.start,peak:autoSt.start,w:0,l:0,net:0,streak:0,pause:0,skipped:0,windows:0});pendAuto=[];autoSave();saveToHelper()}};
+$("autoForget").onclick=()=>{if(confirm("Erase everything auto mode has learned?")){autoSt.learn={};autoSt.coin={};autoSave();saveToHelper()}};
+$("simAll").value=simDef;$("simMode").value=simMode;
+$("simAllB").onclick=()=>{const v=parseFloat($("simAll").value);if(!(v>=0))return;simDef=v;syms.forEach(s=>resetSimCoin(s,v));simSave();saveToHelper()};
+$("simMin").value=Math.round(simMin*1000)/10;$("simMin").onchange=e=>{const v=parseFloat(e.target.value);if(v>=50&&v<=99.9){simMin=v/100;ls.set("k15simmin",simMin)}else e.target.value=Math.round(simMin*1000)/10};
+$("simMode").onchange=e=>{simMode=e.target.value;simSave()};
+$("simReset").onclick=()=>{if(confirm("Reset every coin's simulated bankroll, wins and losses to its start amount? (The saved bet history stays in the data folder.)")){syms.forEach(s=>resetSimCoin(s,simStart(s)));simLog=[];pendSim=[];simSave();saveToHelper()}};
+
+/* ============================ signal data viewer ============================ */
+let vwRows=[];
+async function openViewer(){
+  $("vw").style.display="block";$("vwWhere").textContent="Loading…";
+  let rows=sigHist.slice(), where="Showing what is stored in this browser only (start the helper to also save to the data folder).";
+  if(hBase||await findHelper()){
+    try{rows=await hget("/data/signals");const i=await hget("/data/info");
+        where="Saved in the folder: "+i.dir+"  ·  files: signals.csv, final_calls.csv, calibration.csv, calibration_summary.json  ·  "+i.signals+" signals, "+i.final_calls+" final calls, "+i.calibration_samples+" calibration samples"}
+    catch(e){where="Couldn't read the data folder ("+e.message+"); showing browser data."}
+  }
+  const live=pendSig.map(x=>({...x,live:true}));
+  vwRows=rows.concat(live).map(r=>({w:(r.w||0)+900,sym:r.sym,side:r.side,p:r.p,raw:r.raw,tau:r.tau,tgt:r.anchorLn!=null?Math.exp(r.anchorLn):null,ask:r.ask,bid:r.bid,
+     res:r.live?"LIVE":(r.hit?"HIT":"MISS"),up:r.live?null:!!r.up})).sort((a,b)=>b.w-a.w);
+  $("vwWhere").textContent=where;
+  const coins=[...new Set(vwRows.map(r=>r.sym))].sort();
+  $("vwCoin").innerHTML='<option value="">All coins</option>'+coins.map(c=>`<option>${c}</option>`).join("");
+  renderViewer();
+}
+function viewerFiltered(){
+  const c=$("vwCoin").value,rs=$("vwRes").value,mn=(parseFloat($("vwMin").value)||0)/100;
+  return vwRows.filter(r=>(!c||r.sym===c)&&(!rs||r.res===rs)&&r.p>=mn);
+}
+function renderViewer(){
+  const rows=viewerFiltered(), done=rows.filter(r=>r.res!=="LIVE"), hits=done.filter(r=>r.res==="HIT").length;
+  const by={};for(const r of done){const o=by[r.sym]=by[r.sym]||{n:0,h:0,p:0};o.n++;o.h+=r.res==="HIT"?1:0;o.p+=r.p}
+  const bk=[[0.97,0.98],[0.98,0.99],[0.99,1.001]].map(([lo,hi])=>{const d=done.filter(r=>r.p>=lo&&r.p<hi);return {lo,hi,n:d.length,h:d.filter(r=>r.res==="HIT").length}});
+  $("vwSum").innerHTML=`<div class="v">${done.length?hits+" / "+done.length+" correct ("+(100*hits/done.length).toFixed(1)+"%)":"No settled signals match"}</div>
+    <div class="s">${done.length?"Average model confidence "+(100*mean(done.map(r=>r.p))).toFixed(1)+"%":""}</div>
+    <table class="mini" style="margin-top:8px"><tr><th>Coin</th><th>Signals</th><th>Hits</th><th>Hit rate</th><th>Avg model %</th></tr>`+
+    Object.keys(by).sort().map(k=>`<tr><td>${k}</td><td>${by[k].n}</td><td>${by[k].h}</td><td>${(100*by[k].h/by[k].n).toFixed(1)}%</td><td>${(100*by[k].p/by[k].n).toFixed(1)}%</td></tr>`).join("")+
+    `</table><table class="mini" style="margin-top:8px"><tr><th>Model confidence</th><th>Signals</th><th>Hits</th><th>Hit rate</th></tr>`+
+    bk.map(x=>`<tr><td>${(x.lo*100).toFixed(0)}–${x.hi>1?"100":(x.hi*100).toFixed(0)}%</td><td>${x.n}</td><td>${x.h}</td><td>${x.n?(100*x.h/x.n).toFixed(1)+"%":"–"}</td></tr>`).join("")+"</table>";
+  $("vwCnt").textContent=rows.length+" rows"+(rows.length>2000?" (showing newest 2000; CSV has all)":"");
+  $("vwTbl").innerHTML='<tr><th>Window end</th><th>Coin</th><th>Call</th><th>Model</th><th>Raw</th><th>Secs left</th><th>Target</th><th>Kalshi multiplier</th><th>Settled</th><th>Result</th></tr>'+
+    rows.slice(0,2000).map(r=>`<tr><td>${new Date(r.w*1000).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</td><td>${r.sym}</td><td class="${r.side==="UP"?"up":"dn"}">${r.side}</td><td>${pc(r.p)}</td><td>${pc(r.raw)}</td><td>${r.tau}</td><td>${f(r.tgt)}</td><td>${mx(sideMult(r))}</td><td>${r.up==null?"–":r.up?"above":"below"}</td><td class="${r.res==="HIT"?"hit":r.res==="MISS"?"miss":""}">${r.res}</td></tr>`).join("");
+}
+function viewerCsv(){
+  const rows=viewerFiltered(),esc=v=>v==null?"":String(v);
+  const lines=[["window_end","coin","call","model_prob","raw_prob","secs_left","target","kalshi_multiplier","kalshi_yes_ask","settled","result"].join(",")]
+    .concat(rows.map(r=>[new Date(r.w*1000).toISOString(),r.sym,r.side,r.p,r.raw,r.tau,r.tgt,sideMult(r),r.ask,r.up==null?"":r.up?"above":"below",r.res].map(esc).join(",")));
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([lines.join("\n")],{type:"text/csv"}));a.download="signal_track_data.csv";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+}
+$("vwBtn").onclick=openViewer;$("vwClose").onclick=()=>{$("vw").style.display="none"};$("vwCsv").onclick=viewerCsv;
+["vwCoin","vwRes","vwMin"].forEach(id=>$(id).addEventListener("change",renderViewer));
+$("vw").addEventListener("click",e=>{if(e.target.id==="vw")$("vw").style.display="none"});
+
+/* ============================ menu ============================ */
+async function hcmd(path,obj){
+  if(!hBase&&!(await findHelper()))throw new Error("The helper is not connected. Open the dashboard from its icon.");
+  const r=await fetch(hBase+path,{method:"POST",headers:{"X-Kalshi":"1","Content-Type":"text/plain"},body:JSON.stringify(obj)});
+  if(!r.ok)throw new Error("HTTP "+r.status);return r.json();
+}
+const applyTheme=t=>{const d=document.documentElement;if(!d)return;if(t==="dark"||t==="light")d.dataset.theme=t;else delete d.dataset.theme};
+applyTheme(ls.get("k15theme","auto"));
+const mp=$("menuPanel");
+async function openMenu(){
+  mp.classList.add("open");$("mTheme").value=ls.get("k15theme","auto");$("mVol").value=Math.round(volMul*100);
+  const ok=hBase||await findHelper();
+  ["mData","mApp","mKeep"].forEach(id=>$(id).disabled=!ok);
+  if(!ok){$("mPath").textContent="The helper isn't connected. Open the dashboard from its icon to use these.";return}
+  ["mUrl","mTok","mChk"].forEach(id=>$(id).disabled=!ok);
+  try{const r=await fetch(hBase+"/settings");const d=await r.json();$("mKeep").checked=!!d.keep;$("mPath").textContent="Data: "+d.data;
+    helperStarted=d.started;$("mVer").textContent="Version "+d.version;$("mUrl").value=d.update_url||"";$("mTok").placeholder=d.has_token?"Access token saved (type a new one to replace)":"Access token (only for a private repository)"}catch(e){$("mPath").textContent=""}
+}
+$("menuBtn").onclick=e=>{e.stopPropagation();mp.classList.contains("open")?mp.classList.remove("open"):openMenu()};
+document.addEventListener("click",e=>{if(!e.target.closest(".menu"))mp.classList.remove("open")});
+document.addEventListener("keydown",e=>{if(e.key==="Escape")mp.classList.remove("open")});
+let helperStarted=null, updReady=false;
+const updMsg=t=>{$("mUpdMsg").textContent=t};
+async function updCall(action){
+  const body={action,url:$("mUrl").value.trim()};const tok=$("mTok").value.trim();if(tok)body.token=tok;
+  return hcmd("/update",body);
+}
+$("mChk").onclick=async()=>{
+  updMsg("Checking…");$("mUpd").disabled=true;
+  try{const r=await updCall("check");
+    if(!r.ok){updMsg(r.error||"Couldn't check.");return}
+    $("mTok").value="";
+    if(r.available){updReady=true;$("mUpd").disabled=false;updMsg("Version "+r.remote+" is available"+(r.notes?": "+r.notes:"")+".")}
+    else updMsg("You're up to date ("+r.local+").")
+  }catch(e){updMsg(e.message||"Couldn't check.")}
+};
+$("mUpd").onclick=async()=>{
+  $("mUpd").disabled=true;$("mChk").disabled=true;updMsg("Installing…");
+  try{const r=await updCall("apply");
+    if(!r.ok){updMsg(r.error||"The update failed. Nothing was changed.");$("mChk").disabled=false;return}
+    if(!r.updated){updMsg("Already up to date.");$("mChk").disabled=false;return}
+    updMsg("Installed "+r.remote+". Restarting…");
+    if(!r.restart){setTimeout(()=>location.reload(),600);return}
+    hBase&&(window.__updBase=hBase);
+    const t0=Date.now();
+    const poll=async()=>{
+      try{const x=await fetch(window.__updBase+"/ping",{cache:"no-store"});const d=await x.json();if(d.started&&d.started!==helperStarted){location.reload();return}}catch(e){}
+      if(Date.now()-t0>45000){updMsg("Installed. Close this window and open the dashboard again to finish.");return}
+      setTimeout(poll,1000)};
+    setTimeout(poll,2500);
+  }catch(e){updMsg(e.message||"The update failed.");$("mChk").disabled=false}
+};
+const menuErr=e=>{$("mPath").textContent=e.message||"Something went wrong"};
+$("mData").onclick=()=>hcmd("/open",{what:"data"}).catch(menuErr);
+$("mApp").onclick=()=>hcmd("/open",{what:"app"}).catch(menuErr);
+$("mView").onclick=()=>{mp.classList.remove("open");openViewer()};
+$("mTheme").onchange=e=>{ls.set("k15theme",e.target.value);applyTheme(e.target.value);if(lastCh)draw(lastCh)};
+$("mVol").oninput=e=>{volMul=e.target.value/100;ls.set("k15vol",volMul)};
+$("mVol").onchange=()=>beep("sig");
+$("mKeep").onchange=e=>hcmd("/settings",{keep:e.target.checked}).catch(menuErr);
+$("mReset").onclick=()=>{if(!confirm("Reset the dashboard's settings (alert thresholds, sound, volume, theme, chart options, simulation settings) to their defaults? Your saved signals, calibration and simulated bets are kept."))return;
+  const keep=new Set(["k15sig","k15cal","k15finh","k15sim","k15simlog","k15auto","k15autolog"]);
+  try{Object.keys(localStorage).filter(k=>k.startsWith("k15")&&!keep.has(k)).forEach(k=>localStorage.removeItem(k))}catch(e){}
+  location.reload()};
+
+/* ============================ boot ============================ */
+$("seg").innerHTML=Object.keys(SPANS).map(k=>`<button data-s="${SPANS[k]}">${k}</button>`).join("");
+const markSeg=()=>$("seg").querySelectorAll("button").forEach(bt=>bt.classList.toggle("on",+bt.dataset.s===chartSpan));
+$("seg").onclick=e=>{const bt=e.target.closest("button");if(!bt)return;chartSpan=+bt.dataset.s;ls.set("k15span",chartSpan);markSeg();tickNow()};
+markSeg();
+$("thr").value=Math.round(thr*1000)/10;
+$("thr").onchange=e=>{const v=parseFloat(e.target.value);if(v>=55&&v<=99.9){thr=v/100;ls.set("k15thr",thr);tickNow()}};
+$("pickS").value=pickTimes.join(", ");
+$("pickS").onchange=e=>{const v=[...new Set(e.target.value.split(/[ ,;]+/).map(x=>parseInt(x)).filter(x=>x>=10&&x<=600))].sort((a,b)=>b-a).slice(0,5);
+  if(v.length){pickTimes=v;ls.set("k15pickt",v)}e.target.value=pickTimes.join(", ")};
+$("finS").value=finSec;
+$("finS").onchange=e=>{const v=parseInt(e.target.value);if(v>=5&&v<=120){finSec=v;ls.set("k15fins2",v)}else e.target.value=finSec};
+$("tSig").onclick=()=>beep("sig");$("tFin").onclick=()=>beep("fin");$("tPick").onclick=()=>beep("pick");
+$("snd").checked=soundOn;
+$("snd").onchange=e=>{soundOn=e.target.checked;ls.set("k15snd2",soundOn);if(soundOn)beep("sig")};
+const yzoom=(f,frac)=>{const r=yMan||lastY;if(!r)return;const v=r.hi-(r.hi-r.lo)*frac;let lo=v-(v-r.lo)*f,hi=v+(r.hi-v)*f;{const m=(hi+lo)/2,mr=Math.abs(m)*2e-5;if(hi-lo<mr){lo=m-mr/2;hi=m+mr/2}}yMan={lo,hi};draw(lastCh)};
+const ypan=d=>{const r=yMan||lastY;if(!r)return;const s=(r.hi-r.lo)*d;yMan={lo:r.lo+s,hi:r.hi+s};draw(lastCh)};
+$("yseg").onclick=e=>{const b_=e.target.closest("button");if(!b_)return;const a=b_.dataset.y;
+  if(a==="auto"){yMan=null;draw(lastCh)}else if(a==="in")yzoom(0.6,0.5);else if(a==="out")yzoom(1/0.6,0.5);else if(a==="up")ypan(0.25);else if(a==="down")ypan(-0.25)};
+const setTgt=()=>{const v=parseFloat(String($("tgtIn").value).replace(/[$,\s]/g,""));if(v>0&&winStart!=null){targetOv[selected]={w:winStart,v};$("tgtIn").value="";tickNow()}};
+$("tgtSet").onclick=setTgt;$("tgtIn").addEventListener("keydown",e=>{if(e.key==="Enter")setTgt()});
+$("tgtAuto").onclick=()=>{delete targetOv[selected];tickNow()};
+$("sig").onclick=e=>{const sw=e.target.closest(".swbtn");if(sw){const el=$("sel");el.value=sw.dataset.sw;el.dispatchEvent(new Event("change"));dismissed.add(sw.dataset.k);lastSigHtml="";$("sig").style.display="none";return}
+  const b_=e.target.closest(".x");if(b_){dismissed.add(b_.dataset.k);lastSigHtml="";$("sig").style.display="none"}};
+$("calib").onclick=e=>{if(e.target.id==="clr"&&confirm("Delete all saved calibration data and signal history?")){calSamples=[];sigHist=[];platt={a:1,b:0};ls.set("k15cal",[]);ls.set("k15sig",[])}};
+const cvEl=$("cv");
+cvEl.addEventListener("wheel",e=>{e.preventDefault();const rc=cvEl.getBoundingClientRect(),frac=Math.min(1,Math.max(0,(e.clientY-rc.top-14)/(rc.height-38)));yzoom(e.deltaY<0?0.85:1/0.85,frac)},{passive:false});
+cvEl.addEventListener("dblclick",()=>{yMan=null;draw(lastCh)});
+let drag=null;
+cvEl.addEventListener("mousedown",e=>{const r=yMan||lastY;if(r)drag={y:e.clientY,lo:r.lo,hi:r.hi}});
+window.addEventListener("mouseup",()=>{drag=null});
+window.addEventListener("mousemove",e=>{if(!drag)return;const rc=cvEl.getBoundingClientRect(),H=rc.height-38,d=(e.clientY-drag.y)/H*(drag.hi-drag.lo);yMan={lo:drag.lo+d,hi:drag.hi+d};draw(lastCh)});
+cvEl.style.cursor="ns-resize";
+$("simBtn").onclick=()=>{
+  if(!sim){enterSim();sim=true}else{sim=false;exitSim()}
+  $("simBtn").textContent=sim?"Simulate: On ("+SIM_SPEED+"x)":"Simulate: Off";
+  syms.forEach(s=>{hist[s]=[];delete latest[s]});predC=[];predA=[];bfLeft=0;lastTick=null;simBase=null;res={};fired=new Set()};
+(async()=>{
+  $("msg").style.display="block";$("msg").textContent="Connecting to exchanges and loading recent price history…";
+  await discover(); await syncHelper(); startFeeds(); startPolling(); kalshiLoop();
+  try{await Promise.race([backfillAll(),new Promise(r=>setTimeout(r,20000))])}catch(e){}
+  $("msg").style.display="none";
+  tickNow();
+  const loop=()=>{if(sim)simAdvance();else tickNow();setTimeout(loop,1000-(Date.now()%1000)+20)}; loop();
+})();
+</script></body></html>

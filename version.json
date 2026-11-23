@@ -1,0 +1,14 @@
+{
+ "version": "2026-11-22z",
+ "notes": "",
+ "files": [
+  "kalshi_helper.py",
+  "kalshi_dashboard_v4.html",
+  "README.txt"
+ ],
+ "sha256": {
+  "kalshi_helper.py": "80df27bdefb41343bbf828f3d092c670930ab81aaa2ce63c0f33f3e4aa598d02",
+  "kalshi_dashboard_v4.html": "eafca2a4629c09948ed5524e73c6a5a6c0533ffd7900b1c91ba6503dfb1b7785",
+  "README.txt": "518369925dc71982208a8327c04af9cac94d7828ef41253c3c85987220ee84d5"
+ }
+}
