@@ -39,7 +39,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-24f"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-24g"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -1680,6 +1680,44 @@ def _serve(port, open_browser):
                 srv.shutdown()
                 return
     threading.Thread(target=watchdog, daemon=True).start()
+
+    def self_watch():              # if this program file is replaced (an update, or a new copy dropped in), restart so the new code is what runs
+        if FROZEN:
+            return
+        me = os.path.abspath(__file__)
+
+        def digest():
+            try:
+                with open(me, "rb") as f:
+                    return hashlib.sha256(f.read()).hexdigest()
+            except OSError:
+                return None
+        base = digest()
+        while True:
+            time.sleep(4)
+            now = digest()
+            if now is None or now == base:
+                continue
+            time.sleep(2)                                   # let a copy in progress finish
+            if digest() != now:
+                continue
+            try:
+                with open(me, "rb") as f:
+                    compile(f.read(), me, "exec")
+            except Exception:
+                base = now                                  # a half-written or broken file: don't restart into it
+                continue
+            log("kalshi_helper.py changed on disk - restarting")
+            try:
+                restart_self(port)
+            except Exception as e:
+                log("self-restart failed: %s" % e)
+                base = now
+                continue
+            time.sleep(0.5)
+            srv.shutdown()
+            return
+    threading.Thread(target=self_watch, daemon=True).start()
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

@@ -147,7 +147,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-24f</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-24g</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -185,12 +185,12 @@ body{transition:margin-left .14s ease-out}
       <button id="autoOnBtn" class="realonly">Start real betting</button>
       <button id="autoReal" class="realsw" title="Switch this card between fake money and your real Kalshi account">Real money</button>
       <label class="simonly">Start $ <input type="number" id="autoStart" min="1" step="10"></label>
-      <label class="simonly">Max bet <input type="number" id="autoCap" min="1" max="100" step="1">%</label>
+      <label>Max bet <input type="number" id="autoCap" min="1" max="100" step="1">%</label>
       <button id="autoHist" class="simonly">View bet history</button><button id="autoReset" class="simonly">Reset bankroll</button><button id="autoForget" class="simonly">Reset learning</button><button id="autoRealHist" class="realonly">View real bet history</button>
     </div>
   </div>
   <div class="autostats simonly" id="autoStats"></div>
-  <div class="realonly"><div class="s" id="arNote" style="margin:6px 0"></div><div class="autostats" id="arStats"></div><div style="overflow:auto;max-height:40vh"><table class="mini simtbl" id="arTbl"></table></div></div>
+  <div class="realonly"><div class="s" id="arNote" style="margin:6px 0"></div><div class="autostats" id="arStats"></div></div>
 </div>
 
 
@@ -241,7 +241,7 @@ body{transition:margin-left .14s ease-out}
 </div>
 <div id="kaw" style="display:none;position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.65);overflow:auto;padding:16px">
   <div class="card" style="max-width:980px;margin:0 auto">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:17px">Kalshi account</b><div style="display:flex;gap:8px"><button id="kaRef">Refresh</button><button id="kaClose">Close</button></div></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:17px">Kalshi account</b><div style="display:flex;gap:8px"><button id="kaLog">Activity log</button><button id="kaRef">Refresh</button><button id="kaClose">Close</button></div></div>
     <div class="s" id="kaMsg" style="margin:6px 0"></div>
     <div id="kaSetup">
       <ol style="margin:6px 0 6px 18px;padding:0;line-height:1.55">
@@ -264,6 +264,13 @@ body{transition:margin-left .14s ease-out}
       <div class="k" style="margin-top:10px">Recent fills on Kalshi</div><div style="overflow:auto;max-height:24vh"><table class="mini" id="kaFills"></table></div>
       <div class="k" style="margin-top:10px">Bets placed from this dashboard</div><div style="overflow:auto;max-height:24vh"><table class="mini" id="kaOrd"></table></div>
     </div>
+  </div>
+</div>
+<div id="evw" style="display:none;position:fixed;inset:0;z-index:62;background:rgba(0,0,0,.65);overflow:auto;padding:16px">
+  <div class="card" style="max-width:900px;margin:0 auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:17px">Real betting activity log</b><div style="display:flex;gap:8px"><button id="evClear">Clear</button><button id="evClose">Close</button></div></div>
+    <div class="s" style="margin:6px 0">What the real-money modes and this panel did, newest first (kept until you close or restart the dashboard).</div>
+    <div style="overflow:auto;max-height:70vh"><table class="mini" id="evTbl"></table></div>
   </div>
 </div>
 <div id="avw" style="display:none;position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.65);overflow:auto;padding:16px">
@@ -1459,7 +1466,7 @@ $("avw").addEventListener("click",e=>{if(e.target.id==="avw")$("avw").style.disp
 const escH=v=>String(v==null?"":v).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 let acct={info:null,sum:null,orders:[],bud:{},err:"",busy:false}, lv={armed:null,msg:"",sel:null};
 // real-money mirrors: in memory only, so they are always OFF after a restart and have to be switched on on purpose
-let real={sim:false,auto:false,autoView:false,simView:false,events:[],q:Promise.resolve()};
+let real={sim:false,auto:false,autoView:false,simView:false,events:[],evT:[],q:Promise.resolve()};
 let liveRes={};
 const staleMsg="The helper program that is running is older than this page. Fully close it (Ctrl+Shift+Esc, end pythonw.exe / python.exe) and reopen the dashboard from its icon, or some real-money controls won't work right.";
 const oldHelper="The helper that is running is an older version that doesn't know about Kalshi accounts. Fully close it and reopen the dashboard from its icon: press Ctrl+Shift+Esc, open the Details tab, end every pythonw.exe (or python.exe) entry, then double-click the Kalshi Dashboard icon.";
@@ -1506,7 +1513,13 @@ function renderKa(){
 }
 async function openKa(){closeMenu();$("kaw").style.display="block";renderKa();await acctRefresh(true)}
 $("mAcct").onclick=openKa;
-$("kaClose").onclick=()=>{$("kaw").style.display="none"};$("kaRef").onclick=()=>acctRefresh(true);
+$("kaClose").onclick=()=>{$("kaw").style.display="none"};
+function renderEv(){const rows=real.events.map(e=>{const k=e.indexOf(" · ");return`<tr><td style="white-space:nowrap">${escH(e.slice(0,k))}</td><td>${escH(e.slice(k+3))}</td></tr>`});
+  setH($("evTbl"),'<tr><th>Time</th><th>What happened</th></tr>'+(rows.length?rows.join(""):'<tr><td colspan="2" class="dim">Nothing yet</td></tr>'))}
+$("kaLog").onclick=()=>{renderEv();$("evw").style.display="block"};$("evClose").onclick=()=>{$("evw").style.display="none"};
+$("evClear").onclick=()=>{real.events.length=0;real.evT.length=0;renderEv()};
+$("evw").addEventListener("click",e=>{if(e.target.id==="evw")$("evw").style.display="none"});
+setInterval(()=>{if($("evw").style.display==="block")renderEv()},2000);$("kaRef").onclick=()=>acctRefresh(true);
 $("kaw").addEventListener("click",e=>{if(e.target.id==="kaw")$("kaw").style.display="none"});
 const kaErr=e=>{acct.err=e.message||"Something went wrong";renderKa()};
 $("kaFolder").onclick=$("kaFolder2").onclick=()=>apost("/account/folder").then(d=>{if(!d.ok)throw new Error(d.error)}).catch(kaErr);
@@ -1520,6 +1533,8 @@ $("kaTrade").onclick=async()=>{
   try{const d=await apost("/account/config",{trading:on});if(!d.ok)throw new Error(d.error);acct.err="";await acctRefresh(true)}catch(x){kaErr(x)}
 };
 setInterval(()=>{if((real.sim||real.auto||!document.hidden)&&hBase)acctRefresh(false)},10000);
+let pingStart=null;      // the helper restarts itself when its program file is replaced; when that happens, reload so the page matches it
+setInterval(async()=>{if(!hBase)return;try{const x=await fetch(hBase+"/ping",{cache:"no-store"});const d=await x.json();if(!d.started)return;if(pingStart==null)pingStart=d.started;else if(d.started!==pingStart){pingStart=d.started;location.reload()}}catch(e){}},5000);
 setTimeout(()=>acctRefresh(false),4000);
 
 // ---- live betting card
@@ -1550,7 +1565,9 @@ const realReady=()=>!sim&&acct.info&&acct.info.ready&&acct.info.trading&&acct.su
 const allocFree=()=>Object.values(acct.bud||{}).reduce((t,m)=>t+Object.values(m).reduce((u,b)=>u+Math.max(b.avail,0),0),0);
 const allocBank=()=>Object.values(acct.bud||{}).reduce((t,m)=>t+Object.values(m).reduce((u,b)=>u+Math.max(b.bank,0),0),0);
 const budOf=(src,key)=>(acct.bud&&acct.bud[src]&&acct.bud[src][key])||null;
-function realEvent(t){real.events.unshift(new Date().toLocaleTimeString()+" · "+t);if(real.events.length>10)real.events.length=10}
+function realEvent(t){real.events.unshift(new Date().toLocaleTimeString()+" · "+t);real.evT.unshift(Date.now());if(real.events.length>300){real.events.length=300;real.evT.length=300}}
+function flashFor(m){      // the newest message for a card, without its time, and only while it is fresh
+  for(let i=0;i<real.events.length;i++){if(Date.now()-real.evT[i]>20000)return"";if(!m||real.events[i].includes(m))return real.events[i].replace(/^.*? · /,"")}return""}
 function realMirror(src,sym,side,stake,meta){
   const tag=(src==="auto"?"Auto":"Timed bet")+" "+sym+" "+side;
   if(!realReady()){realEvent(tag+": not placed (account not ready)");return}
@@ -1607,7 +1624,6 @@ $("autoOnBtn").onclick=async()=>{      // a number typed in the box but not yet 
   if(!real.auto&&v>=0&&Math.abs(v-(b?b.bank:0))>=0.005)await realAlloc("auto","*",v,el,b?money2(b.bank):0);
   realSwitch("auto",!real.auto)};$("simOnBtn").onclick=()=>realSwitch("sim",!real.sim);
 const money2=v=>Math.round(v*100)/100;
-$("autoRealStart").onchange=()=>$("autoRealSet").click();
 $("autoRealStart").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();$("autoRealSet").click()}};
 $("autoRealSet").onclick=()=>{const el=$("autoRealStart"),b=budOf("auto","*");realAlloc("auto","*",parseFloat(el.value),el,b?money2(b.bank):0)};
 $("simRealAllB").onclick=async()=>{
@@ -1633,9 +1649,7 @@ function renderRealAuto(){
   setH($("arStats"),cell("Allocated",b?$$(b.bank):"–")+cell("Free to bet",b?$$(b.avail):"–")+cell("Net",b?$$(b.net):"–",b?cls(b.net):"")+cell("Wins / losses",b?b.w+" / "+b.l:"–")+
     cell("Hit rate",tot?Math.round(b.w/tot*1000)/10+"%":"–")+cell("Currently bet",b?$$(b.open):"–")+cell("Below peak",Math.round(dd*1000)/10+"%")+
     cell("Min confidence now",(g=>g==null?"none":Math.round(g*1000)/10+"%")(autoGate(1)))+cell("Learned from",samples+" samples")+cell("Status",st));
-  setH($("arNote"),(acct.stale?'<b class="miss">'+escH(staleMsg)+"</b><br>":"")+ev.map(escH).join("<br>"));
-  setH($("arTbl"),'<tr><th>Time</th><th>Coin</th><th>Side</th><th>Contracts</th><th>Limit</th><th>Win chance</th><th>Cost</th><th>Result</th><th>Net</th></tr>'+
-    (rows.length?rows.slice(0,25).map(x=>`<tr><td>${escH(x.r.time)}</td><td>${escH(x.sym)}</td><td>${x.r.side==="yes"?"UP":"DOWN"}</td><td>${x.r.fill_count}</td><td>${x.r.price_cents}¢</td><td>${x.r.conf!=null?pc(x.r.conf):"–"}</td><td>${money(x.r.cost_total)}</td><td class="${x.won==null?"":x.won?"hit":"miss"}">${x.won==null?(x.open?"Open":"Settling"):x.won?"Won":"Lost"}</td><td class="${cls(x.net)}">${x.net==null?"–":sgn(x.net)}</td></tr>`).join(""):'<tr><td colspan="9" class="dim">No real auto bets yet</td></tr>'));
+  setH($("arNote"),(acct.stale?'<b class="miss">'+escH(staleMsg)+"</b><br>":"")+escH(flashFor("· Auto")));
 }
 let trKey="";
 function renderRealTimed(){
@@ -1646,7 +1660,7 @@ function renderRealTimed(){
       '<tr class="tot"><td>All</td><td id="rs_all"></td><td id="rb_all"></td><td id="rw_all"></td><td id="rn_all"></td><td class="dim" id="ro_all"></td></tr>';
     syms.forEach(s=>{$("rs_"+s).onchange=e=>{const b=budOf("sim",s);realAlloc("sim",s,parseFloat(e.target.value),e.target,b?money2(b.bank):0)}})}
   const rows=realOf("sim"),T={bank:0,avail:0,w:0,l:0,net:0,open:0},ev=real.events.filter(e=>e.includes("· Timed bet")).slice(0,3);
-  setH($("trNote"),(acct.stale?'<b class="miss">'+escH(staleMsg)+"</b><br>":"")+escH("Each coin bets its whole real bankroll at "+simAt+" s left when the win chance is at least "+Math.round(simMin*100)+"%. The Allocated $ box is its bankroll: it moves up and down with its wins and losses. Type a smaller number to send money back to your cash, or a bigger one to add more. A coin that loses everything stays at $0 until you allocate more. Money you haven't allocated is never touched.")+(ev.length?"<br>"+ev.map(escH).join("<br>"):""));
+  setH($("trNote"),(acct.stale?'<b class="miss">'+escH(staleMsg)+"</b><br>":"")+escH("Each coin bets its whole real bankroll at "+simAt+" s left when the win chance is at least "+Math.round(simMin*100)+"%. The Allocated $ box is its bankroll: it moves up and down with its wins and losses. Type a smaller number to send money back to your cash, or a bigger one to add more. A coin that loses everything stays at $0 until you allocate more. Money you haven't allocated is never touched.")+(flashFor("· Timed bet")?"<br>"+escH(flashFor("· Timed bet")):""));
   for(const s of syms){const b=budOf("sim",s),inp=$("rs_"+s);if(!inp)continue;
     if(document.activeElement!==inp)inp.value=b?money2(b.bank):0;
     setT($("rb_"+s),b?$$(b.avail):"–");setT($("rw_"+s),b?b.w+" / "+b.l:"–");const n=$("rn_"+s);setT(n,b?$$(b.net):"–");setC(n,b?cls(b.net):"");
@@ -1668,7 +1682,7 @@ function renderAcctCard(){
   const i=acct.info,sm=acct.sum,ok=!!(i&&i.ready&&sm&&sm.ok);
   setT($("acTop"),!i?"Checking…":!i.ready?"Not connected. Menu, then Kalshi account.":!ok?(acct.err||"Waiting for Kalshi…"):(i.env==="demo"?"DEMO account":"REAL account")+(i.trading?" · betting ON":" · betting off")+((real.auto||real.sim)?" · real "+[real.auto&&"auto",real.sim&&"sim bets"].filter(Boolean).join(" + ")+" ON":""));
   $("acStop").style.display=i&&i.trading?"":"none";
-  setH($("acEv"),real.events.map(escH).join("<br>"));
+  setH($("acEv"),escH(flashFor("")));
   if(!ok){setH($("acStats"),"");setH($("acRes"),"");return}
   const open=(sm.positions||[]).reduce((t,r)=>t+(r.cost||0),0),alloc=Object.values(acct.bud||{}).reduce((t,m)=>t+Object.values(m).reduce((u,b)=>u+Math.max(b.avail,0),0),0),st=realStats(),sg=v=>(v>=0?"+":"-")+"$"+Math.abs(v).toFixed(2),cl=v=>v>0?"hit":v<0?"miss":"";
   const C=(k,v,c,sub)=>`<div><div class="k">${k}</div><div class="v ${c||""}">${v}</div>${sub?`<div class="s">${sub}</div>`:""}</div>`;
