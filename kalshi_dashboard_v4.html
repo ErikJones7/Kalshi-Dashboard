@@ -134,7 +134,7 @@ body{transition:margin-left .14s ease-out}
           <div style="display:flex;gap:6px;width:100%"><button id="mChk" style="text-align:center;flex:1">Check for updates</button></div>
           <div class="s" id="mUpdMsg"></div></div>
         <div class="mi"><button id="mReset">Reset dashboard settings</button></div>
-      </div></div><span class="bld" id="build">build 2026-11-23e</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+      </div></div><span class="bld" id="build">build 2026-11-23f</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1337,7 +1337,11 @@ $("mChk").onclick=async()=>{
   try{const r=await updCall("check");
     if(!r.ok){updMsg(r.error||"Couldn't check.");$("mChk").disabled=false;return}
     $("mTok").value="";
-    if(!r.available){updMsg("You're up to date ("+r.local+").");$("mChk").disabled=false;return}
+    const running=($("build").textContent||"").replace(/^build\s+/,"").trim();
+    if(!r.available){
+      if(r.local&&r.local!=="unknown"&&running&&running!==r.local){      // newer files are already in the folder; this window is still showing an older page
+        updMsg("Version "+r.local+" is already on this computer. Loading it…");setTimeout(()=>location.reload(),700);return}
+      updMsg("You're up to date ("+r.local+").");$("mChk").disabled=false;return}
     await installUpdate(r.remote)
   }catch(e){updMsg(e.message||"Couldn't check.");$("mChk").disabled=false}
 };
