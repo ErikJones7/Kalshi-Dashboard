@@ -24,8 +24,8 @@ h1{font-size:17px;margin:0}
 .grp select{padding:4px 8px;font-weight:600}
 .grp button{padding:4px 9px;font-size:13px}
 .bld{font-size:11px;color:var(--mut)}
-.menu{position:fixed;top:12px;right:12px;z-index:60}
-.menupanel{position:absolute;right:0;top:calc(100% + 6px);max-height:calc(100vh - 80px);overflow:auto;width:min(340px,calc(100vw - 48px));background:var(--card);border:1px solid var(--bd);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.45);padding:6px;z-index:50;display:none}
+.menu{position:fixed;top:12px;left:calc(100vw - 50px);z-index:60}
+.menupanel{position:absolute;left:0;top:calc(100% + 6px);max-height:calc(100vh - 80px);overflow:auto;width:min(340px,calc(100vw - 48px));background:var(--card);border:1px solid var(--bd);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.45);padding:6px;z-index:50;display:none}
 .menupanel.open{display:block;animation:menuIn .14s ease-out}
 .menupanel.closing{display:block;animation:menuOut .14s ease-in forwards}
 @keyframes menuIn{from{transform:translateY(-8px);opacity:0}to{transform:none;opacity:1}}
@@ -141,7 +141,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-23j</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-23l</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1329,6 +1329,11 @@ async function openMenu(){
   try{const r=await fetch(hBase+"/settings");const d=await r.json();$("mKeep").checked=!!d.keep;$("mPath").textContent="Data: "+d.data;
     helperStarted=d.started;$("mVer").textContent="Version "+d.version;$("mUrl").value=d.update_url||"";$("mTok").placeholder=d.has_token?"Access token saved (type a new one to replace)":"Access token (only for a private repository)"}catch(e){$("mPath").textContent=""}
 }
+// the icon sits just outside the main card's right edge; if there's no room it tucks into the window's corner
+function placeMenu(){const h=document.querySelector("header.hdr");if(!h)return;const r=h.getBoundingClientRect(),w=document.documentElement.clientWidth;
+  const x=Math.min(Math.round(r.right+8),w-46),pw=Math.min(340,w-48);$("menuBtn").parentNode.style.left=x+"px";
+  const pn=$("menuPanel");pn.style.right="auto";pn.style.left=Math.min(0,w-8-(x+pw))+"px"}      // opens into the side margin while it fits, otherwise slides back over the page
+window.addEventListener("resize",placeMenu);setInterval(placeMenu,500);placeMenu();
 function closeMenu(){if(!mp.classList.contains("open"))return;mp.classList.remove("open");mp.classList.add("closing");setTimeout(()=>mp.classList.remove("closing"),150)}
 $("mClose").onclick=e=>{e.stopPropagation();closeMenu()};
 $("menuBtn").onclick=e=>{e.stopPropagation();mp.classList.contains("open")?closeMenu():openMenu()};
