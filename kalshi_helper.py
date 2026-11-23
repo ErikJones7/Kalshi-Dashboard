@@ -39,7 +39,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-24l"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-24n"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -1091,6 +1091,26 @@ def _place_order(body):
         if close is not None and close - time.time() < 6:
             raise TradeError("That market is about to close.")
         ask = _ask_cents(m, side)
+        maxp, slack = _f(body.get("max_price")), _f(body.get("slack"))
+        if maxp is not None and ask is not None and row["src"] != "manual":
+            # the page's price is a few seconds old. Re-price from Kalshi's live ask right now: pay up to `slack` cents over it, but never more
+            # than max_price (the most this bet is worth given its estimated chance), and never spend more than the bet was budgeted for.
+            maxp = int(maxp)
+            live = int(math.ceil(ask - 1e-9))
+            if live > maxp:
+                raise TradeError("The price is now %d¢, above the %d¢ this bet is worth, so it wasn't placed." % (live, maxp))
+            new = max(1, min(99, maxp, live + int(max(0, min(slack or 0, 5)))))
+            if new != price:
+                budget = cost
+                price = new
+                row["price_cents"] = price
+                while count > 1 and count * price / 100.0 + est_fee(count, price) > budget + 1e-9:
+                    count -= 1
+                if count * price / 100.0 + est_fee(count, price) > budget + 1e-9:
+                    raise TradeError("The price moved up to %d¢ and the bet no longer fits its budget." % price)
+                row["count"] = count
+                cost = count * price / 100.0 + est_fee(count, price)
+                row["est_cost"] = round(cost, 4)
         if ask is not None and price > ask + 5:
             raise TradeError("Your price (%d¢) is well above the current ask (%d¢). Refresh and try again." % (price, ask))
         # Kalshi's V2 orders are always quoted on the YES side: buying YES is a "bid" at the YES price, and buying NO is an "ask" (selling

@@ -149,7 +149,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-24m</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-24n</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1469,7 +1469,7 @@ let acct={info:null,sum:null,orders:[],bud:{},err:"",busy:false}, lv={armed:null
 // real-money mirrors: in memory only, so they are always OFF after a restart and have to be switched on on purpose
 let real={sim:false,auto:false,autoView:false,simView:false,events:[],evT:[],autoLast:null,q:Promise.resolve()};
 let liveRes={};
-const HELPER_EXPECT="2026-11-24l";      // the helper build this page needs (changes only when the helper program itself changes)
+const HELPER_EXPECT="2026-11-24n";      // the helper build this page needs (changes only when the helper program itself changes)
 const staleMsg="The helper program that is running is older than this page. Fully close it (Ctrl+Shift+Esc, end pythonw.exe / python.exe) and reopen the dashboard from its icon, or some real-money controls won't work right.";
 const oldHelper="The helper that is running is an older version that doesn't know about Kalshi accounts. Fully close it and reopen the dashboard from its icon: press Ctrl+Shift+Esc, open the Details tab, end every pythonw.exe (or python.exe) entry, then double-click the Kalshi Dashboard icon.";
 const acctNeed="Open the dashboard from its icon (the address starts with http://127.0.0.1) to use your Kalshi account.";
@@ -1548,11 +1548,13 @@ function lvPlan(sym,side,stake,opt){      // what a click (or an automatic mirro
   const left=q.close-now;if(left<10)return{err:"Window is about to close"};
   const a=side==="UP"?q.yes_ask:(q.no_ask!=null?q.no_ask:(q.yes_bid!=null?1-q.yes_bid:null));
   if(a==null||!(a>0)||a>=1)return{err:"No price available"};
-  const ask=Math.min(99,Math.ceil(a*100-1e-9)),price=Math.min(99,ask+(opt.cushion||0)),p=price/100,per=p+0.07*p*(1-p),sm=acct.sum;
+  const ask=Math.min(99,Math.ceil(a*100-1e-9));
+  if(opt.max!=null&&ask>opt.max)return{err:"Kalshi's price ("+ask+"¢) is above the "+opt.max+"¢ this bet is worth"};
+  const price=Math.min(99,opt.max!=null?Math.min(ask+(opt.cushion||0),opt.max):ask+(opt.cushion||0)),p=price/100,per=p+0.07*p*(1-p),sm=acct.sum;
   const cash=sm&&sm.ok&&sm.balance!=null?sm.balance:stake;
   const cap=Math.min(stake,cash),count=Math.floor((cap-0.01)/per);
   if(count<1)return{err:cap<stake-1e-9?"Not enough cash":"Stake is too small for this price"};
-  return{ticker:q.tk,side:side==="UP"?"yes":"no",label:side,price,count,cost:count*per,left,mult:1/(ask/100)};
+  return{ticker:q.tk,side:side==="UP"?"yes":"no",label:side,price,count,cost:count*per,left,mult:1/(ask/100),ask};
 }
 function renderLive(s){      // real-money parts of the page, once a second
   renderAcctCard();realGuard(s);
@@ -1581,12 +1583,12 @@ function realMirror(src,sym,side,stake,meta){
   const note=(t,x)=>{realEvent(tag+": "+t);if(au)real.autoLast=Object.assign({t:Date.now(),win:winStart,sym,side,text:sym+" "+side+": "+t},x||{})};
   if(!realReady()){note("not placed (account not ready)");return}
   real.q=real.q.then(async()=>{       // one at a time, each with the freshest quote
-    const pl=lvPlan(sym,side,stake,{cushion:1});
+    const maxPx=meta.p>0?Math.floor(meta.p*100-1):null,pl=lvPlan(sym,side,stake,{cushion:3,max:maxPx});      // pay up to 3¢ over the live ask, but never more than its estimated chance minus 1¢
     if(pl.err){note("not placed ("+pl.err+")");return}
-    note("placing "+pl.count+" contracts at up to "+pl.price+"¢ (about "+money(pl.cost)+")",{tk:pl.ticker,price:pl.price,pending:true});
+    note("placing "+pl.count+" contracts, paying up to "+pl.price+"¢ each (about "+money(pl.cost)+")",{tk:pl.ticker,price:pl.price,pending:true});
     try{
-      const d=await apost("/account/order",{ticker:pl.ticker,side:pl.side,count:pl.count,price:pl.price,src,w:meta.w,sym,conf:meta.p});
-      if(d.ok&&d.filled){note("bought "+d.fill_count+" contracts at up to "+pl.price+"¢ for "+money(d.cost),{tk:pl.ticker,price:pl.price,bought:true,cost:d.cost,fc:d.fill_count});if(au)real.autoBet=true;
+      const d=await apost("/account/order",{ticker:pl.ticker,side:pl.side,count:pl.count,price:pl.price,max_price:maxPx,slack:3,src,w:meta.w,sym,conf:meta.p});
+      if(d.ok&&d.filled){note("bought "+d.fill_count+" contracts for "+money(d.cost)+" (limit "+pl.price+"¢)",{tk:pl.ticker,price:pl.price,bought:true,cost:d.cost,fc:d.fill_count});if(au)real.autoBet=true;
         if(acct.info)acct.info.spent_today=(acct.info.spent_today||0)+d.cost;if(acct.sum&&acct.sum.ok&&acct.sum.balance!=null)acct.sum.balance-=d.cost;
         const bk=budOf(src,au?"*":sym);if(bk){bk.avail-=d.cost;bk.open+=d.cost}}
       else note(d.ok?"NOT filled (the price moved), nothing was bought":"NOT placed. "+killTxt(d.error))
@@ -1597,7 +1599,7 @@ function realMirror(src,sym,side,stake,meta){
 function realLastBet(){      // what the last real auto bet was and how it turned out
   const L=real.autoLast;let s="–";
   if(L&&L.bought){const res=liveRes[L.tk],won=res?res===(L.side==="UP"?"yes":"no"):null;
-    s=L.sym+" "+L.side+" · "+L.fc+" @ "+L.price+"¢ · "+(won==null?"waiting for result":won?"WON +"+$$(L.fc-L.cost):"LOST −"+$$(L.cost))}
+    s=L.sym+" "+L.side+" · "+L.fc+" @ "+Math.round(L.cost/L.fc*100)+"¢ avg · "+(won==null?"waiting for result":won?"WON +"+$$(L.fc-L.cost):"LOST −"+$$(L.cost))}
   else if(L)s=L.text;
   else{const r=realOf("auto")[0];if(r)s=r.sym+" "+(r.r.side==="yes"?"UP":"DOWN")+" · "+r.r.fill_count+" @ "+r.r.price_cents+"¢ · "+(r.won==null?(r.open?"open":"settling"):r.won?"WON "+sgn(r.net):"LOST "+sgn(r.net))}
   return s}
