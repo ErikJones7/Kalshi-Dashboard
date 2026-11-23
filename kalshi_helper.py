@@ -39,7 +39,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-25b"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-25c"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -685,7 +685,10 @@ def _usd(o, dollars_key, cents_key):
 
 
 def norm_summary(bal, pos, fills):
-    out = {"balance": _usd(bal, "balance_dollars", "balance"),
+    cash = _usd(bal, "balance_dollars", "balance")
+    if cash is not None:      # Kalshi can hold fractions of a cent (fee rebates) but shows whole cents: round down so we never claim a cent more than it does
+        cash = math.floor(cash * 100 + 1e-6) / 100.0
+    out = {"balance": cash,
            "portfolio_value": _usd(bal, "portfolio_value_dollars", "portfolio_value"),
            "positions": [], "fills": []}
     for r in (pos.get("market_positions") or []):
