@@ -42,6 +42,10 @@ KALSHI ACCOUNT AND LIVE BETTING (optional)
 MAC / LINUX
   Double-click "Kalshi Dashboard.command" (needs Python 3). Updating works the same way.
 
+NOTIFICATIONS
+  While real Auto betting is on, the Auto popup and sound come from the real bet (when its order is actually bought), not from the
+  fake-money one. With real Auto betting off, the fake-money Auto bet still notifies as before.
+
 REFRESH RATE
   In the last 4 minutes of every window the dashboard refreshes every coin's Kalshi price twice a second (once a second before that).
   If Kalshi says there are too many requests, it drops back to once a second for a minute and carries on.
