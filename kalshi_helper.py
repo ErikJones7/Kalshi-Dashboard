@@ -39,7 +39,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-24g"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-24h"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -721,6 +721,8 @@ def acct_error_text(st, data):
     msg = ""
     if isinstance(data, dict):
         msg = str(data.get("message") or data.get("error") or "")
+        if data.get("details"):
+            msg += " (%s)" % str(data["details"])[:100]
         if isinstance(data.get("error"), dict):
             msg = str(data["error"].get("message") or data["error"].get("code") or "")
     return "Kalshi returned HTTP %d%s" % (st, (": " + msg[:160]) if msg else "")
@@ -948,7 +950,7 @@ def budget_set(body):
 
 
 def signed_post(base, path, body):
-    if path != "/portfolio/orders":
+    if path != "/portfolio/events/orders":          # the only thing this program is allowed to POST: Kalshi's V2 create-order endpoint
         raise ValueError("not allowed")
     import base64
     key_id, _env = acct_config()
@@ -1058,30 +1060,41 @@ def _place_order(body):
         ask = _ask_cents(m, side)
         if ask is not None and price > ask + 5:
             raise TradeError("Your price (%d¢) is well above the current ask (%d¢). Refresh and try again." % (price, ask))
-        order = {"ticker": ticker, "side": side, "action": "buy", "count": count, "type": "limit",
-                 "yes_price" if side == "yes" else "no_price": price, "time_in_force": "fill_or_kill",
+        # Kalshi's V2 orders are always quoted on the YES side: buying YES is a "bid" at the YES price, and buying NO is an "ask" (selling
+        # YES) at 100 minus the NO price, which is the same position. Fill-or-kill: it fills completely at this price or better, or not at all.
+        yes_px = price if side == "yes" else 100 - price
+        order = {"ticker": ticker, "side": "bid" if side == "yes" else "ask", "count": "%d.00" % count, "price": "%.2f" % (yes_px / 100.0),
+                 "time_in_force": "fill_or_kill", "self_trade_prevention_type": "taker_at_cross",
                  "client_order_id": "kd-%d-%s" % (int(time.time() * 1000), os.urandom(3).hex())}
         row["client_order_id"] = order["client_order_id"]
         base = _bases(env)[0]
-        st, rb = signed_post(base, "/portfolio/orders", order)
+        st, rb = signed_post(base, "/portfolio/events/orders", order)
         data = json.loads(rb.decode("utf-8", "ignore") or "{}")
         if st >= 400:
             row["error"] = acct_error_text(st, data)
             raise TradeError(row["error"])
-        o = data.get("order") or {}
-        fc = _f(o.get("fill_count_fp"))
+        o = data.get("order") if isinstance(data.get("order"), dict) else data
+        fc = _f(o.get("fill_count"))
         if fc is None:
-            fc = _f(o.get("fill_count"))
-        if fc is None:
-            fc = count if str(o.get("status", "")).lower() == "executed" else 0
-        spend = (_usd(o, "taker_fill_cost_dollars", "taker_fill_cost") or 0) + (_usd(o, "maker_fill_cost_dollars", "maker_fill_cost") or 0)
-        fees = (_usd(o, "taker_fees_dollars", "taker_fees") or 0) + (_usd(o, "maker_fees_dollars", "maker_fees") or 0)
-        if fc and not spend:
-            spend, fees = fc * price / 100.0, est_fee(int(fc), price)
-        row.update(order_id=o.get("order_id"), status=o.get("status"), filled=bool(fc and fc > 0), fill_count=fc,
+            fc = _f(o.get("fill_count_fp"))
+        fc = fc or 0
+        spend = fees = 0.0
+        if fc > 0:
+            avg = _f(o.get("average_fill_price"))               # per contract, quoted on the YES side
+            per_fee = _f(o.get("average_fee_paid"))
+            lim = price / 100.0
+            if avg is not None and 0 < avg < 1:
+                per = avg if side == "yes" else 1.0 - avg
+                if side == "no" and per > lim + 0.005 and avg <= lim + 0.005:
+                    per = avg                                   # reported in NO terms instead
+                spend = fc * min(per, lim)                      # a fill-or-kill limit order can never cost more than its limit
+            else:
+                spend = fc * lim
+            fees = fc * per_fee if per_fee is not None else est_fee(int(fc), price)
+        row.update(order_id=o.get("order_id"), status="executed" if fc > 0 else "not filled", filled=bool(fc > 0), fill_count=fc,
                    cost=round(spend, 4), fees=round(fees, 4), cost_total=round(spend + fees, 4))
         acct_cache["data"] = None
-        return {"ok": True, "filled": row["filled"], "fill_count": fc, "cost": row["cost_total"], "status": o.get("status"),
+        return {"ok": True, "filled": row["filled"], "fill_count": fc, "cost": row["cost_total"], "status": row["status"],
                 "message": ("Bought %g contracts for $%.2f." % (fc, row["cost_total"])) if row["filled"] else "Not filled: the price moved before it could complete. Nothing was bought."}
     except TradeError as e:
         row["refused"] = str(e)
