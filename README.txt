@@ -19,6 +19,11 @@ KALSHI ACCOUNT AND LIVE BETTING (optional)
   and is never sent to the dashboard page. Betting stays OFF until you switch it on, and the helper enforces a per-bet and a
   per-day limit (fees included). Only 15-minute crypto markets can be bought, as fill-or-kill orders. Every bet attempt is
   recorded in data\live_orders.jsonl. Use the Demo account option to try it with fake money first.
+  REAL-MONEY REPLICAS: the Simulated bets card and the Auto mode card each have a "Real money" switch. When on, every time that
+  mode bets, the same bet (same coin, side and moment) is also placed on your Kalshi account. Simulated bets use the "Real stake $"
+  box; Auto mode uses its own sizing rules applied to your account value. They switch off whenever you restart, and the "Stop all real
+  betting" button turns everything off at once. The Kalshi account card shows your cash, what is currently bet, today's spend and
+  your real wins and losses (taken from Kalshi's own market results).
   The key can place real bets: keep the keys folder private and never share it or the zip of this folder. If a key is ever exposed,
   delete it on Kalshi's API Keys page.
 

@@ -880,7 +880,9 @@ def place_order(body):
     except (TypeError, ValueError):
         raise TradeError("The bet details were incomplete.")
     row = {"t": time.time(), "day": time.strftime("%Y-%m-%d"), "time": time.strftime("%Y-%m-%d %H:%M:%S"), "env": env, "ticker": ticker,
-           "side": side, "count": count, "price_cents": price, "filled": False, "cost_total": 0.0, "src": str(body.get("src") or "manual")[:20]}
+           "side": side, "count": count, "price_cents": price, "filled": False, "cost_total": 0.0,
+           "src": body.get("src") if body.get("src") in ("manual", "sim", "auto") else "manual",
+           "w": _f(body.get("w")), "sym": str(body.get("sym") or "")[:12], "conf": _f(body.get("conf"))}
     try:
         if not t["trading"]:
             raise TradeError("Betting is switched off. Turn it on in Menu > Kalshi account.")
@@ -901,9 +903,16 @@ def place_order(body):
         used = spent_today(env)
         if used + cost > t["daily"] + 1e-9:
             raise TradeError("This bet would take today's total to $%.2f, over your daily limit of $%.2f." % (used + cost, t["daily"]))
+        if row["src"] != "manual" and any(r.get("src") == row["src"] and r.get("ticker") == ticker and r.get("env") == env and r.get("order_id")
+                                          for r in live_rows()):
+            raise TradeError("Already bet on this market from this mode.")
         with order_lock:
-            if time.time() - _last_order[0] < 1.5:
-                raise TradeError("Slow down: one bet at a time.")
+            gap = 1.5 if row["src"] == "manual" else 0.25
+            wait = gap - (time.time() - _last_order[0])
+            if wait > 0:
+                if row["src"] == "manual":
+                    raise TradeError("Slow down: one bet at a time.")
+                time.sleep(wait)                         # automatic bets queue up instead of being refused
             _last_order[0] = time.time()
         m, close = market_check(ticker, env)
         if close is not None and close - time.time() < 6:
@@ -1042,7 +1051,13 @@ class Handler(BaseHTTPRequestHandler):
                 if name == "summary":
                     return self._send(200, json.dumps(acct_summary("force=1" in path)))
                 if name == "orders":
-                    return self._send(200, json.dumps(live_rows()[-60:][::-1]))
+                    return self._send(200, json.dumps(live_rows()[-400:][::-1]))
+                if name.startswith("market/"):
+                    tk = urllib.parse.unquote(name[len("market/"):])
+                    if not TICKER_RE.match(tk):
+                        return self._send(400, json.dumps({"error": "bad ticker"}))
+                    st, body = fetch_upstream((DEMO_BASE if acct_config()[1] == "demo" else UPSTREAM) + "/markets/" + urllib.parse.quote(tk))
+                    return self._send(st, body)
             except Exception as e:
                 log("account get failed:\n" + traceback.format_exc())
                 return self._send(500, json.dumps({"error": str(e)}))

@@ -104,6 +104,7 @@ body{transition:margin-left .14s ease-out}
 .simtbl input{width:78px;padding:3px 6px;font-size:13px}
 .hit{color:var(--up)}.miss{color:var(--dn)}
 .lvb{min-width:210px;padding:10px 14px;font-weight:600}.lvb.arm{border-color:var(--sel);background:var(--hl);outline:2px solid var(--sel)}.lvb:disabled{opacity:.5;cursor:not-allowed}
+.realsw{color:var(--dn);font-weight:600}
 .warnbox{border:1px solid var(--dn);border-radius:8px;padding:8px 10px;margin:8px 0}
 </style></head><body>
 
@@ -144,7 +145,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-23y</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-23z</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -156,6 +157,19 @@ body{transition:margin-left .14s ease-out}
 </div>
 <div class="g4" id="cards"></div>
 
+<div class="card" id="acctCard" style="margin-bottom:12px">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><div class="k">Kalshi account (real money)</div><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="s" id="acTop"></span><button id="acStop" style="border-color:var(--dn);color:var(--dn);display:none">Stop all real betting</button></div></div>
+  <div id="acStats" style="display:flex;gap:28px;flex-wrap:wrap;margin:8px 0"></div>
+  <div style="overflow:auto"><table class="mini simtbl" id="acRes"></table></div>
+  <div class="s" id="acEv" style="margin-top:6px"></div>
+</div>
+<div class="card" id="liveCard" style="margin-bottom:12px">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><div class="k" id="lvK">Live betting (real money)</div><div class="s" id="lvTop"></div></div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:8px 0"><label>Stake $ <input type="number" id="lvStake" min="1" step="1" style="width:80px"></label><span class="s" id="lvInfo"></span></div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="lvb" id="lvUp"></button><button class="lvb" id="lvDn"></button></div>
+  <div class="s" id="lvMsg" style="margin-top:6px"></div>
+</div>
+
 <div class="card" style="margin-bottom:12px">
   <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
     <div class="k">Price in $: actual (left of now) and projected (right of now)</div>
@@ -166,17 +180,12 @@ body{transition:margin-left .14s ease-out}
   <div class="s" id="cvnote"></div>
 </div>
 
-<div class="card" id="liveCard" style="margin-bottom:12px">
-  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><div class="k" id="lvK">Live betting (real money)</div><div class="s" id="lvTop"></div></div>
-  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:8px 0"><label>Coin <select id="lvCoin"></select></label><label>Stake $ <input type="number" id="lvStake" min="1" step="1" style="width:80px"></label><span class="s" id="lvInfo"></span></div>
-  <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="lvb" id="lvUp"></button><button class="lvb" id="lvDn"></button></div>
-  <div class="s" id="lvMsg" style="margin-top:6px"></div>
-</div>
 <div class="card" id="autoCard" style="margin-bottom:12px">
   <div class="simhead">
     <div class="k" id="autoK">Auto mode</div>
     <div class="simctl">
       <label><input type="checkbox" id="autoOn"> On</label>
+      <label class="realsw" title="Place the same bets on your real Kalshi account"><input type="checkbox" id="autoReal"> Real money</label>
       <label>Start $ <input type="number" id="autoStart" min="1" step="10"></label>
       <label>Max bet <input type="number" id="autoCap" min="1" max="100" step="1">%</label>
       <button id="autoHist">View bet history</button><button id="autoReset">Reset bankroll</button><button id="autoForget">Reset learning</button>
@@ -198,6 +207,7 @@ body{transition:margin-left .14s ease-out}
       <label>Bet at <input type="number" id="simAt" min="5" max="300" step="5">s left</label>
       <label>Min confidence <input type="number" id="simMin" min="50" max="99.9" step="1">%</label>
       <label>After a loss <select id="simMode"><option value="restart">Restart from start $</option><option value="zero">Stay at $0</option></select></label>
+      <label class="realsw" title="Place the same bets on your real Kalshi account"><input type="checkbox" id="simReal"> Real money</label><label>Real stake $ <input type="number" id="simRealStake" min="1" step="1" style="width:70px"></label>
       <button id="simReset">Reset all</button>
     </div>
   </div>
@@ -917,7 +927,7 @@ function step(tick,light){
         simBusy.add(k);refreshMarket(sym,wEnd,sym===selected).catch(()=>{}).then(()=>simBusy.delete(k));continue}
       const side=r.pCal>=0.5?"UP":"DOWN",m=mults(q.yes_ask,q.yes_bid,q.no_ask),mult=side==="UP"?m.up:m.dn;
       if(!mult)continue;
-      simWait.delete(sym+"|"+cp);simFired.add(k);const tr=simTr(sym,cp);if(!(tr.bank>0))continue;     // busted and set to stay at $0
+      simWait.delete(sym+"|"+cp);simFired.add(k);if(real.sim)realMirror("sim",sym,side,real.simStake,{w:wEnd,p:side==="UP"?r.pCal:1-r.pCal});const tr=simTr(sym,cp);if(!(tr.bank>0))continue;     // busted and set to stay at $0
       pendSim.push({w:wStart,sym,cp,at:simAt,side,p:side==="UP"?r.pCal:1-r.pCal,tau:r.tau,anchorLn:r.anchorLn,ask:q.yes_ask,bid:q.yes_bid,mult,stake:tr.bank})}
   }
   autoStep(tick,tau,wStart,wEnd);
@@ -1282,6 +1292,7 @@ function autoStep(tick,tau,wStart,wEnd){
   autoDone=true;
   if(!place.length){autoNote="Edge too small to bet";return}
   for(const {x,stake} of place)pendAuto.push({w:wStart,sym:x.sym,side:x.side,p:x.e.p,lb:x.e.lb,edge:x.edge,tau:x.tau,anchorLn:x.anchorLn,ask:x.ask,bid:x.bid,mult:1/x.cost,stake,split:place.length>1});
+  if(real.auto)realAuto(best,two,picks,wEnd);
   curAutoAlert={w:wStart,tau,bets:place.map(({x,stake})=>({sym:x.sym,side:x.side,stake,mult:1/x.cost,conf:x.conf,lb:x.e.lb,edge:x.edge}))};autoNewFlag=true;
   autoNote="Bet placed";autoSave()}
 
@@ -1445,6 +1456,9 @@ $("avw").addEventListener("click",e=>{if(e.target.id==="avw")$("avw").style.disp
 /* ============================ Kalshi account + live betting ============================ */
 const escH=v=>String(v==null?"":v).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 let acct={info:null,sum:null,orders:[],err:"",busy:false}, lv={armed:null,msg:"",sel:null};
+// real-money mirrors: in memory only, so they are always OFF after a restart and have to be switched on on purpose
+let real={sim:false,auto:false,simStake:ls.get("k15realsimstake",1),events:[],q:Promise.resolve(),peak:ls.get("k15realpeak",0)};
+let liveRes=ls.get("k15liveres",{}),settleBusy=false;
 const oldHelper="The helper that is running is an older version that doesn't know about Kalshi accounts. Fully close it and reopen the dashboard from its icon: press Ctrl+Shift+Esc, open the Details tab, end every pythonw.exe (or python.exe) entry, then double-click the Kalshi Dashboard icon.";
 const acctNeed="Open the dashboard from its icon (the address starts with http://127.0.0.1) to use your Kalshi account.";
 async function aget(p){
@@ -1463,8 +1477,9 @@ async function acctRefresh(full){
     acct.info=await aget("/account/status");acct.err="";
     if(acct.info.ready){const sm=await aget("/account/summary"+(full?"?force=1":""));acct.sum=sm;if(!sm.ok)acct.err=sm.error||""}
     else acct.sum=null;
-    if($("kaw").style.display!=="none")acct.orders=await aget("/account/orders");
+    acct.orders=await aget("/account/orders");
   }catch(e){acct.err=e.message||"Couldn't reach your account.";if(!acct.info)acct.sum=null}
+  {const eq=realEquity();if(eq!=null&&eq>real.peak){real.peak=eq;ls.set("k15realpeak",eq)}}
   acct.busy=false;renderAcctMenu();if($("kaw").style.display!=="none")renderKa();
 }
 const money=v=>v==null?"–":"$"+(+v).toFixed(2);
@@ -1484,7 +1499,8 @@ function renderKa(){
   const tb=(h,rows)=>'<tr>'+h.map(x=>`<th>${x}</th>`).join("")+'</tr>'+(rows.length?rows.join(""):`<tr><td colspan="${h.length}" class="dim">None</td></tr>`);
   setH($("kaPos"),tb(["Market","Side","Contracts","Cost","Realized P&L"],((sm&&sm.positions)||[]).map(r=>`<tr><td>${escH(r.ticker)}</td><td>${r.side}</td><td>${r.contracts}</td><td>${money(r.cost)}</td><td>${money(r.pnl)}</td></tr>`)));
   setH($("kaFills"),tb(["Time","Market","Side","Contracts","Price","Fee"],((sm&&sm.fills)||[]).slice(0,40).map(r=>`<tr><td>${escH(String(r.time||"").replace("T"," ").replace("Z",""))}</td><td>${escH(r.ticker)}</td><td>${escH(r.action)} ${escH(r.side)}</td><td>${r.contracts==null?"–":r.contracts}</td><td>${r.price==null?"–":Math.round(r.price*100)+"¢"}</td><td>${money(r.fee)}</td></tr>`)));
-  setH($("kaOrd"),tb(["Time","Env","Market","Side","Contracts","Limit","Result","Cost"],(acct.orders||[]).slice(0,30).map(r=>`<tr><td>${escH(r.time)}</td><td>${escH(r.env)}</td><td>${escH(r.ticker)}</td><td>${escH(String(r.side).toUpperCase())}</td><td>${r.count}</td><td>${r.price_cents}¢</td><td class="${r.filled?"hit":"miss"}">${r.filled?"Filled":escH(r.refused||r.error||"Not filled")}</td><td>${r.filled?money(r.cost_total):"–"}</td></tr>`)));
+  setH($("kaOrd"),tb(["Time","Mode","Env","Market","Side","Contracts","Limit","Result","Cost","Net"],(acct.orders||[]).slice(0,60).map(r=>{const res=liveRes[r.ticker],won=r.filled&&res?res===r.side:null,net=won==null?null:won?r.fill_count-r.cost_total:-r.cost_total;
+    return `<tr><td>${escH(r.time)}</td><td>${escH(r.src||"manual")}</td><td>${escH(r.env)}</td><td>${escH(r.ticker)}</td><td>${escH(String(r.side).toUpperCase())}</td><td>${r.count}</td><td>${r.price_cents}¢</td><td class="${r.filled?(won===false?"miss":"hit"):"miss"}">${r.filled?(won==null?"Filled, waiting":won?"Won":"Lost"):escH(r.refused||r.error||"Not filled")}</td><td>${r.filled?money(r.cost_total):"–"}</td><td class="${net>0?"hit":net<0?"miss":""}">${net==null?"–":(net>=0?"+":"-")+"$"+Math.abs(net).toFixed(2)}</td></tr>`})));
 }
 async function openKa(){closeMenu();$("kaw").style.display="block";renderKa();await acctRefresh(true)}
 $("mAcct").onclick=openKa;
@@ -1503,33 +1519,31 @@ $("kaTrade").onchange=async e=>{
   if(on&&!confirm("Allow this dashboard to place "+(i.env==="demo"?"DEMO":"REAL")+" bets on your Kalshi account?\n\nUp to $"+i.max_bet+" per bet and $"+i.daily+" per day, fees included."))return renderKa();
   try{const d=await apost("/account/config",{trading:on});if(!d.ok)throw new Error(d.error);acct.err="";await acctRefresh(true)}catch(x){kaErr(x)}
 };
-setInterval(()=>{if(!document.hidden&&hBase)acctRefresh(false)},15000);
+setInterval(()=>{if((real.sim||real.auto||!document.hidden)&&hBase)acctRefresh(false)},10000);
 setTimeout(()=>acctRefresh(false),4000);
 
 // ---- live betting card
-let lvKey="";
 const lvStakeV=()=>{const v=parseFloat($("lvStake").value);return v>0?v:0};
 $("lvStake").value=ls.get("k15livestake",5);
 $("lvStake").onchange=()=>{ls.set("k15livestake",lvStakeV());lv.armed=null};
-$("lvCoin").onchange=e=>{lv.sel=e.target.value;lv.armed=null};
-function lvPlan(sym,side,stake){      // what a click would buy right now, from the live Kalshi quote
+function lvPlan(sym,side,stake,opt){      // what a click (or an automatic mirror) would buy right now, from the live Kalshi quote
+  opt=opt||{};
   const q=quoteBy[sym],now=Date.now()/1000;
   if(!q||!q.tk)return{err:"No Kalshi market for "+sym+" yet"};
   if(now-q.ts>12)return{err:"Kalshi price is stale"};
   const left=q.close-now;if(left<10)return{err:"Window is about to close"};
   const a=side==="UP"?q.yes_ask:(q.no_ask!=null?q.no_ask:(q.yes_bid!=null?1-q.yes_bid:null));
   if(a==null||!(a>0)||a>=1)return{err:"No price available"};
-  const price=Math.min(99,Math.ceil(a*100-1e-9)),p=price/100,per=p+0.07*p*(1-p),cap=Math.min(stake,(acct.info&&acct.info.max_bet)||stake);
-  const count=Math.floor((cap-0.01)/per);
-  if(count<1)return{err:"Stake is too small for this price"};
-  return{ticker:q.tk,side:side==="UP"?"yes":"no",label:side,price,count,cost:count*per,left,mult:1/p};
+  const ask=Math.min(99,Math.ceil(a*100-1e-9)),price=Math.min(99,ask+(opt.cushion||0)),p=price/100,per=p+0.07*p*(1-p),i=acct.info||{},sm=acct.sum;
+  const room=i.daily!=null?i.daily-(i.spent_today||0):stake,cash=sm&&sm.ok&&sm.balance!=null?sm.balance:stake;
+  const cap=Math.min(stake,i.max_bet!=null?i.max_bet:stake,room,cash),count=Math.floor((cap-0.01)/per);
+  if(count<1)return{err:cap<stake-1e-9?(cap===room?"Daily limit reached":cap===cash?"Not enough cash":"Over the per-bet limit"):"Stake is too small for this price"};
+  return{ticker:q.tk,side:side==="UP"?"yes":"no",label:side,price,count,cost:count*per,left,mult:1/(ask/100)};
 }
 function renderLive(s){
   const i=acct.info,b=[$("lvUp"),$("lvDn")];
-  const syms_=s.coins.map(r=>r.sym),k=syms_.join();
-  if(k!==lvKey){lvKey=k;$("lvCoin").innerHTML=syms_.map(x=>`<option>${x}</option>`).join("")}
-  if(!lv.sel||!syms_.includes(lv.sel))lv.sel=syms_.includes(s.selected)?s.selected:syms_[0];
-  if($("lvCoin").value!==lv.sel)$("lvCoin").value=lv.sel;
+  renderAcctCard();realGuard(s);
+  lv.sel=s.selected;setT($("lvK"),"Live betting · "+lv.sel+" (real money, follows the coin chosen at the top)");
   const off=m=>{b.forEach(x=>{x.disabled=true;x.classList.remove("arm");setT(x,"–")});setT($("lvInfo"),"");setT($("lvTop"),m)};
   if(s.sim)return off("Practice run: live betting is paused");
   if(!i||!i.ready)return off(i?"Not connected. Menu, then Kalshi account, to connect.":"Checking your Kalshi account…");
@@ -1547,7 +1561,7 @@ function renderLive(s){
   setT($("lvMsg"),lv.msg);
 }
 async function lvClick(sd){
-  const sym=lv.sel,pl=lvPlan(sym,sd,lvStakeV());if(pl.err){lv.msg=pl.err;return}
+  const sym=selected,pl=lvPlan(sym,sd,lvStakeV());if(pl.err){lv.msg=pl.err;return}
   const A=lv.armed;
   if(!(A&&Date.now()<A.until&&A.sym===sym&&A.label===sd)){lv.armed={sym,label:sd,price:pl.price,until:Date.now()+6000};lv.msg="";return}
   if(Math.abs(pl.price-A.price)>2){lv.armed={sym,label:sd,price:pl.price,until:Date.now()+6000};lv.msg="The price moved to "+pl.price+"¢. Click again to confirm.";return}
@@ -1559,6 +1573,79 @@ async function lvClick(sd){
   acctRefresh(true);
 }
 $("lvUp").onclick=()=>lvClick("UP");$("lvDn").onclick=()=>lvClick("DOWN");
+
+// ---- real-money replicas of the simulated bets and auto mode: same trigger, same coin and side, same moment, on your Kalshi account
+const realEquity=()=>{const sm=acct.sum;return sm&&sm.ok&&sm.balance!=null?(sm.balance||0)+(sm.portfolio_value||0):null};
+const realReady=()=>!sim&&acct.info&&acct.info.ready&&acct.info.trading&&acct.sum&&acct.sum.ok;
+function realEvent(t){real.events.unshift(new Date().toLocaleTimeString()+" · "+t);if(real.events.length>8)real.events.length=8}
+function realMirror(src,sym,side,stake,meta){
+  const tag=(src==="auto"?"Auto":"Sim bet")+" "+sym+" "+side;
+  if(!realReady()){realEvent(tag+": not placed (account not ready)");return}
+  real.q=real.q.then(async()=>{       // one at a time, each with the freshest quote
+    const pl=lvPlan(sym,side,stake,{cushion:1});
+    if(pl.err){realEvent(tag+": not placed ("+pl.err+")");return}
+    try{
+      const d=await apost("/account/order",{ticker:pl.ticker,side:pl.side,count:pl.count,price:pl.price,src,w:meta.w,sym,conf:meta.p});
+      if(d.ok&&d.filled){realEvent(tag+": bought "+d.fill_count+" for "+money(d.cost));
+        if(acct.info)acct.info.spent_today=(acct.info.spent_today||0)+d.cost;if(acct.sum&&acct.sum.ok&&acct.sum.balance!=null)acct.sum.balance-=d.cost}
+      else realEvent(tag+": "+(d.ok?"not filled (the price moved), nothing bought":(d.error||"not placed")))
+    }catch(e){realEvent(tag+": "+(e.message||"failed"))}
+    acctRefresh(true);
+  }).catch(()=>{});
+}
+function realAuto(best,two,picks,wEnd){          // the same sizing rule as simulated auto mode, applied to the real account value
+  if(!realReady()){realEvent("Auto: not placed (account not ready)");return}
+  const eq=realEquity();if(!(eq>0))return;
+  const dd=real.peak>0?1-eq/real.peak:0,sc=Math.max(0.25,Math.min(1,1-dd/0.4)),tot=Math.min(autoSt.cap||0.2,best.f*sc*(two?1.3:1));
+  for(const x of picks){const st=Math.floor(eq*tot/picks.length*100)/100;if(st>=1)realMirror("auto",x.sym,x.side,st,{w:wEnd,p:x.conf})}
+}
+function realGuard(s){
+  if((real.sim||real.auto)&&(s.sim||!(acct.info&&acct.info.ready&&acct.info.trading))){real.sim=real.auto=false;realEvent("Real betting stopped ("+(s.sim?"practice run started":"betting was switched off")+")")}
+  if($("autoReal").checked!==real.auto)$("autoReal").checked=real.auto;if($("simReal").checked!==real.sim)$("simReal").checked=real.sim;
+}
+function realSwitch(k,on){
+  const el=$(k==="auto"?"autoReal":"simReal");
+  if(!on){real[k]=false;realEvent((k==="auto"?"Auto":"Sim bet")+" real betting off");return}
+  if(!realReady()){realEvent("Can't switch on yet: connect your account and turn betting on in Menu, then Kalshi account.");el.checked=false;return}
+  const i=acct.info;
+  if(!confirm("Place "+(i.env==="demo"?"DEMO":"REAL")+" bets on your Kalshi account every time "+(k==="auto"?"Auto mode":"a simulated bet")+" bets?\\n\\n"+
+      (k==="auto"?"Sizes follow auto mode's rules applied to your account value.":"Each one is $"+real.simStake+" (the Real stake box).")+"\\nLimits: $"+i.max_bet+" per bet, $"+i.daily+" per day, fees included. Switches off again when you restart.")){el.checked=false;return}
+  real[k]=true;realEvent((k==="auto"?"Auto":"Sim bet")+" real betting ON");
+}
+$("autoReal").onchange=e=>realSwitch("auto",e.target.checked);$("simReal").onchange=e=>realSwitch("sim",e.target.checked);
+$("simRealStake").value=real.simStake;
+$("simRealStake").onchange=e=>{const v=parseFloat(e.target.value);if(v>=1){real.simStake=v;ls.set("k15realsimstake",v)}else e.target.value=real.simStake};
+$("acStop").onclick=async()=>{real.sim=real.auto=false;try{await apost("/account/config",{trading:false})}catch(e){}realEvent("All real betting stopped");acctRefresh(true)};
+
+function realStats(){
+  const env=acct.info&&acct.info.env,day=new Date().toLocaleDateString("en-CA"),out={};
+  for(const k of ["auto","sim","manual","all"])out[k]={n:0,w:0,l:0,wait:0,netT:0,netA:0};
+  for(const r of (acct.orders||[])){if(!r.filled||r.env!==env)continue;
+    const res=liveRes[r.ticker],won=res?res===r.side:null,net=won==null?null:won?r.fill_count-r.cost_total:-r.cost_total;
+    for(const k of [r.src||"manual","all"]){const o=out[k];if(!o)continue;o.n++;if(won==null)o.wait++;else{if(won)o.w++;else o.l++;o.netA+=net;if(r.day===day)o.netT+=net}}}
+  return out}
+function renderAcctCard(){
+  const i=acct.info,sm=acct.sum,ok=!!(i&&i.ready&&sm&&sm.ok);
+  setT($("acTop"),!i?"Checking…":!i.ready?"Not connected. Menu, then Kalshi account.":!ok?(acct.err||"Waiting for Kalshi…"):(i.env==="demo"?"DEMO account":"REAL account")+(i.trading?" · betting ON":" · betting off")+((real.auto||real.sim)?" · real "+[real.auto&&"auto",real.sim&&"sim bets"].filter(Boolean).join(" + ")+" ON":""));
+  $("acStop").style.display=i&&i.trading?"":"none";
+  setH($("acEv"),real.events.map(escH).join("<br>"));
+  if(!ok){setH($("acStats"),"");setH($("acRes"),"");return}
+  const open=(sm.positions||[]).reduce((t,r)=>t+(r.cost||0),0),st=realStats(),sg=v=>(v>=0?"+":"-")+"$"+Math.abs(v).toFixed(2),cl=v=>v>0?"hit":v<0?"miss":"";
+  const C=(k,v,c,sub)=>`<div><div class="k">${k}</div><div class="v ${c||""}">${v}</div>${sub?`<div class="s">${sub}</div>`:""}</div>`;
+  setH($("acStats"),C("Cash",money(sm.balance))+C("Currently bet",money(open),"",(sm.positions||[]).length+" open position"+((sm.positions||[]).length===1?"":"s"))+C("Portfolio value",money(sm.portfolio_value))+
+    C("Spent today",money(i.spent_today),"","limit "+money(i.daily))+C("Net today",sg(st.all.netT),cl(st.all.netT),"settled bets")+C("Net all time",sg(st.all.netA),cl(st.all.netA),"settled bets"));
+  const row=(lab,o,c)=>`<tr${c?` class="${c}"`:""}><td>${lab}</td><td>${o.n}</td><td>${o.w} / ${o.l}</td><td>${o.wait||"–"}</td><td class="${cl(o.netT)}">${o.n?sg(o.netT):"–"}</td><td class="${cl(o.netA)}">${o.n?sg(o.netA):"–"}</td></tr>`;
+  setH($("acRes"),'<tr><th>Real bets from</th><th>Filled</th><th>Wins / losses</th><th>Waiting for result</th><th>Net today</th><th>Net all time</th></tr>'+row("Auto mode",st.auto)+row("Simulated-bet replica",st.sim)+row("Manual (Live betting)",st.manual)+row("All",st.all,"tot"));
+}
+async function liveSettle(){     // Kalshi's own result for each market we bet on, so real wins and losses are exact
+  if(settleBusy||!acct.orders)return;settleBusy=true;
+  try{const now=Date.now()/1000,need=[...new Set(acct.orders.filter(r=>r.filled&&!liveRes[r.ticker]&&now>(r.w||r.t+900)+15).map(r=>r.ticker))].slice(0,6);
+    for(const tk of need){try{const d=await aget("/account/market/"+encodeURIComponent(tk)),m=d.market||{};if(m.result==="yes"||m.result==="no")liveRes[tk]=m.result}catch(e){}}
+    const ks=Object.keys(liveRes);if(ks.length>600)ks.slice(0,ks.length-400).forEach(k=>delete liveRes[k]);
+    ls.set("k15liveres",liveRes)}finally{settleBusy=false}
+}
+setInterval(liveSettle,20000);
+
 
 /* ============================ menu ============================ */
 async function hcmd(path,obj){
