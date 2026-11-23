@@ -45,6 +45,8 @@ select:focus,input:focus,button:focus-visible{outline:2px solid var(--sel);outli
 .k{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
 .v{font-size:24px;font-weight:600;margin-top:2px}
 .s{color:var(--mut);font-size:12px;margin-top:3px}
+.g4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:12px}
+@media (max-width:980px){.g4{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .up{color:var(--up)}.dn{color:var(--dn)}
 table{width:100%;border-collapse:collapse}
 th,td{text-align:right;padding:6px 8px;border-bottom:1px solid var(--bd)}
@@ -107,7 +109,7 @@ body{transition:margin-left .14s ease-out}
       <span class="pill clock" id="clock">–</span>
       <span class="pill" id="phase">–</span>
       <span class="pill" id="feed">Connecting…</span>
-      <span class="pill" id="kal">Kalshi target: –</span>
+      <span class="pill" id="kal">Kalshi: connecting</span>
       <span class="pill" id="sav" title="Signal, final-call and calibration data are saved to the data folder next to kalshi_helper.py">Data folder: –</span>
     </div>
   </div>
@@ -132,7 +134,7 @@ body{transition:margin-left .14s ease-out}
           <div style="display:flex;gap:6px;width:100%"><button id="mChk" style="text-align:center">Check for updates</button><button id="mUpd" style="text-align:center" disabled>Install</button></div>
           <div class="s" id="mUpdMsg"></div></div>
         <div class="mi"><button id="mReset">Reset dashboard settings</button></div>
-      </div></div><span class="bld" id="build">build 2026-11-23b</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+      </div></div><span class="bld" id="build">build 2026-11-23c</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -142,7 +144,7 @@ body{transition:margin-left .14s ease-out}
     <div class="edit"><input id="tgtIn" type="text" inputmode="decimal" placeholder="edit target price"><button id="tgtSet">Set target</button><button id="tgtAuto" style="display:none">Back to auto</button></div></div>
   <div class="card final" id="finCard"><div class="k">Final prediction</div><div class="v">–</div></div>
 </div>
-<div class="grid" id="cards"></div>
+<div class="g4" id="cards"></div>
 
 <div class="card" style="margin-bottom:12px">
   <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
@@ -243,7 +245,16 @@ function newAuto(st){return {cap:0.2,on:false,start:st,bank:st,peak:st,w:0,l:0,n
 let autoSt=(()=>{const a=ls.get("k15auto",null);return a&&a.learn?a:newAuto(100)})();
 let curAutoAlert=null, autoNewFlag=false;
 let pendAuto=[], pendASnap=[], autoSnap=new Set(), autoDone=false, autoNote="", autoStab={}, autoG=0, autoRefr={};
-const AUTO_MIN=0.88, AUTO_EDGE=0.03, AUTO_KELLY=0.25;
+// Safety gate: starts strict (92%), then follows what actually happened. A confidence band that has proven itself
+// (90%+ win rate even at the low end) opens up, down to 80%; one that has underperformed gets shut, however confident it looked.
+function wilsonLB(w,n){const z=1.28,p=w/n;return (p+z*z/(2*n)-z*Math.sqrt(p*(1-p)/n+z*z/(4*n*n)))/(1+z*z/n)}
+function autoAllow(conf,tau){
+  if(conf<0.80)return false;
+  const L=autoSt.learn[atb(tau)+"|"+abin(conf)];
+  if(L&&L.n>=40)return wilsonLB(L.w,L.n)>=0.88;
+  return conf>=0.92}
+function autoGate(tb){let g=null;for(let c=0.995;c>=0.80;c-=0.005){if(autoAllow(c,tb===0?200:tb===1?110:50))g=c;else break}return g}
+const AUTO_EDGE=0.03, AUTO_KELLY=0.25;
 let simBusy=new Set(), simMin=ls.get("k15simmin",0.90), simWait=new Set(), simDef=ls.get("k15simdef",100), simMode=ls.get("k15simmode","restart"), simSt=ls.get("k15sim",{start:{},tr:{}}), simLog=ls.get("k15simlog",[]), pendSim=[], simFired=new Set(), simKey="";
 let showAvg=ls.get("k15showavg",true), showPavg=ls.get("k15showpavg",true);
 let pickHist=ls.get("k15pickh",[]), pendPick=[];
@@ -1014,7 +1025,7 @@ function render(s){
   $("phase").textContent=s.phase==="active"?"LAST 5 MIN – predicting":"Predicting · last 5 minutes start in "+mmss(s.to_active);
   const fe=$("feed");fe.textContent=s.live+"/"+s.total+" coins live"+(s.sim?" (SIMULATED "+SIM_SPEED+"x)":Object.keys(s.srcCount).length?" · "+Object.entries(s.srcCount).map(([k,v])=>NAMES[k]+" "+v).join(", "):"");fe.className="pill "+(s.live>0?"ok":"bad");
   {const sv=$("sav");sv.textContent=savState==="ok"?"Data folder: saving":savState==="off"?(savErr?"Data folder: "+savErr:"Data folder: helper not running (saved in browser only)"):savState==="err"?"Data folder: save failed ("+savErr+"), will retry":"Data folder: checking…";sv.title=savErr?("Reason: "+savErr):(helperPage?"Page served from: "+helperPage+" · ":"")+"Signal, final-call and calibration data are saved to the data folder next to kalshi_helper.py";sv.className="pill "+(savState==="ok"?"ok":savState==="checking"?"":"bad")}
-  $("kal").textContent="Kalshi target: "+(kalshiStatus==="live"?"Live":kalshiStatus==="unreachable"?"Unreachable":"–");
+  {const kk=$("kal"),ok=s.sim||kalshiStatus==="live";kk.textContent=ok?"Kalshi: connected":kalshiStatus==="unreachable"?"Kalshi: not connected":"Kalshi: connecting";kk.className="pill "+(ok?"ok":kalshiStatus==="unreachable"?"bad":"")}
 
   // popups (left side): only for the selected coin. Other coins still feed the track record and calibration.
   const sg_=$("sig"), shown=s.signals.filter(x=>x.sym===s.selected&&!dismissed.has(x.w+"|"+x.sym+"|"+x.side));
@@ -1163,9 +1174,10 @@ function autoStep(tick,tau,wStart,wEnd){
   const now=Date.now()/1000,cands=[];let refr=0,waiting=0;
   for(const sym of syms){const r=res[sym];if(!r||r.pCal==null||r.tick<tick-8||!isFinite(r.anchorLn))continue;
     const side=r.pCal>=0.5?"UP":"DOWN",conf=side==="UP"?r.pCal:1-r.pCal,st=autoStab[sym];
-    if(!st||st.side!==side||conf<AUTO_MIN)autoStab[sym]={side,n:conf>=AUTO_MIN?1:0,t:r.tick};
+    const okc=autoAllow(conf,r.tau);
+    if(!st||st.side!==side||!okc)autoStab[sym]={side,n:okc?1:0,t:r.tick};
     else if(st.t!==r.tick){st.n++;st.t=r.tick}
-    if(conf<AUTO_MIN||autoStab[sym].n<4){continue}
+    if(!okc||autoStab[sym].n<4){continue}
     waiting++;
     const q=quoteBy[sym];
     if(!q||Math.abs(q.close-wEnd)>5||q.yes_ask==null||now-q.ts>3){
@@ -1199,7 +1211,7 @@ function renderAuto(){
   const st=!a.on?"Off":ob.length?"Open: "+ob.map(b=>`${b.sym} ${b.side} ${$$(b.stake)} @ ${mx(b.mult)}`).join(" + "):(autoNote||"Waiting for the next window");
   const cell=(l,v,c)=>`<div>${l}<b${c?` class="${c}"`:""}>${v}</b></div>`;
   $("autoStats").innerHTML=cell("Bankroll",$$(a.bank))+cell("Net",$$(a.net),a.net>0?"hit":a.net<0?"miss":"")+cell("Wins / losses",a.w+" / "+a.l)+
-    cell("Hit rate",tot?Math.round(a.w/tot*1000)/10+"%":"–")+cell("Windows skipped",a.skipped)+cell("Below peak",Math.round(dd*1000)/10+"%")+cell("Learned from",samples+" samples")+cell("Status",st);
+    cell("Hit rate",tot?Math.round(a.w/tot*1000)/10+"%":"–")+cell("Windows skipped",a.skipped)+cell("Below peak",Math.round(dd*1000)/10+"%")+cell("Min confidence now",(g=>g==null?"none":Math.round(g*1000)/10+"%")(autoGate(1)))+cell("Learned from",samples+" samples")+cell("Status",st);
 }
 function renderPicks(){
   $("pickK").textContent=sim?"Best pick record · "+SIM_SPEED+"x practice run (not saved)":"Best pick record";
