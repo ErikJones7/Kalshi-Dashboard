@@ -645,10 +645,12 @@ def local_version():
         return "unknown"
 
 
-def http_get(url, token=None, timeout=20):
+def http_get(url, token=None, timeout=20, extra=None):
     if "raw.githubusercontent.com" in url:      # GitHub caches raw files for ~5 minutes; a changing query string gets the newest copy
         url += ("&" if "?" in url else "?") + "cb=%d" % time.time_ns()
     headers = {"User-Agent": "kalshi-helper/2.0"}
+    if extra:
+        headers.update(extra)
     if token:
         headers["Authorization"] = "token " + token
     try:
@@ -680,16 +682,47 @@ def update_base(url):
     return url if url.endswith("/") else url + "/"
 
 
+RAW_RE = re.compile(r"^https://raw\.githubusercontent\.com/([^/]+)/([^/]+)/([^/]+)/(.*)$")
+SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+
+
+def is_pinned(base):
+    m = RAW_RE.match(base)
+    return bool(m and SHA_RE.match(m.group(3)))
+
+
+def pin_to_commit(base, token=None):
+    """GitHub serves a branch's files from a cache that can lag by several minutes and can hand out version.json and the
+    files from different moments (that is what caused 'did not match its checksum'). A single commit never changes, so
+    look up the newest commit and read everything from that one. If the lookup fails, the branch address is used as before."""
+    m = RAW_RE.match(base)
+    if not m or SHA_RE.match(m.group(3)):
+        return base
+    owner, repo, ref, sub = m.groups()
+    try:
+        api = "https://api.github.com/repos/%s/%s/commits/%s?cb=%d" % (owner, repo, urllib.parse.quote(ref, safe=""), time.time_ns())
+        sha = http_get(api, token, 10, {"Accept": "application/vnd.github.sha"}).decode("ascii", "ignore").strip()
+        if SHA_RE.match(sha):
+            return "https://raw.githubusercontent.com/%s/%s/%s/%s" % (owner, repo, sha, sub)
+    except Exception:
+        pass
+    return base
+
+
 def update_manifest(cfg):
     base = update_base(cfg.get("update_url"))
-    try:
-        man = json.loads(http_get(base + "version.json", cfg.get("update_token")).decode("utf-8"))
-        ver = str(man["version"])
-    except RuntimeError:
-        raise
-    except Exception:
-        raise RuntimeError("version.json at that address could not be read.")
-    return base, man, ver
+    token = cfg.get("update_token")
+    pinned = pin_to_commit(base, token)
+    last = None
+    for b in ([pinned, base] if pinned != base else [base]):
+        try:
+            man = json.loads(http_get(b + "version.json", token).decode("utf-8"))
+            return b, man, str(man["version"])
+        except RuntimeError as e:
+            last = e
+        except Exception:
+            last = RuntimeError("version.json at that address could not be read.")
+    raise last
 
 
 def is_newer(remote, local):
@@ -739,7 +772,7 @@ def update_apply(port):
             skipped.append(name)
             continue
         body = http_get(base + urllib.request.quote(name), cfg.get("update_token"))
-        for _try in range(3):      # a stale cached copy can briefly disagree with version.json; ask again for a fresh one
+        for _try in range(1 if is_pinned(base) else 3):      # a stale cached copy can briefly disagree with version.json; ask again for a fresh one (not needed when reading a fixed commit)
             if name not in hashes or hashlib.sha256(body).hexdigest() == hashes[name].lower():
                 break
             time.sleep(3)
