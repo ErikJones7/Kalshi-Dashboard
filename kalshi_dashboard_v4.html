@@ -24,8 +24,12 @@ h1{font-size:17px;margin:0}
 .grp button{padding:4px 9px;font-size:13px}
 .bld{font-size:11px;color:var(--mut)}
 .menu{position:relative}
-.menupanel{position:absolute;right:0;top:calc(100% + 6px);width:min(340px,86vw);background:var(--card);border:1px solid var(--bd);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.45);padding:6px;z-index:50;display:none}
-.menupanel.open{display:block}
+.menupanel{position:fixed;right:12px;top:64px;max-height:calc(100vh - 80px);overflow:auto;width:min(340px,calc(100vw - 24px));background:var(--card);border:1px solid var(--bd);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.45);padding:6px;z-index:50;display:none}
+.menupanel.open{display:block;animation:menuIn .14s ease-out}
+.menupanel.closing{display:block;animation:menuOut .14s ease-in forwards}
+@keyframes menuIn{from{transform:translateX(115%);opacity:0}to{transform:none;opacity:1}}
+@keyframes menuOut{from{transform:none;opacity:1}to{transform:translateX(115%);opacity:0}}
+#menuBtn{padding:5px 8px;line-height:0}#menuBtn svg{width:18px;height:18px;display:block}
 .mi{padding:8px 10px;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
 .mi+.mi{border-top:1px solid var(--bd)}
 .mt{color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
@@ -122,7 +126,8 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><div class="menu"><button id="menuBtn">Menu &#9662;</button><div class="menupanel" id="menuPanel">
+    <div class="grp right"><div class="menu"><button id="menuBtn" title="Menu" aria-label="Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button><div class="menupanel" id="menuPanel">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:2px 4px 4px 10px"><b>Menu</b><button id="mClose" title="Close" style="padding:0 8px;font-size:18px;line-height:22px;border-radius:6px">&times;</button></div>
         <div class="mi"><div class="mt">Folders</div><button id="mData">Open data folder</button><button id="mApp">Open program folder</button><div class="s" id="mPath"></div></div>
         <div class="mi"><div class="mt">Data</div><button id="mView">View all signal data</button></div>
         <div class="mi"><div class="mt">Appearance</div><select id="mTheme"><option value="auto">Match my system</option><option value="dark">Dark</option><option value="light">Light</option></select></div>
@@ -134,7 +139,7 @@ body{transition:margin-left .14s ease-out}
           <div style="display:flex;gap:6px;width:100%"><button id="mChk" style="text-align:center;flex:1">Check for updates</button></div>
           <div class="s" id="mUpdMsg"></div></div>
         <div class="mi"><button id="mReset">Reset dashboard settings</button></div>
-      </div></div><span class="bld" id="build">build 2026-11-23f</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+      </div></div><span class="bld" id="build">build 2026-11-23g</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1322,9 +1327,11 @@ async function openMenu(){
   try{const r=await fetch(hBase+"/settings");const d=await r.json();$("mKeep").checked=!!d.keep;$("mPath").textContent="Data: "+d.data;
     helperStarted=d.started;$("mVer").textContent="Version "+d.version;$("mUrl").value=d.update_url||"";$("mTok").placeholder=d.has_token?"Access token saved (type a new one to replace)":"Access token (only for a private repository)"}catch(e){$("mPath").textContent=""}
 }
-$("menuBtn").onclick=e=>{e.stopPropagation();mp.classList.contains("open")?mp.classList.remove("open"):openMenu()};
-document.addEventListener("click",e=>{if(!e.target.closest(".menu"))mp.classList.remove("open")});
-document.addEventListener("keydown",e=>{if(e.key==="Escape")mp.classList.remove("open")});
+function closeMenu(){if(!mp.classList.contains("open"))return;mp.classList.remove("open");mp.classList.add("closing");setTimeout(()=>mp.classList.remove("closing"),150)}
+$("mClose").onclick=e=>{e.stopPropagation();closeMenu()};
+$("menuBtn").onclick=e=>{e.stopPropagation();mp.classList.contains("open")?closeMenu():openMenu()};
+document.addEventListener("click",e=>{if(!e.target.closest(".menu"))closeMenu()});
+document.addEventListener("keydown",e=>{if(e.key==="Escape")closeMenu()});
 let helperStarted=null, updReady=false;
 const updMsg=t=>{$("mUpdMsg").textContent=t};
 async function updCall(action){
@@ -1364,7 +1371,7 @@ async function installUpdate(ver){
 const menuErr=e=>{$("mPath").textContent=e.message||"Something went wrong"};
 $("mData").onclick=()=>hcmd("/open",{what:"data"}).catch(menuErr);
 $("mApp").onclick=()=>hcmd("/open",{what:"app"}).catch(menuErr);
-$("mView").onclick=()=>{mp.classList.remove("open");openViewer()};
+$("mView").onclick=()=>{closeMenu();openViewer()};
 $("mTheme").onchange=e=>{ls.set("k15theme",e.target.value);applyTheme(e.target.value);if(lastCh)draw(lastCh)};
 $("mVol").oninput=e=>{volMul=e.target.value/100;ls.set("k15vol",volMul)};
 $("mVol").onchange=()=>beep("sig");
