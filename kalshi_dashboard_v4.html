@@ -149,7 +149,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-24i</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-24j</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -173,7 +173,7 @@ body{transition:margin-left .14s ease-out}
 </div>
 
 <div class="card" id="acctCard" style="margin-bottom:12px">
-  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><div class="k">Kalshi account (real money)</div><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="s" id="acTop"></span><button id="acStop" style="border-color:var(--dn);color:var(--dn);display:none">Stop all real betting</button></div></div>
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><div class="simttl"><div class="k">Kalshi account (real money)</div><button id="acStop" class="modesw fake" style="display:none" title="Turn all real betting on or off">Real betting: OFF</button></div><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="s" id="acTop"></span></div></div>
   <div id="acStats" style="display:flex;gap:28px;flex-wrap:wrap;margin:8px 0"></div>
   <div style="overflow:auto"><table class="mini simtbl" id="acRes"></table></div>
   <div class="s" id="acEv" style="margin-top:6px"></div>
@@ -1633,7 +1633,11 @@ $("simRealAllB").onclick=async()=>{
   const v=parseFloat($("simRealAll").value);if(!(v>=0))return;
   for(const x of syms){const b=budOf("sim",x);if(!(await realAlloc("sim",x,v,null,b?money2(b.bank):0,true)))break}
 };
-$("acStop").onclick=async()=>{real.sim=real.auto=false;try{await apost("/account/config",{trading:false})}catch(e){}realEvent("All real betting stopped");acctRefresh(true)};
+$("acStop").onclick=async()=>{      // one switch for all real betting: ON stops every real mode, OFF allows real bets again (each mode still has to be started)
+  const on=!!(acct.info&&acct.info.trading);
+  if(on)real.sim=real.auto=false;
+  try{const d=await apost("/account/config",{trading:!on});if(!d.ok&&d.error)throw new Error(d.error);realEvent(on?"All real betting stopped":"Real betting allowed. Press Start real betting on Auto mode or Timed bets.")}catch(e){realEvent("Couldn't change real betting: "+(e.message||"failed"))}
+  acctRefresh(true)};
 
 const symOf=r=>r.sym||((/^KX([A-Z0-9]+?)15M/.exec(r.ticker||"")||[])[1]||"?");
 const sgn=v=>(v>=0?"+":"-")+"$"+Math.abs(v).toFixed(2),cls=v=>v>0?"hit":v<0?"miss":"";
@@ -1684,7 +1688,8 @@ function realStats(){
 function renderAcctCard(){
   const i=acct.info,sm=acct.sum,ok=!!(i&&i.ready&&sm&&sm.ok);
   setT($("acTop"),!i?"Checking…":!i.ready?"Not connected. Menu, then Kalshi account.":!ok?(acct.err||"Waiting for Kalshi…"):(i.env==="demo"?"DEMO account":"REAL account")+(i.trading?" · betting ON":" · betting off")+((real.auto||real.sim)?" · real "+[real.auto&&"auto",real.sim&&"sim bets"].filter(Boolean).join(" + ")+" ON":""));
-  $("acStop").style.display=i&&i.trading?"":"none";
+  {const b=$("acStop"),ready=!!(i&&i.ready),on=!!(ready&&i.trading);b.style.display=ready?"":"none";setT(b,on?"Real betting: ON":"Real betting: OFF");b.classList.toggle("realm",on);b.classList.toggle("fake",!on);
+    b.title=on?"Real betting is allowed. Click to stop all real betting.":"Real betting is off. Click to allow it (each mode still has to be started)."}
   setH($("acEv"),escH(flashFor("")));
   if(!ok){setH($("acStats"),"");setH($("acRes"),"");return}
   const open=(sm.positions||[]).reduce((t,r)=>t+(r.cost||0),0),alloc=Object.values(acct.bud||{}).reduce((t,m)=>t+Object.values(m).reduce((u,b)=>u+Math.max(b.avail,0),0),0),st=realStats(),sg=v=>(v>=0?"+":"-")+"$"+Math.abs(v).toFixed(2),cl=v=>v>0?"hit":v<0?"miss":"";
