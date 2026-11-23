@@ -1691,7 +1691,7 @@ $("simRealAllB").onclick=async()=>{      // the box is the TOTAL for all coins, 
   let n=0;
   for(const q of plan){if(Math.abs(q.amt-q.cur)<0.005){n++;continue}
     const b=budOf("sim",q.x);if(!(await realAlloc("sim",q.x,q.amt,null,b?money2(b.bank):0,true)))break;n++}
-  if(n===plan.length)realEvent("Timed bets: "+money(v)+" split evenly across "+syms.length+" coins ("+money(base)+" each"+(extra?", plus a cent on the first "+extra:"")+")")
+  if(n===plan.length)realEvent("Timed bets: "+money(v)+" split evenly across "+syms.length+" coins ("+money(base/100)+" each"+(extra?", plus a cent on the first "+extra:"")+")")
 };
 $("acStop").onclick=async()=>{      // one switch for all real betting: ON stops every real mode, OFF allows real bets again (each mode still has to be started)
   const on=!!(acct.info&&acct.info.trading);

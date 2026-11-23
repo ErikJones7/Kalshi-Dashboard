@@ -21,7 +21,7 @@ KALSHI ACCOUNT AND LIVE BETTING (optional)
   recorded in data\live_orders.jsonl. Use the Demo account option to try it with fake money first.
   REAL-MONEY VIEWS: the Timed bets card and the Auto mode card each have a "Real money" button that swaps the card for a
   real-money version that looks and works like the fake-money one. Type an amount in its Allocated $ box (Auto mode: one box;
-  Timed bets: one per coin, or the box at the top: with nothing allocated yet it splits that total evenly across all coins; once money is allocated it sets every coin to that amount) and press Set or Enter. That money is its bankroll: it can only bet that amount,
+  Timed bets: one per coin, or the "Total $ for all coins" box at the top, which splits that total evenly across every coin, even if some coins already have money) and press Set or Enter. That money is its bankroll: it can only bet that amount,
   and the amount goes up and down with its wins and losses. The rest of your Kalshi cash is never touched (for example $50 of a
   $90 account leaves $40 untouched). If it wins $10 the box shows $60; type 50 and press Set and the extra $10 goes back to your
   cash. Type a bigger number to add more (never more than your free cash), or 0 to take everything back. The amount can't go
