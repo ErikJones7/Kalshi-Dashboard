@@ -39,7 +39,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-24s"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-24v"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -1157,9 +1157,9 @@ def market_check(ticker, env):
     return m, close
 
 
-def book_depth(ticker, side, price, env):
-    """How many contracts could be bought right now at `price` cents or better, from Kalshi's public order book (None if it can't be read).
-    Buying YES at p is matched by NO bids at 100-p or more, and buying NO at p by YES bids at 100-p or more."""
+def book_levels(ticker, side, env):
+    """The bids that a buy of `side` would match against, as [(cents, contracts), ...] from Kalshi's public order book
+    (None if it can't be read). Buying YES is matched by NO bids and buying NO by YES bids; a bid at b cents is an ask of 100-b."""
     try:
         base = DEMO_BASE if env == "demo" else UPSTREAM
         st, body = fetch_upstream(base + "/markets/" + urllib.parse.quote(ticker) + "/orderbook")
@@ -1177,28 +1177,59 @@ def book_depth(ticker, side, price, env):
                 break
         if levels is None:
             return None
-        need, tot = 100 - price, 0.0
+        out = []
         for lv in levels:
             p, q = _f(lv[0]), _f(lv[1])
             if p is None or q is None:
                 return None
-            pc = p * 100 if (isinstance(lv[0], str) and "." in lv[0]) else p
-            if pc >= need - 1e-9:
-                tot += q
-        return tot
+            out.append((p * 100 if (isinstance(lv[0], str) and "." in lv[0]) else p, q))
+        return out
     except Exception:
         return None
 
 
+def depth_at(levels, price):
+    """Contracts that could be bought at `price` cents or better, given the matching bids from book_levels."""
+    if levels is None:
+        return None
+    need = 100 - price
+    return sum(q for p, q in levels if p >= need - 1e-9)
+
+
+def book_depth(ticker, side, price, env):
+    return depth_at(book_levels(ticker, side, env), price)
+
+
+def _quote_cents(m, k):
+    v = _f(m.get(k + "_dollars"))
+    if v is not None:
+        return v * 100
+    return _f(m.get(k))
+
+
 def _ask_cents(m, side):
-    def q(k):
-        v = _f(m.get(k + "_dollars"))
-        if v is not None:
-            return v * 100
-        v = _f(m.get(k))
-        return v
-    a = q(side + "_ask")
+    a = _quote_cents(m, side + "_ask")
     return a if a else None
+
+
+def live_ask(m, side, levels):
+    """The cheapest price at which `side` can be bought right now, worked out three ways (the market's own ask, 100 minus the other
+    side's best bid, and the order book) so one odd or stale field can't wrongly make a bet look too expensive. Returns (cents, notes)."""
+    opp = "no" if side == "yes" else "yes"
+    c = {}
+    a1 = _ask_cents(m, side)
+    if a1 is not None:
+        c["market ask"] = a1
+    b = _quote_cents(m, opp + "_bid")
+    if b:
+        c["from the other side's bid"] = 100 - b
+    if levels:
+        top = max((p for p, q in levels if q > 0), default=None)
+        if top is not None:
+            c["order book"] = 100 - top
+    c = {k: v for k, v in c.items() if v is not None and 0 < v <= 100}
+    note = ", ".join("%s %d¢" % (k, round(v)) for k, v in c.items())
+    return (min(c.values()) if c else None), note
 
 
 _exec_lock = threading.Lock()
@@ -1263,7 +1294,8 @@ def _place_order(body):
         m, close = market_check(ticker, env)
         if close is not None and close - time.time() < 6:
             raise TradeError("That market is about to close.")
-        ask = _ask_cents(m, side)
+        levels = book_levels(ticker, side, env)
+        ask, ask_note = live_ask(m, side, levels)
         maxp, slack = _f(body.get("max_price")), _f(body.get("slack"))
         if maxp is not None and ask is not None and row["src"] != "manual":
             # the page's price is a few seconds old. Re-price from Kalshi's live ask right now: pay up to `slack` cents over it, but never more
@@ -1271,7 +1303,7 @@ def _place_order(body):
             maxp = int(maxp)
             live = int(math.ceil(ask - 1e-9))
             if live > maxp:
-                raise TradeError("The price is now %d¢, above the %d¢ this bet is worth, so it wasn't placed." % (live, maxp))
+                raise TradeError("The price is now %d¢, above the %d¢ this bet is worth, so it wasn't placed. (%s)" % (live, maxp, ask_note))
             new = max(1, min(99, maxp, live + int(max(0, min(slack or 0, 5)))))
             if new != price:
                 budget = cost
@@ -1289,7 +1321,7 @@ def _place_order(body):
         # Kalshi's V2 orders are always quoted on the YES side: buying YES is a "bid" at the YES price, and buying NO is an "ask" (selling
         # YES) at 100 minus the NO price, which is the same position. Fill-or-kill: it fills completely at this price or better, or not at all.
         yes_px = price if side == "yes" else 100 - price
-        depth = book_depth(ticker, side, price, env)
+        depth = depth_at(levels, price)
         if depth is not None:
             if depth < 1:
                 raise TradeError("Nothing is for sale at %d¢ or better right now, so nothing was bought." % price)
