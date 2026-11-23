@@ -141,7 +141,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-23p</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-23q</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1093,7 +1093,7 @@ function render(s){
     const sigNow=p.signal;
     if(p.target!=null){
       h+=card(Math.round(s.thr*1000)/10+"% signal",sigNow?(p.direction+" – FIRED"):"none yet",
-        `Model: ${p.direction} ${pc(p.confidence)} (P(Up) ${pc(p.p_cal)}, raw ${pc(p.p_raw)}) · ${mmss(p.tau)} left`+(sigNow?"":` · needs ≥ ${Math.round(s.thr*1000)/10}%`),sigNow?(p.direction==="UP"?"up":"dn"):"");
+        "",sigNow?(p.direction==="UP"?"up":"dn"):"");
     } else {
       h+=card("Now",f(p.price),"Kalshi's target isn't known for this window (page opened mid-window).");
       h+=card("Signal","–","Signals need the real target; they start next window.");
