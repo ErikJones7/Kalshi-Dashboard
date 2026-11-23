@@ -47,6 +47,8 @@ PRICES
   box on Auto mode and Timed bets lets it pay a little more so more bets go through (default 1; 0 is the strictest). A refused bet says
   why in the activity log. On Timed bets, a coin whose leftover is too small to bet (under $1) after a loss goes to $0 and the
   leftover returns to your cash.
+  Auto mode decides when to bet on its own. If its real order is refused only because the price is not there yet, it keeps looking
+  every few seconds until the window is nearly over, as long as the signal still holds and the price is still worth paying.
 
 KEEPING GOING
   If something in the page ever fails, it is caught and the page keeps running; a "problems caught" note appears next to the build number
