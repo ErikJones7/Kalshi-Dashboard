@@ -39,7 +39,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-24x"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-24y"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -1323,10 +1323,18 @@ def _place_order(body):
                 budget = cost
                 if row["src"] == "sim" and avail_cap:          # a Timed bet uses its whole bankroll, so a price that moved up may use all of it
                     budget = max(budget, avail_cap)
+                # size the bet at the live price so the whole budget is used (the estimate was a few seconds old), then use whatever is left
+                # over as room for the limit, so even a fill at the limit can never cost more than the budget
+                cnt = count
+                while cnt < 5000 and (cnt + 1) * live / 100.0 + est_fee(cnt + 1, live) <= budget + 1e-9:
+                    cnt += 1
+                while cnt > 1 and cnt * live / 100.0 + est_fee(cnt, live) > budget + 1e-9:
+                    cnt -= 1
                 price = new
+                while price > live and cnt * price / 100.0 + est_fee(cnt, price) > budget + 1e-9:
+                    price -= 1
+                count = cnt
                 row["price_cents"] = price
-                while count > 1 and count * price / 100.0 + est_fee(count, price) > budget + 1e-9:
-                    count -= 1
                 if count * price / 100.0 + est_fee(count, price) > budget + 1e-9:
                     raise TradeError("The price moved up to %d¢ and the bet no longer fits its budget." % price)
                 row["count"] = count
