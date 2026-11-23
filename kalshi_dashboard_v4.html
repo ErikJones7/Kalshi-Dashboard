@@ -104,6 +104,7 @@ body{transition:margin-left .14s ease-out}
 .simtbl input{width:78px;padding:3px 6px;font-size:13px}
 .hit{color:var(--up)}.miss{color:var(--dn)}
 .lvb{min-width:210px;padding:10px 14px;font-weight:600}.lvb.arm{border-color:var(--sel);background:var(--hl);outline:2px solid var(--sel)}.lvb:disabled{opacity:.5;cursor:not-allowed}
+.card .realonly{display:none}.card.realon .realonly{display:revert}.card.realon .simonly{display:none!important}
 .realsw{color:var(--dn);font-weight:600}
 .warnbox{border:1px solid var(--dn);border-radius:8px;padding:8px 10px;margin:8px 0}
 </style></head><body>
@@ -145,7 +146,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-23z</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-24a</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -157,18 +158,6 @@ body{transition:margin-left .14s ease-out}
 </div>
 <div class="g4" id="cards"></div>
 
-<div class="card" id="acctCard" style="margin-bottom:12px">
-  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><div class="k">Kalshi account (real money)</div><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="s" id="acTop"></span><button id="acStop" style="border-color:var(--dn);color:var(--dn);display:none">Stop all real betting</button></div></div>
-  <div id="acStats" style="display:flex;gap:28px;flex-wrap:wrap;margin:8px 0"></div>
-  <div style="overflow:auto"><table class="mini simtbl" id="acRes"></table></div>
-  <div class="s" id="acEv" style="margin-top:6px"></div>
-</div>
-<div class="card" id="liveCard" style="margin-bottom:12px">
-  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><div class="k" id="lvK">Live betting (real money)</div><div class="s" id="lvTop"></div></div>
-  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:8px 0"><label>Stake $ <input type="number" id="lvStake" min="1" step="1" style="width:80px"></label><span class="s" id="lvInfo"></span></div>
-  <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="lvb" id="lvUp"></button><button class="lvb" id="lvDn"></button></div>
-  <div class="s" id="lvMsg" style="margin-top:6px"></div>
-</div>
 
 <div class="card" style="margin-bottom:12px">
   <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
@@ -180,38 +169,48 @@ body{transition:margin-left .14s ease-out}
   <div class="s" id="cvnote"></div>
 </div>
 
+<div class="card" id="acctCard" style="margin-bottom:12px">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><div class="k">Kalshi account (real money)</div><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="s" id="acTop"></span><button id="acStop" style="border-color:var(--dn);color:var(--dn);display:none">Stop all real betting</button></div></div>
+  <div id="acStats" style="display:flex;gap:28px;flex-wrap:wrap;margin:8px 0"></div>
+  <div style="overflow:auto"><table class="mini simtbl" id="acRes"></table></div>
+  <div class="s" id="acEv" style="margin-top:6px"></div>
+</div>
+
 <div class="card" id="autoCard" style="margin-bottom:12px">
   <div class="simhead">
     <div class="k" id="autoK">Auto mode</div>
     <div class="simctl">
       <label><input type="checkbox" id="autoOn"> On</label>
       <label class="realsw" title="Place the same bets on your real Kalshi account"><input type="checkbox" id="autoReal"> Real money</label>
-      <label>Start $ <input type="number" id="autoStart" min="1" step="10"></label>
+      <label class="simonly">Start $ <input type="number" id="autoStart" min="1" step="10"></label>
       <label>Max bet <input type="number" id="autoCap" min="1" max="100" step="1">%</label>
-      <button id="autoHist">View bet history</button><button id="autoReset">Reset bankroll</button><button id="autoForget">Reset learning</button>
+      <button id="autoHist" class="simonly">View bet history</button><button id="autoReset" class="simonly">Reset bankroll</button><button id="autoForget" class="simonly">Reset learning</button><button id="autoRealHist" class="realonly">View real bet history</button>
     </div>
   </div>
-  <div class="autostats" id="autoStats"></div>
+  <div class="autostats simonly" id="autoStats"></div>
+  <div class="realonly"><div class="s" id="arNote" style="margin:6px 0"></div><div id="arStats" style="display:flex;gap:28px;flex-wrap:wrap;margin:8px 0"></div><div style="overflow:auto;max-height:40vh"><table class="mini simtbl" id="arTbl"></table></div></div>
+</div>
+
+
+<div class="card" id="simCard" style="margin-bottom:12px">
+  <div class="simhead">
+    <div class="k" id="simK">Timed bets</div>
+    <div class="simctl">
+      <label class="simonly">Start $ <input type="number" id="simAll" min="0" step="10"></label><button id="simAllB" class="simonly">Apply to all</button>
+      <label>Bet at <input type="number" id="simAt" min="5" max="300" step="5">s left</label>
+      <label>Min confidence <input type="number" id="simMin" min="50" max="99.9" step="1">%</label>
+      <label class="simonly">After a loss <select id="simMode"><option value="restart">Restart from start $</option><option value="zero">Stay at $0</option></select></label>
+      <label class="realsw" title="Place the same bets on your real Kalshi account"><input type="checkbox" id="simReal"> Real money</label><label>Real stake $ <input type="number" id="simRealStake" min="1" step="1" style="width:70px"></label>
+      <button id="simReset" class="simonly">Reset all</button>
+    </div>
+  </div>
+  <div class="simonly" style="overflow:auto"><table class="mini simtbl" id="simTbl"></table></div>
+  <div class="realonly"><div class="s" id="trNote" style="margin:6px 0"></div><div style="overflow:auto"><table class="mini simtbl" id="trTbl"></table></div></div>
 </div>
 
 <div class="card" id="pickCard" style="margin-bottom:12px">
   <div class="simhead"><div class="k" id="pickK">Best pick record</div></div>
   <div style="overflow:auto"><table class="mini simtbl" id="pickTbl"></table></div>
-</div>
-
-<div class="card" id="simCard" style="margin-bottom:12px">
-  <div class="simhead">
-    <div class="k">Simulated bets</div>
-    <div class="simctl">
-      <label>Start $ <input type="number" id="simAll" min="0" step="10"></label><button id="simAllB">Apply to all</button>
-      <label>Bet at <input type="number" id="simAt" min="5" max="300" step="5">s left</label>
-      <label>Min confidence <input type="number" id="simMin" min="50" max="99.9" step="1">%</label>
-      <label>After a loss <select id="simMode"><option value="restart">Restart from start $</option><option value="zero">Stay at $0</option></select></label>
-      <label class="realsw" title="Place the same bets on your real Kalshi account"><input type="checkbox" id="simReal"> Real money</label><label>Real stake $ <input type="number" id="simRealStake" min="1" step="1" style="width:70px"></label>
-      <button id="simReset">Reset all</button>
-    </div>
-  </div>
-  <div style="overflow:auto"><table class="mini simtbl" id="simTbl"></table></div>
 </div>
 
 <div class="grid">
@@ -1301,7 +1300,7 @@ const $$=v=>(v<0?"-$":"$")+Math.abs(v).toLocaleString(undefined,{minimumFraction
 function resetSimCoin(sym,v){simSt.start[sym]=v;simSt.tr[sym]={};SIM_CP.forEach(cp=>{simSt.tr[sym][cp]={bank:v,w:0,l:0,net:0}})}
 function renderAuto(){
   const a=autoSt,tot=a.w+a.l,ob=pendAuto,dd=a.peak>0?Math.max(0,1-a.bank/a.peak):0;let samples=0;for(const k in a.learn)samples+=a.learn[k].n;
-  setT($("autoK"),sim?"Auto mode · "+SIM_SPEED+"x practice run (not saved)":"Auto mode");
+  setT($("autoK"),sim?"Auto mode · "+SIM_SPEED+"x practice run (not saved)":real.auto?"Auto mode · REAL MONEY":"Auto mode");
   $("autoOn").checked=a.on;{const i=$("autoStart");if(document.activeElement!==i)i.value=a.start;const c=$("autoCap");if(document.activeElement!==c)c.value=Math.round((a.cap||0.2)*1000)/10}
   const st=!a.on?"Off":ob.length?"Open: "+ob.map(b=>`${b.sym} ${b.side} ${$$(b.stake)} @ ${mx(b.mult)}`).join(" + "):(autoNote||"Waiting for the next window");
   const cell=(l,v,c)=>`<div>${l}<b${c?` class="${c}"`:""}>${v}</b></div>`;
@@ -1320,7 +1319,7 @@ function renderPicks(){
 }
 function renderSim(){
   renderAuto();renderPicks();
-  {const k=$("simCard").querySelector(".k");if(k)setT(k,sim?"Simulated bets · "+SIM_SPEED+"x practice run (not saved)":"Simulated bets")}
+  setT($("simK"),sim?"Timed bets · "+SIM_SPEED+"x practice run (not saved)":real.sim?"Timed bets · REAL MONEY":"Timed bets");
   const key=syms.join();
   if(key!==simKey){simKey=key;
     $("simTbl").innerHTML='<tr><th>Coin</th><th>Start $</th>'+SIM_CP.map(()=>'<th class="gs">Bankroll</th><th>Wins / losses</th><th>Net</th><th>Open bet</th>').join("")+"</tr>"+
@@ -1354,7 +1353,7 @@ $("simAll").value=simDef;$("simMode").value=simMode;
 $("simAllB").onclick=()=>{const v=parseFloat($("simAll").value);if(!(v>=0))return;simDef=v;syms.forEach(s=>resetSimCoin(s,v));simSave();saveToHelper()};
 $("simMin").value=Math.round(simMin*1000)/10;$("simMin").onchange=e=>{const v=parseFloat(e.target.value);if(v>=50&&v<=99.9){simMin=v/100;ls.set("k15simmin",simMin)}else e.target.value=Math.round(simMin*1000)/10};
 $("simMode").onchange=e=>{simMode=e.target.value;simSave()};
-$("simReset").onclick=()=>{if(confirm("Reset every coin's simulated bankroll, wins and losses to its start amount? (The saved bet history stays in the data folder.)")){syms.forEach(s=>resetSimCoin(s,simStart(s)));simLog=[];pendSim=[];simSave();saveToHelper()}};
+$("simReset").onclick=()=>{if(confirm("Reset every coin's timed-bet bankroll, wins and losses to its start amount? (The saved bet history stays in the data folder.)")){syms.forEach(s=>resetSimCoin(s,simStart(s)));simLog=[];pendSim=[];simSave();saveToHelper()}};
 
 /* ============================ signal data viewer ============================ */
 let vwRows=[];
@@ -1411,7 +1410,7 @@ async function openAutoHistory(){
   if(!sim&&(hBase||await findHelper())){
     try{rows=await hget("/data/auto");where="Saved in the folder: "+(await hget("/data/info")).dir+"  ·  sim_trades.csv (auto bets are marked AUTO)  ·  "+rows.length+" auto bets"}
     catch(e){
-      try{rows=((await hget("/data/state")).sim||[]).filter(x=>x.cp==="AUTO");where="Saved in the folder (newest 2,000 simulated and auto bets). Restart the helper to see them all."}
+      try{rows=((await hget("/data/state")).sim||[]).filter(x=>x.cp==="AUTO");where="Saved in the folder (newest 2,000 timed and auto bets). Restart the helper to see them all."}
       catch(e2){where="Couldn't read the data folder ("+e.message+"); showing browser data."}}
   }
   const live=pendAuto.map(x=>({...x,live:true}));
@@ -1500,7 +1499,7 @@ function renderKa(){
   setH($("kaPos"),tb(["Market","Side","Contracts","Cost","Realized P&L"],((sm&&sm.positions)||[]).map(r=>`<tr><td>${escH(r.ticker)}</td><td>${r.side}</td><td>${r.contracts}</td><td>${money(r.cost)}</td><td>${money(r.pnl)}</td></tr>`)));
   setH($("kaFills"),tb(["Time","Market","Side","Contracts","Price","Fee"],((sm&&sm.fills)||[]).slice(0,40).map(r=>`<tr><td>${escH(String(r.time||"").replace("T"," ").replace("Z",""))}</td><td>${escH(r.ticker)}</td><td>${escH(r.action)} ${escH(r.side)}</td><td>${r.contracts==null?"–":r.contracts}</td><td>${r.price==null?"–":Math.round(r.price*100)+"¢"}</td><td>${money(r.fee)}</td></tr>`)));
   setH($("kaOrd"),tb(["Time","Mode","Env","Market","Side","Contracts","Limit","Result","Cost","Net"],(acct.orders||[]).slice(0,60).map(r=>{const res=liveRes[r.ticker],won=r.filled&&res?res===r.side:null,net=won==null?null:won?r.fill_count-r.cost_total:-r.cost_total;
-    return `<tr><td>${escH(r.time)}</td><td>${escH(r.src||"manual")}</td><td>${escH(r.env)}</td><td>${escH(r.ticker)}</td><td>${escH(String(r.side).toUpperCase())}</td><td>${r.count}</td><td>${r.price_cents}¢</td><td class="${r.filled?(won===false?"miss":"hit"):"miss"}">${r.filled?(won==null?"Filled, waiting":won?"Won":"Lost"):escH(r.refused||r.error||"Not filled")}</td><td>${r.filled?money(r.cost_total):"–"}</td><td class="${net>0?"hit":net<0?"miss":""}">${net==null?"–":(net>=0?"+":"-")+"$"+Math.abs(net).toFixed(2)}</td></tr>`})));
+    return `<tr><td>${escH(r.time)}</td><td>${escH({sim:"timed",auto:"auto"}[r.src]||r.src||"manual")}</td><td>${escH(r.env)}</td><td>${escH(r.ticker)}</td><td>${escH(String(r.side).toUpperCase())}</td><td>${r.count}</td><td>${r.price_cents}¢</td><td class="${r.filled?(won===false?"miss":"hit"):"miss"}">${r.filled?(won==null?"Filled, waiting":won?"Won":"Lost"):escH(r.refused||r.error||"Not filled")}</td><td>${r.filled?money(r.cost_total):"–"}</td><td class="${net>0?"hit":net<0?"miss":""}">${net==null?"–":(net>=0?"+":"-")+"$"+Math.abs(net).toFixed(2)}</td></tr>`})));
 }
 async function openKa(){closeMenu();$("kaw").style.display="block";renderKa();await acctRefresh(true)}
 $("mAcct").onclick=openKa;
@@ -1523,9 +1522,6 @@ setInterval(()=>{if((real.sim||real.auto||!document.hidden)&&hBase)acctRefresh(f
 setTimeout(()=>acctRefresh(false),4000);
 
 // ---- live betting card
-const lvStakeV=()=>{const v=parseFloat($("lvStake").value);return v>0?v:0};
-$("lvStake").value=ls.get("k15livestake",5);
-$("lvStake").onchange=()=>{ls.set("k15livestake",lvStakeV());lv.armed=null};
 function lvPlan(sym,side,stake,opt){      // what a click (or an automatic mirror) would buy right now, from the live Kalshi quote
   opt=opt||{};
   const q=quoteBy[sym],now=Date.now()/1000;
@@ -1540,46 +1536,19 @@ function lvPlan(sym,side,stake,opt){      // what a click (or an automatic mirro
   if(count<1)return{err:cap<stake-1e-9?(cap===room?"Daily limit reached":cap===cash?"Not enough cash":"Over the per-bet limit"):"Stake is too small for this price"};
   return{ticker:q.tk,side:side==="UP"?"yes":"no",label:side,price,count,cost:count*per,left,mult:1/(ask/100)};
 }
-function renderLive(s){
-  const i=acct.info,b=[$("lvUp"),$("lvDn")];
+function renderLive(s){      // real-money parts of the page, once a second
   renderAcctCard();realGuard(s);
-  lv.sel=s.selected;setT($("lvK"),"Live betting · "+lv.sel+" (real money, follows the coin chosen at the top)");
-  const off=m=>{b.forEach(x=>{x.disabled=true;x.classList.remove("arm");setT(x,"–")});setT($("lvInfo"),"");setT($("lvTop"),m)};
-  if(s.sim)return off("Practice run: live betting is paused");
-  if(!i||!i.ready)return off(i?"Not connected. Menu, then Kalshi account, to connect.":"Checking your Kalshi account…");
-  if(!i.trading)return off((i.env==="demo"?"Demo account · ":"")+"Betting is switched off. Menu, then Kalshi account, to turn it on.");
-  const sm=acct.sum;
-  setT($("lvTop"),(i.env==="demo"?"DEMO account · ":"REAL account · ")+(sm&&sm.ok?"cash "+money(sm.balance)+" · ":"")+"limits "+money(i.max_bet)+" per bet, "+money(i.daily-i.spent_today)+" left today");
-  const stake=lvStakeV(),row=s.coins.find(r=>r.sym===lv.sel),pu=row&&row.p_up;
-  const A=Date.now()<(lv.armed&&lv.armed.until||0)?lv.armed:null;if(!A)lv.armed=null;
-  const pl={UP:lvPlan(lv.sel,"UP",stake),DOWN:lvPlan(lv.sel,"DOWN",stake)};
-  setT($("lvInfo"),pu==null?"No model call yet for "+lv.sel:"Model: "+(pu>=0.5?"UP ":"DOWN ")+pc(Math.max(pu,1-pu))+(pl.UP.left?" · "+mmss(pl.UP.left)+" left":""));
-  [["UP",$("lvUp")],["DOWN",$("lvDn")]].forEach(([sd,el])=>{
-    const p=pl[sd],armed=A&&A.sym===lv.sel&&A.label===sd;
-    el.disabled=!!p.err||!stake;el.classList.toggle("arm",armed);
-    setT(el,p.err?sd+": "+p.err:armed?`Click again to confirm: ${p.count} ${sd} @ ${p.price}¢ (${money(p.cost)})`:`Bet ${sd} · ${p.count} @ ${p.price}¢ (${money(p.cost)}, ${mx(p.mult)})`)});
-  setT($("lvMsg"),lv.msg);
+  $("autoCard").classList.toggle("realon",real.auto);$("simCard").classList.toggle("realon",real.sim);
+  if(real.auto)renderRealAuto();if(real.sim)renderRealTimed();
 }
-async function lvClick(sd){
-  const sym=selected,pl=lvPlan(sym,sd,lvStakeV());if(pl.err){lv.msg=pl.err;return}
-  const A=lv.armed;
-  if(!(A&&Date.now()<A.until&&A.sym===sym&&A.label===sd)){lv.armed={sym,label:sd,price:pl.price,until:Date.now()+6000};lv.msg="";return}
-  if(Math.abs(pl.price-A.price)>2){lv.armed={sym,label:sd,price:pl.price,until:Date.now()+6000};lv.msg="The price moved to "+pl.price+"¢. Click again to confirm.";return}
-  lv.armed=null;lv.msg="Placing bet…";$("lvUp").disabled=$("lvDn").disabled=true;
-  try{const d=await apost("/account/order",{ticker:pl.ticker,side:pl.side,count:pl.count,price:pl.price,src:"manual"});
-    lv.msg=d.ok?d.message:(d.error||"The bet wasn't placed.");
-    if(d.ok&&d.filled)beep("sig")}
-  catch(e){lv.msg=e.message||"The bet wasn't placed."}
-  acctRefresh(true);
-}
-$("lvUp").onclick=()=>lvClick("UP");$("lvDn").onclick=()=>lvClick("DOWN");
 
-// ---- real-money replicas of the simulated bets and auto mode: same trigger, same coin and side, same moment, on your Kalshi account
+
+// ---- real-money replicas of the timed bets and auto mode: same trigger, same coin and side, same moment, on your Kalshi account
 const realEquity=()=>{const sm=acct.sum;return sm&&sm.ok&&sm.balance!=null?(sm.balance||0)+(sm.portfolio_value||0):null};
 const realReady=()=>!sim&&acct.info&&acct.info.ready&&acct.info.trading&&acct.sum&&acct.sum.ok;
 function realEvent(t){real.events.unshift(new Date().toLocaleTimeString()+" · "+t);if(real.events.length>8)real.events.length=8}
 function realMirror(src,sym,side,stake,meta){
-  const tag=(src==="auto"?"Auto":"Sim bet")+" "+sym+" "+side;
+  const tag=(src==="auto"?"Auto":"Timed bet")+" "+sym+" "+side;
   if(!realReady()){realEvent(tag+": not placed (account not ready)");return}
   real.q=real.q.then(async()=>{       // one at a time, each with the freshest quote
     const pl=lvPlan(sym,side,stake,{cushion:1});
@@ -1605,17 +1574,53 @@ function realGuard(s){
 }
 function realSwitch(k,on){
   const el=$(k==="auto"?"autoReal":"simReal");
-  if(!on){real[k]=false;realEvent((k==="auto"?"Auto":"Sim bet")+" real betting off");return}
+  if(!on){real[k]=false;realEvent((k==="auto"?"Auto":"Timed bet")+" real betting off");return}
   if(!realReady()){realEvent("Can't switch on yet: connect your account and turn betting on in Menu, then Kalshi account.");el.checked=false;return}
   const i=acct.info;
-  if(!confirm("Place "+(i.env==="demo"?"DEMO":"REAL")+" bets on your Kalshi account every time "+(k==="auto"?"Auto mode":"a simulated bet")+" bets?\\n\\n"+
+  if(!confirm("Place "+(i.env==="demo"?"DEMO":"REAL")+" bets on your Kalshi account every time "+(k==="auto"?"Auto mode":"a timed bet")+" bets?\\n\\n"+
       (k==="auto"?"Sizes follow auto mode's rules applied to your account value.":"Each one is $"+real.simStake+" (the Real stake box).")+"\\nLimits: $"+i.max_bet+" per bet, $"+i.daily+" per day, fees included. Switches off again when you restart.")){el.checked=false;return}
-  real[k]=true;realEvent((k==="auto"?"Auto":"Sim bet")+" real betting ON");
+  real[k]=true;realEvent((k==="auto"?"Auto":"Timed bet")+" real betting ON");
 }
 $("autoReal").onchange=e=>realSwitch("auto",e.target.checked);$("simReal").onchange=e=>realSwitch("sim",e.target.checked);
 $("simRealStake").value=real.simStake;
 $("simRealStake").onchange=e=>{const v=parseFloat(e.target.value);if(v>=1){real.simStake=v;ls.set("k15realsimstake",v)}else e.target.value=real.simStake};
 $("acStop").onclick=async()=>{real.sim=real.auto=false;try{await apost("/account/config",{trading:false})}catch(e){}realEvent("All real betting stopped");acctRefresh(true)};
+
+const symOf=r=>r.sym||((/^KX([A-Z0-9]+?)15M/.exec(r.ticker||"")||[])[1]||"?");
+const sgn=v=>(v>=0?"+":"-")+"$"+Math.abs(v).toFixed(2),cls=v=>v>0?"hit":v<0?"miss":"";
+function realOf(src){      // this mode's filled real bets on the account being shown, with each one's Kalshi result
+  const env=acct.info&&acct.info.env,now=Date.now()/1000;
+  return (acct.orders||[]).filter(r=>r.filled&&r.src===src&&r.env===env).map(r=>{
+    const res=liveRes[r.ticker],won=res?res===r.side:null;
+    return{r,sym:symOf(r),won,open:won==null&&now<(r.w||r.t+900),net:won==null?null:won?r.fill_count-r.cost_total:-r.cost_total}});
+}
+function renderRealAuto(){
+  const rows=realOf("auto"),day=new Date().toLocaleDateString("en-CA"),done=rows.filter(x=>x.won!=null);
+  const w=done.filter(x=>x.won).length,l=done.length-w,netA=done.reduce((t,x)=>t+x.net,0),netT=done.filter(x=>x.r.day===day).reduce((t,x)=>t+x.net,0);
+  const wait=rows.filter(x=>x.won==null),waitCost=wait.reduce((t,x)=>t+x.r.cost_total,0);
+  const C=(k,v,c,sub)=>`<div><div class="k">${k}</div><div class="v ${c||""}">${v}</div>${sub?`<div class="s">${sub}</div>`:""}</div>`;
+  const ev=real.events.filter(e=>/ Auto /.test(e)).slice(0,3);
+  setH($("arNote"),escH(!autoSt.on?"Auto mode is off (tick On to start it)":(autoNote||"Waiting for the next window"))+(ev.length?"<br>"+ev.map(escH).join("<br>"):""));
+  setH($("arStats"),C("Real bets",rows.length)+C("Wins / losses",w+" / "+l)+C("Hit rate",done.length?pc(w/done.length):"–")+C("Net today",sgn(netT),cls(netT))+C("Net all time",sgn(netA),cls(netA))+C("Currently bet",money(waitCost),"",wait.length+" open"));
+  setH($("arTbl"),'<tr><th>Time</th><th>Coin</th><th>Side</th><th>Contracts</th><th>Limit</th><th>Win chance</th><th>Cost</th><th>Result</th><th>Net</th></tr>'+
+    (rows.length?rows.slice(0,25).map(x=>`<tr><td>${escH(x.r.time)}</td><td>${escH(x.sym)}</td><td>${x.r.side==="yes"?"UP":"DOWN"}</td><td>${x.r.fill_count}</td><td>${x.r.price_cents}¢</td><td>${x.r.conf!=null?pc(x.r.conf):"–"}</td><td>${money(x.r.cost_total)}</td><td class="${x.won==null?"":x.won?"hit":"miss"}">${x.won==null?(x.open?"Open":"Settling"):x.won?"Won":"Lost"}</td><td class="${cls(x.net)}">${x.net==null?"–":sgn(x.net)}</td></tr>`).join(""):'<tr><td colspan="9" class="dim">No real auto bets yet</td></tr>'));
+}
+function renderRealTimed(){
+  const rows=realOf("sim"),day=new Date().toLocaleDateString("en-CA");
+  const ev=real.events.filter(e=>/ Timed bet /.test(e)).slice(0,3);
+  setH($("trNote"),escH("Each real timed bet is $"+real.simStake+" · bets at "+simAt+" s left when the win chance is at least "+Math.round(simMin*100)+"%")+(ev.length?"<br>"+ev.map(escH).join("<br>"):""));
+  const T={n:0,w:0,l:0,netT:0,netA:0,open:0};
+  const line=(lab,x,openTxt)=>`<tr${lab==="All"?' class="tot"':""}><td>${lab}</td><td>${x.n}</td><td>${x.w} / ${x.l}</td><td class="${cls(x.netT)}">${x.n?sgn(x.netT):"–"}</td><td class="${cls(x.netA)}">${x.n?sgn(x.netA):"–"}</td><td class="dim">${openTxt}</td></tr>`;
+  const body=syms.map(sym=>{
+    const mine=rows.filter(x=>x.sym===sym),x={n:mine.length,w:0,l:0,netT:0,netA:0};
+    for(const m of mine)if(m.won!=null){if(m.won)x.w++;else x.l++;x.netA+=m.net;if(m.r.day===day)x.netT+=m.net}
+    T.n+=x.n;T.w+=x.w;T.l+=x.l;T.netT+=x.netT;T.netA+=x.netA;
+    const op=mine.find(m=>m.won==null),o=op?`${op.r.side==="yes"?"UP":"DOWN"} ${op.r.fill_count} @ ${op.r.price_cents}¢ (${money(op.r.cost_total)})${op.open?"":" · settling"}`:"–";
+    if(op)T.open+=op.r.cost_total;
+    return line(sym,x,o)}).join("");
+  setH($("trTbl"),'<tr><th>Coin</th><th>Real bets</th><th>Wins / losses</th><th>Net today</th><th>Net all time</th><th>Open bet</th></tr>'+body+line("All",T,T.open?money(T.open)+" open":"–"));
+}
+$("autoRealHist").onclick=openKa;
 
 function realStats(){
   const env=acct.info&&acct.info.env,day=new Date().toLocaleDateString("en-CA"),out={};
@@ -1635,7 +1640,7 @@ function renderAcctCard(){
   setH($("acStats"),C("Cash",money(sm.balance))+C("Currently bet",money(open),"",(sm.positions||[]).length+" open position"+((sm.positions||[]).length===1?"":"s"))+C("Portfolio value",money(sm.portfolio_value))+
     C("Spent today",money(i.spent_today),"","limit "+money(i.daily))+C("Net today",sg(st.all.netT),cl(st.all.netT),"settled bets")+C("Net all time",sg(st.all.netA),cl(st.all.netA),"settled bets"));
   const row=(lab,o,c)=>`<tr${c?` class="${c}"`:""}><td>${lab}</td><td>${o.n}</td><td>${o.w} / ${o.l}</td><td>${o.wait||"–"}</td><td class="${cl(o.netT)}">${o.n?sg(o.netT):"–"}</td><td class="${cl(o.netA)}">${o.n?sg(o.netA):"–"}</td></tr>`;
-  setH($("acRes"),'<tr><th>Real bets from</th><th>Filled</th><th>Wins / losses</th><th>Waiting for result</th><th>Net today</th><th>Net all time</th></tr>'+row("Auto mode",st.auto)+row("Simulated-bet replica",st.sim)+row("Manual (Live betting)",st.manual)+row("All",st.all,"tot"));
+  setH($("acRes"),'<tr><th>Real bets from</th><th>Filled</th><th>Wins / losses</th><th>Waiting for result</th><th>Net today</th><th>Net all time</th></tr>'+row("Auto mode",st.auto)+row("Timed bets",st.sim)+(st.manual.n?row("Manual",st.manual):"")+row("All",st.all,"tot"));
 }
 async function liveSettle(){     // Kalshi's own result for each market we bet on, so real wins and losses are exact
   if(settleBusy||!acct.orders)return;settleBusy=true;
