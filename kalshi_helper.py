@@ -544,7 +544,7 @@ def local_version():
 
 def http_get(url, token=None, timeout=20):
     if "raw.githubusercontent.com" in url:      # GitHub caches raw files for ~5 minutes; a changing query string gets the newest copy
-        url += ("&" if "?" in url else "?") + "cb=%d" % int(time.time())
+        url += ("&" if "?" in url else "?") + "cb=%d" % time.time_ns()
     headers = {"User-Agent": "kalshi-helper/2.0"}
     if token:
         headers["Authorization"] = "token " + token
@@ -636,6 +636,11 @@ def update_apply(port):
             skipped.append(name)
             continue
         body = http_get(base + urllib.request.quote(name), cfg.get("update_token"))
+        for _try in range(3):      # a stale cached copy can briefly disagree with version.json; ask again for a fresh one
+            if name not in hashes or hashlib.sha256(body).hexdigest() == hashes[name].lower():
+                break
+            time.sleep(3)
+            body = http_get(base + urllib.request.quote(name), cfg.get("update_token"))
         if name in hashes and hashlib.sha256(body).hexdigest() != hashes[name].lower():
             raise RuntimeError("%s did not match its checksum; nothing was changed." % name)
         if name.lower().endswith(".py"):
