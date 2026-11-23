@@ -10,8 +10,9 @@
 *{box-sizing:border-box}
 body{margin:0 auto;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,sans-serif;padding:16px;max-width:1150px}
 h1{font-size:17px;margin:0}
-.hdr{position:relative;padding:12px 14px;margin-bottom:12px;display:flex;flex-direction:column;gap:10px}
-.hdr1{padding-right:44px;display:flex;gap:10px 16px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.hdr{padding:12px 14px;margin-bottom:12px;display:flex;flex-direction:column;gap:10px}
+.hdr1{display:flex;gap:10px 16px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+@media (max-width:1250px){.hdr1{padding-right:46px}}
 .hdr1 .pills{display:flex;gap:6px;flex-wrap:wrap}
 .pill.clock{color:var(--fg);font-weight:600;font-variant-numeric:tabular-nums}
 .hdr2{display:flex;gap:10px 14px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--bd);padding-top:10px}
@@ -23,13 +24,13 @@ h1{font-size:17px;margin:0}
 .grp select{padding:4px 8px;font-weight:600}
 .grp button{padding:4px 9px;font-size:13px}
 .bld{font-size:11px;color:var(--mut)}
-.menu{position:absolute;top:10px;right:12px;z-index:50}
+.menu{position:fixed;top:12px;right:12px;z-index:60}
 .menupanel{position:absolute;right:0;top:calc(100% + 6px);max-height:calc(100vh - 80px);overflow:auto;width:min(340px,calc(100vw - 48px));background:var(--card);border:1px solid var(--bd);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.45);padding:6px;z-index:50;display:none}
 .menupanel.open{display:block;animation:menuIn .14s ease-out}
 .menupanel.closing{display:block;animation:menuOut .14s ease-in forwards}
 @keyframes menuIn{from{transform:translateY(-8px);opacity:0}to{transform:none;opacity:1}}
 @keyframes menuOut{from{transform:none;opacity:1}to{transform:translateY(-8px);opacity:0}}
-#menuBtn{padding:5px 8px;line-height:0}#menuBtn svg{width:18px;height:18px;display:block}
+#menuBtn{padding:6px 9px;line-height:0;background:var(--card)}#menuBtn svg{width:18px;height:18px;display:block}
 .mi{padding:8px 10px;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
 .mi+.mi{border-top:1px solid var(--bd)}
 .mt{color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
@@ -106,8 +107,7 @@ body{transition:margin-left .14s ease-out}
 
 <div id="sig"></div>
 
-<header class="hdr card">
-  <div class="menu"><button id="menuBtn" title="Menu" aria-label="Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button><div class="menupanel" id="menuPanel">
+<div class="menu"><button id="menuBtn" title="Menu" aria-label="Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button><div class="menupanel" id="menuPanel">
         <div style="display:flex;justify-content:space-between;align-items:center;padding:2px 4px 4px 10px"><b>Menu</b><button id="mClose" title="Close" style="padding:0 8px;font-size:18px;line-height:22px;border-radius:6px">&times;</button></div>
         <div class="mi"><div class="mt">Folders</div><button id="mData">Open data folder</button><button id="mApp">Open program folder</button><div class="s" id="mPath"></div></div>
         <div class="mi"><div class="mt">Data</div><button id="mView">View all signal data</button></div>
@@ -121,7 +121,8 @@ body{transition:margin-left .14s ease-out}
           <div class="s" id="mUpdMsg"></div></div>
         <div class="mi"><button id="mReset">Reset dashboard settings</button></div>
       </div></div>
-  <div class="hdr1">
+<header class="hdr card">
+    <div class="hdr1">
     <h1>Kalshi 15-minute crypto predictor</h1>
     <div class="pills">
       <span class="pill clock" id="clock">–</span>
@@ -140,7 +141,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-23i</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-23j</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
