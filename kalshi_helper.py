@@ -38,6 +38,8 @@ import hashlib
 import http.client
 import json
 import math
+
+HELPER_BUILD = "2026-11-24e"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -1097,7 +1099,7 @@ def _place_order(body):
 def acct_info():
     t = trade_cfg()
     s = acct_status()
-    s.update(trading=t["trading"], max_bet=t["max_bet"], daily=t["daily"], spent_today=round(spent_today(s["env"]), 2))
+    s.update(trading=t["trading"], max_bet=t["max_bet"], daily=t["daily"], spent_today=round(spent_today(s["env"]), 2), build=HELPER_BUILD)
     return s
 
 
