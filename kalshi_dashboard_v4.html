@@ -158,7 +158,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-24r</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-24s</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1493,7 +1493,7 @@ let acct={info:null,sum:null,orders:[],bud:{},err:"",busy:false}, lv={armed:null
 // real-money mirrors: in memory only, so they are always OFF after a restart and have to be switched on on purpose
 let real={sim:false,auto:false,autoView:true,simView:true,events:[],evT:[],autoLast:null,q:Promise.resolve()};
 let liveRes={};
-const HELPER_EXPECT="2026-11-24o";      // the helper build this page needs (changes only when the helper program itself changes)
+const HELPER_EXPECT="2026-11-24s";      // the helper build this page needs (changes only when the helper program itself changes)
 const staleMsg="The helper program that is running is older than this page. Fully close it (Ctrl+Shift+Esc, end pythonw.exe / python.exe) and reopen the dashboard from its icon, or some real-money controls won't work right.";
 const oldHelper="The helper that is running is an older version that doesn't know about Kalshi accounts. Fully close it and reopen the dashboard from its icon: press Ctrl+Shift+Esc, open the Details tab, end every pythonw.exe (or python.exe) entry, then double-click the Kalshi Dashboard icon.";
 const acctNeed="Open the dashboard from its icon (the address starts with http://127.0.0.1) to use your Kalshi account.";
@@ -1685,13 +1685,10 @@ $("simRealAllB").onclick=async()=>{      // the box is the TOTAL for all coins, 
   const plan=syms.map((x,i)=>{const b=budOf("sim",x);return{x,amt:(base+(i<extra?1:0))/100,cur:b?b.bank:0,open:b?b.open||0:0}});
   const bad=plan.find(q=>q.amt<q.open-1e-9);
   if(bad){realEvent("Timed bets: NOT changed. "+bad.x+" has "+money(bad.open)+" in an unsettled bet, so it can't go down to "+money(bad.amt)+". Try again after it settles, or enter a larger total.");return}
-  const sm=acct.sum,cash=sm&&sm.ok?sm.balance-allocFree():null,delta=plan.reduce((t,q)=>t+q.amt-q.cur,0);
-  if(cash!=null&&delta>cash+1e-9){realEvent("Timed bets: NOT changed. "+money(v)+" needs "+money(delta)+" more than is allocated now, but your unused cash is only "+money(Math.max(cash,0))+".");return}
-  plan.sort((p,q)=>(p.amt-p.cur)-(q.amt-q.cur));      // coins going down first, so the cash they free is there for the ones going up
-  let n=0;
-  for(const q of plan){if(Math.abs(q.amt-q.cur)<0.005){n++;continue}
-    const b=budOf("sim",q.x);if(!(await realAlloc("sim",q.x,q.amt,null,b?money2(b.bank):0,true)))break;n++}
-  if(n===plan.length)realEvent("Timed bets: "+money(v)+" split evenly across "+syms.length+" coins ("+money(base/100)+" each"+(extra?", plus a cent on the first "+extra:"")+")")
+  try{const d=await apost("/account/config",{budgets:plan.map(q=>({src:"sim",key:q.x,alloc:q.amt}))});if(!d.ok)throw new Error(d.error||"Couldn't change that");acct.bud=d.budget||acct.bud;
+    realEvent("Timed bets: "+money(v)+" split evenly across "+syms.length+" coins ("+money(base/100)+" each"+(extra?", plus a cent on the first "+extra:"")+")")}
+  catch(e){realEvent("Timed bets: NOT changed. "+(e.message||"failed"))}
+  finally{acctRefresh(true)}
 };
 $("acStop").onclick=async()=>{      // one switch for all real betting: ON stops every real mode, OFF allows real bets again (each mode still has to be started)
   const on=!!(acct.info&&acct.info.trading);

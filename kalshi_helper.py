@@ -39,7 +39,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-24o"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-24s"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -765,7 +765,28 @@ def acct_summary(force=False):
         out = {"ok": False, "status": s, "error": str(e)}
     with acct_lock:
         acct_cache.update(t=time.time(), env=s["env"], data=out)
+        if out.get("ok") and out.get("balance") is not None:
+            bal_cache.update(t=time.time(), env=s["env"], v=out["balance"])
     return out
+
+
+bal_cache = {"t": 0.0, "env": None, "v": None}
+
+
+def cash_balance(max_age=15.0):
+    """The Kalshi cash balance for allocation checks. A recent reading is reused, and a failed read is retried, so setting many
+    allocations in a row doesn't hit Kalshi's rate limit."""
+    env = acct_config()[1]
+    if bal_cache["v"] is not None and bal_cache["env"] == env and time.time() - bal_cache["t"] < max_age:
+        return bal_cache["v"]
+    last = ""
+    for i in range(3):
+        sm = acct_summary(True)
+        if sm.get("ok") and sm.get("balance") is not None:
+            return sm["balance"]
+        last = sm.get("error") or ""
+        time.sleep(1.2 * (i + 1))
+    raise ValueError("Couldn't read your Kalshi balance, so nothing was changed." + (" (" + last + ")" if last else ""))
 
 
 # ---- placing bets (guarded)
@@ -1032,9 +1053,7 @@ def budget_set(body):
     if cur and cur["open"] > 0 and target < cur["open"] - 1e-9:
         raise ValueError("$%.2f of it is in a bet that hasn't settled yet, so it can't go below that until the bet finishes." % cur["open"])
     if target > 0:
-        sm = acct_summary(True)
-        if not sm.get("ok") or sm.get("balance") is None:
-            raise ValueError("Couldn't read your Kalshi balance, so nothing was changed.")
+        sm = {"balance": cash_balance()}
         others = sum(v["avail"] for sn, ks in budget_stats(env).items() for kn, v in ks.items() if not (sn == src and kn == key))
         mine = target - (cur["open"] if cur else 0.0)           # what this one will have free to bet
         if others + mine > sm["balance"] + 1e-9:
@@ -1046,6 +1065,58 @@ def budget_set(body):
             bud.setdefault(src, {})[key] = {"start": target, "since": time.time()}
     else:
         bud.get(src, {}).pop(key, None)
+    save_settings(cfg)
+    acct_cache["data"] = None
+    return budget_stats(env)
+
+
+def budget_set_many(items):
+    """Set several allocations at once (for example Timed bets split evenly across coins): one balance reading, everything checked
+    first, then all applied together, so it either all happens or none of it does."""
+    _kid, env = acct_config()
+    if not isinstance(items, list) or not items or len(items) > 40:
+        raise ValueError("Nothing to set.")
+    plan = {}
+    for it in items:
+        src, key = it.get("src"), str(it.get("key") or "*")
+        if src not in ("auto", "sim"):
+            raise ValueError("Unknown mode.")
+        if src == "auto":
+            key = "*"
+        elif not re.match(r"^[A-Z0-9]{2,12}$", key):
+            raise ValueError("Unknown coin.")
+        t = round(float(it.get("alloc")), 2)
+        if not (0 <= t <= 1000000):
+            raise ValueError("That amount isn't valid.")
+        plan[(src, key)] = t
+    stats = budget_stats(env)
+    for (src, key), t in plan.items():
+        cur = stats.get(src, {}).get(key)
+        if cur and cur["open"] > 0 and t < cur["open"] - 1e-9:
+            raise ValueError("%s: $%.2f of it is in a bet that hasn't settled yet, so it can't go below that until the bet finishes." % (key if src == "sim" else "Auto", cur["open"]))
+    total = 0.0
+    for sn, ks in stats.items():
+        for kn, v in ks.items():
+            if (sn, kn) in plan:
+                total += max(plan[(sn, kn)] - v["open"], 0.0)
+            else:
+                total += max(v["avail"], 0.0)
+    total += sum(t for (sn, kn), t in plan.items() if kn not in stats.get(sn, {}))
+    if total > 1e-9 and any(t > 0 for t in plan.values()):
+        bal = cash_balance()
+        if total > bal + 1e-9:
+            raise ValueError("That would put $%.2f to work, but you only have $%.2f in cash." % (total, bal))
+    cfg = load_settings()
+    bud = cfg.setdefault("kalshi_budget", {}).setdefault(env, {})
+    for (src, key), t in plan.items():
+        cur = stats.get(src, {}).get(key)
+        if t > 0:
+            if cur:
+                bud[src][key]["start"] = round(t - cur["net"], 4)
+            else:
+                bud.setdefault(src, {})[key] = {"start": t, "since": time.time()}
+        else:
+            bud.get(src, {}).pop(key, None)
     save_settings(cfg)
     acct_cache["data"] = None
     return budget_stats(env)
@@ -1447,6 +1518,8 @@ class Handler(BaseHTTPRequestHandler):
                 if name == "order":
                     return self._send(200, json.dumps(place_order(body)))
                 if name == "config":
+                    if "budgets" in body:
+                        return self._send(200, json.dumps({"ok": True, "budget": budget_set_many(body["budgets"])}))
                     if "budget" in body:
                         return self._send(200, json.dumps({"ok": True, "budget": budget_set(body["budget"])}))
                     return self._send(200, json.dumps({"ok": True, "status": acct_set(body)}))
