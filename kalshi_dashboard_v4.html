@@ -141,14 +141,14 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-23n</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-23o</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
 <div class="card" id="msg"></div>
 <div class="top2">
   <div class="card" id="tgtCard"><div class="k" id="tgtK">Target price</div><div class="v" id="tgtV">–</div><div class="s" id="tgtS"></div>
-    <div class="edit"><input id="tgtIn" type="text" inputmode="decimal" placeholder="edit target price"><button id="tgtSet">Set target</button><button id="tgtAuto" style="display:none">Back to auto</button></div></div>
+  </div>
   <div class="card final" id="finCard"><div class="k">Final prediction</div><div class="v">–</div></div>
 </div>
 <div class="g4" id="cards"></div>
@@ -765,7 +765,6 @@ function step(tick,light){
     else{for(let t=Math.max(0,N-1-el);t<N;t++){if(isFinite(h[t])){anchor[i]=h[t];asrc[i]="page";break}}}
     if(active&&N>el-MARK&&isFinite(h[N-1-(el-MARK)]))mark[i]=h[N-1-(el-MARK)];
   });
-  syms.forEach((s,i)=>{const o=targetOv[s];if(o&&o.w===wStart){anchor[i]=Math.log(o.v);asrc[i]="manual"}});
   const mvS=last.map((x,i)=>x-anchor[i]), mvM=last.map((x,i)=>x-mark[i]);
   const okM=last.map((x,i)=>valid[i]&&isFinite(mark[i]));
   const L5=Math.min(300,N-1), roll=syms.map((s,i)=>L5<5?NaN:last[i]-hist[s][N-1-L5]);
@@ -1125,7 +1124,7 @@ function renderTop(s){
     $("tgtV").className="v "+(sr.target&&sr.price?(sr.price>=sr.target?"up":"dn"):"");
     const kh=(sr.tsrc!=="kalshi"&&sr.tsrc!=="manual"&&SRC.kalshi.err)?"<br><span style=\"color:var(--dn)\">Couldn't reach Kalshi ("+SRC.kalshi.err+"), so this is an estimate.</span>":"";
     $("tgtS").innerHTML=[srcTxt,d?"Now $"+f(sr.price)+" · "+d:""].filter(Boolean).join("<br>")+kh;
-    $("tgtAuto").style.display=sr.tsrc==="manual"?"":"none";
+
   }
   const fc=$("finCard");
   if(p){
@@ -1407,9 +1406,6 @@ const yzoom=(f,frac)=>{const r=yMan||lastY;if(!r)return;const v=r.hi-(r.hi-r.lo)
 const ypan=d=>{const r=yMan||lastY;if(!r)return;const s=(r.hi-r.lo)*d;yMan={lo:r.lo+s,hi:r.hi+s};draw(lastCh)};
 $("yseg").onclick=e=>{const b_=e.target.closest("button");if(!b_)return;const a=b_.dataset.y;
   if(a==="auto"){yMan=null;draw(lastCh)}else if(a==="in")yzoom(0.6,0.5);else if(a==="out")yzoom(1/0.6,0.5);else if(a==="up")ypan(0.25);else if(a==="down")ypan(-0.25)};
-const setTgt=()=>{const v=parseFloat(String($("tgtIn").value).replace(/[$,\s]/g,""));if(v>0&&winStart!=null){targetOv[selected]={w:winStart,v};$("tgtIn").value="";tickNow()}};
-$("tgtSet").onclick=setTgt;$("tgtIn").addEventListener("keydown",e=>{if(e.key==="Enter")setTgt()});
-$("tgtAuto").onclick=()=>{delete targetOv[selected];tickNow()};
 function sigLeave(row){if(!row||row.classList.contains("leaving"))return;row.classList.add("leaving");row.style.height=row.offsetHeight+"px";void row.offsetHeight;row.style.height="0px";row.style.marginBottom="0";row.style.paddingTop=row.style.paddingBottom="0";
   setTimeout(()=>{row.remove();sigPad()},150)}
 function sigPad(){const n=[...$("sig").children].filter(c=>!c.classList.contains("leaving")).length;document.body.classList.toggle("sigpad",n>0);if(!$("sig").children.length)$("sig").style.display="none"}
