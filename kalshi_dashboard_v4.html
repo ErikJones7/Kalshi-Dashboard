@@ -149,7 +149,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-24l</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-24m</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1640,7 +1640,10 @@ $("autoReal").onclick=()=>{real.autoView=!real.autoView};$("simReal").onclick=()
 $("autoOnBtn").onclick=async()=>{      // a number typed in the box but not yet set is applied first, so Start never uses a stale amount
   const el=$("autoRealStart"),b=budOf("auto","*"),v=parseFloat(el.value);
   if(!real.auto&&v>=0&&Math.abs(v-(b?b.bank:0))>=0.005)await realAlloc("auto","*",v,el,b?money2(b.bank):0);
-  realSwitch("auto",!real.auto)};$("simOnBtn").onclick=()=>realSwitch("sim",!real.sim);
+  realSwitch("auto",!real.auto)};$("simOnBtn").onclick=async()=>{      // amounts typed in the coin boxes but not yet set are applied first, as on Auto mode
+  if(!real.sim)for(const s of syms){const el=$("rs_"+s),b=budOf("sim",s),v=el?parseFloat(el.value):NaN;
+    if(v>=0&&Math.abs(v-(b?b.bank:0))>=0.005&&!(await realAlloc("sim",s,v,el,b?money2(b.bank):0,true)))break}
+  realSwitch("sim",!real.sim)};
 const money2=v=>Math.round(v*100)/100;
 $("autoRealStart").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();$("autoRealSet").click()}};
 $("autoRealSet").onclick=()=>{const el=$("autoRealStart"),b=budOf("auto","*");realAlloc("auto","*",parseFloat(el.value),el,b?money2(b.bank):0)};
@@ -1677,12 +1680,13 @@ let trKey="";
 function renderRealTimed(){
   const key=syms.join();
   if(key!==trKey){trKey=key;
-    $("trTbl").innerHTML='<tr><th>Coin</th><th>Allocated $</th><th>Free to bet</th><th>Wins / losses</th><th>Net</th><th>Open bet</th></tr>'+
-      syms.map(s=>`<tr><td>${s}</td><td><input type="number" min="0" step="1" id="rs_${s}" style="width:78px"></td><td id="rb_${s}"></td><td id="rw_${s}"></td><td id="rn_${s}"></td><td class="dim" id="ro_${s}"></td></tr>`).join("")+
-      '<tr class="tot"><td>All</td><td id="rs_all"></td><td id="rb_all"></td><td id="rw_all"></td><td id="rn_all"></td><td class="dim" id="ro_all"></td></tr>';
-    syms.forEach(s=>{$("rs_"+s).onchange=e=>{const b=budOf("sim",s);realAlloc("sim",s,parseFloat(e.target.value),e.target,b?money2(b.bank):0)}})}
+    $("trTbl").innerHTML='<tr><th>Coin</th><th>Allocated $</th><th></th><th>Free to bet</th><th>Wins / losses</th><th>Net</th><th>Open bet</th></tr>'+
+      syms.map(s=>`<tr><td>${s}</td><td><input type="number" min="0" step="0.01" id="rs_${s}" style="width:90px"></td><td><button class="rsSet" id="rset_${s}">Set</button></td><td id="rb_${s}"></td><td id="rw_${s}"></td><td id="rn_${s}"></td><td class="dim" id="ro_${s}"></td></tr>`).join("")+
+      '<tr class="tot"><td>All</td><td id="rs_all"></td><td></td><td id="rb_all"></td><td id="rw_all"></td><td id="rn_all"></td><td class="dim" id="ro_all"></td></tr>';
+    syms.forEach(s=>{const el=$("rs_"+s),go=()=>{const b=budOf("sim",s);return realAlloc("sim",s,parseFloat(el.value),el,b?money2(b.bank):0)};
+      $("rset_"+s).onclick=go;el.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();go()}}})}
   const rows=realOf("sim"),T={bank:0,avail:0,w:0,l:0,net:0,open:0},ev=real.events.filter(e=>e.includes("· Timed bet")).slice(0,3);
-  setH($("trNote"),(acct.stale?'<b class="miss">'+escH(staleMsg)+"</b><br>":"")+escH("Each coin bets its whole real bankroll at "+simAt+" s left when the win chance is at least "+Math.round(simMin*100)+"%. The Allocated $ box is its bankroll: it moves up and down with its wins and losses. Type a smaller number to send money back to your cash, or a bigger one to add more. A coin that loses everything stays at $0 until you allocate more. Money you haven't allocated is never touched.")+(flashFor("· Timed bet")?"<br>"+escH(flashFor("· Timed bet")):""));
+  setH($("trNote"),(acct.stale?'<b class="miss">'+escH(staleMsg)+"</b><br>":"")+escH("Each coin bets its whole real bankroll at "+simAt+" s left when the win chance is at least "+Math.round(simMin*100)+"%. The Allocated $ box is its bankroll: it moves up and down with its wins and losses. Type a new amount for a coin and press Set (or Enter): a smaller number sends money back to your cash, a bigger one adds more. A coin that loses everything stays at $0 until you allocate more. Money you haven't allocated is never touched.")+(flashFor("· Timed bet")?"<br>"+escH(flashFor("· Timed bet")):""));
   for(const s of syms){const b=budOf("sim",s),inp=$("rs_"+s);if(!inp)continue;
     if(document.activeElement!==inp)inp.value=b?money2(b.bank):0;
     setT($("rb_"+s),b?$$(b.avail):"–");setT($("rw_"+s),b?b.w+" / "+b.l:"–");const n=$("rn_"+s);setT(n,b?$$(b.net):"–");setC(n,b?cls(b.net):"");
