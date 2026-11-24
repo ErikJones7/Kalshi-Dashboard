@@ -56,6 +56,11 @@ DAILY AND WEEKLY GOALS (real Auto mode)
   (and its Max bet limit is raised by a quarter) until the week is back on pace, then it goes back to normal. The size is the
   "Catch-up bet size" box in the bet history (1 turns it off). Bigger bets can lose more, so this is riskier, not safer.
 
+AUTO'S PRICE CHECK
+  Before Auto decides to bet, it asks the helper for the price an order would really match against (Kalshi's order book), not just the
+  quoted price on the market page, and works out its edge and multiplier from that. If nothing is for sale on the side it wants, it skips
+  that coin. If the helper can't read the book, it falls back to the quoted price as before.
+
 PRICE LOG (for testing better models later)
   While the helper is running, the page sends it one row per coin per second to data\prices-YYYYMMDD.csv.gz (one compressed file per UTC
   day, about 5-10 MB a day, the last 14 days are kept): the combined price, each exchange's own price, the best bid / ask and their sizes

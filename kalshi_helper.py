@@ -40,7 +40,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-25d"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-25e"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -1204,12 +1204,30 @@ def market_check(ticker, env):
     return m, close
 
 
-def book_levels(ticker, side, env):
+_ob_cache = {}
+
+
+def _orderbook_body(ticker, env, max_age=0.0):
+    """Kalshi's order book body for a market. Orders always read it fresh (max_age 0); the price lookups the page uses for deciding
+    share one reading for a short moment so they don't multiply the requests."""
+    key = (env, ticker)
+    hit = _ob_cache.get(key)
+    if max_age > 0 and hit and time.time() - hit[0] < max_age:
+        return hit[1], hit[2]
+    base = DEMO_BASE if env == "demo" else UPSTREAM
+    st, body = fetch_upstream(base + "/markets/" + urllib.parse.quote(ticker) + "/orderbook")
+    if max_age > 0:
+        if len(_ob_cache) > 100:
+            _ob_cache.clear()
+        _ob_cache[key] = (time.time(), st, body)
+    return st, body
+
+
+def book_levels(ticker, side, env, max_age=0.0):
     """The bids that a buy of `side` would match against, as [(cents, contracts), ...] from Kalshi's public order book
     (None if it can't be read). Buying YES is matched by NO bids and buying NO by YES bids; a bid at b cents is an ask of 100-b."""
     try:
-        base = DEMO_BASE if env == "demo" else UPSTREAM
-        st, body = fetch_upstream(base + "/markets/" + urllib.parse.quote(ticker) + "/orderbook")
+        st, body = _orderbook_body(ticker, env, max_age)
         if st >= 400:
             return None
         d = json.loads(body.decode("utf-8", "ignore") or "{}")
@@ -1234,6 +1252,21 @@ def book_levels(ticker, side, env):
         return out
     except Exception:
         return None
+
+
+def ask_snapshot(ticker, env):
+    """What each side can really be bought for right now, from the order book (the same price an order would match against):
+    {"yes_ask": cents|None, "no_ask": cents|None, "yes_qty": contracts at that price, "no_qty": ...}. None means nothing is for sale."""
+    out = {"ok": True, "ts": time.time()}
+    for side in ("yes", "no"):
+        lv = book_levels(ticker, side, env, max_age=0.8)
+        if lv is None:
+            return {"ok": False, "ts": time.time()}
+        live = [(p, q) for p, q in lv if q > 0]
+        top = max((p for p, q in live), default=None)
+        out[side + "_ask"] = None if top is None else round(100 - top, 2)
+        out[side + "_qty"] = 0 if top is None else sum(q for p, q in live if abs(p - top) < 1e-9)
+    return out
 
 
 def depth_at(levels, price):
@@ -1539,6 +1572,12 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, json.dumps(annotate(live_rows()[-400:])[::-1]))
                 if name == "budget":
                     return self._send(200, json.dumps({"env": acct_config()[1], "budget": budget_stats(acct_config()[1])}))
+                if name == "ask":
+                    q = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
+                    tk = (q.get("ticker") or [""])[0]
+                    if not TICKER_RE.match(tk):
+                        return self._send(400, json.dumps({"error": "bad ticker"}))
+                    return self._send(200, json.dumps(ask_snapshot(tk, acct_config()[1])))
                 if name.startswith("market/"):
                     tk = urllib.parse.unquote(name[len("market/"):])
                     if not TICKER_RE.match(tk):

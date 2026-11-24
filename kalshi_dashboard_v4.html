@@ -158,7 +158,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-25o</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-25p</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1340,6 +1340,11 @@ function autoSeed(){
   autoSt.seeded=true;autoSave();
 }
 setTimeout(autoSeed,25000);
+const bookBy={}, bookBusy={}; let autoBookSkip="",autoBookSkipT=0;
+function refreshBook(sym,tk){      // Kalshi's real best asking prices for this market, read from its order book by the helper (at most one lookup per coin at a time)
+  if(bookBusy[sym])return;bookBusy[sym]=1;
+  aget("/account/ask?ticker="+encodeURIComponent(tk)).then(d=>{bookBy[sym]={tk,ts:Date.now()/1000,ok:!!(d&&d.ok),yes:d&&d.yes_ask,no:d&&d.no_ask}})
+    .catch(()=>{bookBy[sym]={tk,ts:Date.now()/1000,ok:false}}).finally(()=>{bookBusy[sym]=0})}
 function autoStep(tick,tau,wStart,wEnd){
   autoSt.on=true;      // fake-money auto mode is always running
   if(tau<1)return;
@@ -1362,12 +1367,18 @@ function autoStep(tick,tau,wStart,wEnd){
     const q=quoteBy[sym];
     if(!q||Math.abs(q.close-wEnd)>5||q.yes_ask==null||now-q.ts>3){
       if(refr<2&&now-(autoRefr[sym]||0)>2){refr++;autoRefr[sym]=now;refreshMarket(sym,wEnd,sym===selected).catch(()=>{})}continue}
-    const m=mults(q.yes_ask,q.yes_bid,q.no_ask),mult=side==="UP"?m.up:m.dn;if(!mult)continue;
+    const m=mults(q.yes_ask,q.yes_bid,q.no_ask);let mult=side==="UP"?m.up:m.dn;
+    if(!sim&&hBase&&q.tk){      // the price an order would really match against (Kalshi's order book, via the helper) decides; the market quote is only the fallback
+      const bk=bookBy[sym];
+      if(!bk||bk.tk!==q.tk||now-bk.ts>3){refreshBook(sym,q.tk);continue}
+      if(now-bk.ts>1.2)refreshBook(sym,q.tk);      // keep it fresh without ever leaving a gap
+      if(bk.ok){const a=side==="UP"?bk.yes:bk.no;if(!(a>0&&a<100)){autoBookSkip=sym+" "+side+": nothing is for sale right now";autoBookSkipT=now;continue}mult=100/a}}
+    if(!mult)continue;
     const c=1/mult,cost=c+0.07*c*(1-c),e=autoEst(sym,conf,r.tau),edge=e.lb-cost;
     if(edge<AUTO_EDGE)continue;
     const f=edge/(1-cost)*AUTO_KELLY,g=e.lb*Math.log(1+f*(1-cost)/cost)+(1-e.lb)*Math.log(1-f);
     cands.push({sym,side,conf,e,cost,edge,f,g,tau:r.tau,anchorLn:r.anchorLn,ask:q.yes_ask,bid:q.yes_bid})}
-  if(!cands.length){autoNote=waiting?"Checking prices":"Waiting for a steady, confident signal";return}
+  if(!cands.length){autoNote=waiting?(autoBookSkip&&now-autoBookSkipT<5?autoBookSkip:"Checking prices"):"Waiting for a steady, confident signal";return}
   cands.sort((a,b)=>b.g-a.g);const best=cands[0];autoG=Math.max(autoG,best.g);
   autoNote="Best so far: "+best.sym+" "+best.side+" · "+pc(best.e.lb)+" safe estimate";
   if(!(best.g>=0.9*autoG)||!(tau<=150||best.edge>=0.08))return;      // buy once the signal is steady and not fading
@@ -1544,7 +1555,7 @@ let acct={info:null,sum:null,orders:[],bud:{},err:"",busy:false}, lv={armed:null
 // real-money mirrors: in memory only, so they are always OFF after a restart and have to be switched on on purpose
 let real={sim:false,auto:false,autoView:true,simView:true,events:[],evT:[],autoLast:null,q:Promise.resolve()};
 let liveRes={};
-const HELPER_EXPECT="2026-11-25d";      // the helper build this page needs (changes only when the helper program itself changes)
+const HELPER_EXPECT="2026-11-25e";      // the helper build this page needs (changes only when the helper program itself changes)
 const staleMsg="The helper program that is running is older than this page. Fully close it (Ctrl+Shift+Esc, end pythonw.exe / python.exe) and reopen the dashboard from its icon, or some real-money controls won't work right.";
 const oldHelper="The helper that is running is an older version that doesn't know about Kalshi accounts. Fully close it and reopen the dashboard from its icon: press Ctrl+Shift+Esc, open the Details tab, end every pythonw.exe (or python.exe) entry, then double-click the Kalshi Dashboard icon.";
 const acctNeed="Open the dashboard from its icon (the address starts with http://127.0.0.1) to use your Kalshi account.";
