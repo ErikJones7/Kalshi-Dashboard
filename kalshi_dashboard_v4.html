@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26i</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26j</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -206,6 +206,7 @@ body{transition:margin-left .14s ease-out}
       <button id="autoHist">View bet history</button><button id="autoReset">Reset bankroll</button>
     </span></summary>
     <div class="autostats" id="autoStats" style="margin-top:8px"></div>
+    <div id="autoCo" style="margin:8px 0"></div>
   </details>
 </div>
 
@@ -891,7 +892,7 @@ function settleAutoRows(rows){      // the Auto bets of one window
   let wp=0;
   for(const b of rows){b.hit=(b.side==="UP")===b.up;b.payout=b.hit?b.stake*b.mult:0;b.pnl=b.payout-b.stake;wp+=b.pnl;
     autoSt.net+=b.pnl;autoSt.bank+=b.pnl;if(b.hit)autoSt.w++;else autoSt.l++;autoSt.windows++;
-    b.bank=autoSt.bank;b.cp="AUTO";simLog.push(b);if(!sim)hOutbox.sim.push(b)}
+    cashBook(b);b.bank=autoSt.bank;b.cp="AUTO";simLog.push(b);if(!sim)hOutbox.sim.push(b)}
   autoSt.peak=Math.max(autoSt.peak,autoSt.bank);
   if(wp<0){autoSt.streak++;if(autoSt.streak>=3){autoSt.pause=2;autoSt.streak=0}}else if(wp>0)autoSt.streak=0;
   if(autoSt.bank<1){autoSt.bank=autoSt.start;autoSt.peak=autoSt.start;autoSt.streak=0;autoNote="Fake bankroll used up, restarted from the start amount"}}
@@ -1427,6 +1428,23 @@ function timedPrice(sym,side,q,mult0,bank,now){      // price of a fake Timed be
     if(now-bk.ts>1.2)refreshBook(sym,q.tk);
     if(bk.ok){const f=bookFill(bk,side,bank);return f?{mult:f.mult,stake:f.stake,px:"book"}:null}}
   const c=1/mult0;return {mult:1/(c+0.07*c*(1-c)),stake:bank,px:"quote"}}      // book unreadable (or a practice run): the quoted price, with the fee
+/* Cash-out test (shadow only, nothing is sold): for every open fake Auto bet the page checks each second what selling at Kalshi's bid would give, under several rules. At settlement it books what each rule would have changed. Used to learn, from real prices, whether and when cashing out pays. */
+const CASH_RULES={f55:["Model flips to the other side, 55%+",(ps,nb)=>1-ps>=0.55],f65:["Model flips to the other side, 65%+",(ps,nb)=>1-ps>=0.65],f75:["Model flips to the other side, 75%+",(ps,nb)=>1-ps>=0.75],f85:["Model flips to the other side, 85%+",(ps,nb)=>1-ps>=0.85],
+  m05:["Sell when the market pays 5 points above the model's win chance",(ps,nb)=>nb>=ps+0.05],m10:["Sell when the market pays 10 points above the model's win chance",(ps,nb)=>nb>=ps+0.10]};
+function autoCashWatch(tick,tau){
+  if(!pendAuto.length||tau<8)return;const now=Date.now()/1000;
+  for(const b of pendAuto){
+    const r=res[b.sym],q=quoteBy[b.sym];
+    if(!r||r.pCal==null||r.tick<tick-8||!q||q.tk!==b.tk||now-q.ts>3)continue;
+    const bid=b.side==="UP"?q.yes_bid:(q.no_bid!=null?q.no_bid:(q.yes_ask!=null?1-q.yes_ask:null));
+    if(!(bid>0&&bid<1))continue;
+    const ps=b.side==="UP"?r.pCal:1-r.pCal,nb=bid-0.07*bid*(1-bid);      // nb = what one contract nets after the selling fee
+    b.co=b.co||{};
+    for(const k in CASH_RULES)if(!b.co[k]&&CASH_RULES[k][1](ps,nb))b.co[k]={tau,bid:Math.round(bid*1000)/1000,nb:Math.round(nb*10000)/10000,ps:Math.round(ps*1000)/1000}}}
+function cashBook(b){      // at settlement: what each rule would have changed on this bet
+  const cs=autoSt.cs=autoSt.cs||{},cn=b.stake*b.mult;cs.n=(cs.n||0)+1;
+  for(const k in CASH_RULES){const e=cs[k]=cs[k]||{ex:0,saved:0,sold:0,d:0,ds:0,dw:0},x=b.co&&b.co[k];
+    if(x){const d=(cn*x.nb-b.stake)-b.pnl;e.ex++;e.d+=d;if(b.hit){e.sold++;e.dw+=d}else{e.saved++;e.ds+=d}}}}
 function autoStep(tick,tau,wStart,wEnd){
   autoSt.on=true;      // fake-money auto mode is always running
   if(tau<1)return;
@@ -1436,6 +1454,7 @@ function autoStep(tick,tau,wStart,wEnd){
     const side=r.pCal>=0.5?"UP":"DOWN",conf=side==="UP"?r.pCal:1-r.pCal;
     for(const cp of A_CP){const k=wStart+"|"+sym+"|"+cp;if(tau>cp||autoSnap.has(k))continue;autoSnap.add(k);
       pendASnap.push({sym,side,conf,anchorLn:r.anchorLn,tb:atb(r.tau),bi:abin(conf)})}}
+  autoCashWatch(tick,tau);
   if(!autoSt.on||autoDone||tau>240)return;
   if(tau<25){autoDone=true;autoNote="No good bet this window";return}
   const now=Date.now()/1000,cands=[];let refr=0,waiting=0;
@@ -1489,6 +1508,13 @@ function renderAuto(){
   setH($("autoStats"),cell("Bankroll",$$(a.bank))+cell("Net",$$(a.net),a.net>0?"hit":a.net<0?"miss":"")+cell("Wins / losses",a.w+" / "+a.l)+
     cell("Hit rate",tot?Math.round(a.w/tot*1000)/10+"%":"–")+cell("Windows skipped",a.skipped)+cell("Peak",$$(a.peak))+cell("Min confidence now",(g=>g==null?"none":Math.round(g*1000)/10+"%")(autoGate(1)))+cell("Learned from",samples+" samples")+cell("Status",st));
 }
+function renderCash(){
+  const cs=autoSt.cs,el=$("autoCo");if(!el)return;
+  if(!cs||!cs.n){setH(el,'<div class="s">Cash-out test: collecting data. Nothing is ever sold; for each bet it records what selling early would have changed.</div>');return}
+  const sg=v=>(v>=0?"+":"-")+"$"+Math.abs(v).toFixed(2),cl=v=>v>0.005?"hit":v<-0.005?"miss":"";
+  setH(el,'<div class="s" style="margin-bottom:4px">Cash-out test on '+cs.n+' settled bets (shadow only, nothing is sold). Change = what selling early would have added or lost, net of the selling fee, compared with holding.</div>'+
+    '<table class="mini"><tr><th style="text-align:left">Rule</th><th>Would have sold</th><th>Losers saved</th><th>Winners sold early</th><th>Change</th></tr>'+
+    Object.keys(CASH_RULES).map(k=>{const e=cs[k]||{ex:0,saved:0,sold:0,d:0};return `<tr><td style="text-align:left">${CASH_RULES[k][0]}</td><td>${e.ex}</td><td>${e.saved}</td><td>${e.sold}</td><td class="${cl(e.d)}">${sg(e.d)}</td></tr>`}).join("")+'</table>')}
 function renderPicks(){
   setT($("pickK"),sim?"Best pick record · "+SIM_SPEED+"x practice run (not saved)":"Best pick record");
   const by={};for(const x of pickHist){(by[x.T]=by[x.T]||[]).push(x)}
@@ -1500,7 +1526,7 @@ function renderPicks(){
     keys.map(k=>row(k%60===0?k/60+(k===60?" minute":" minutes"):k+" seconds",by[k]||[])).join("")+row("All",all,"tot"));
 }
 function renderSim(){
-  renderAuto();renderPicks();
+  renderAuto();renderCash();renderPicks();
   setT($("simK"),sim?"Timed bets · "+SIM_SPEED+"x practice run (not saved)":"Timed bets");
   const key=syms.join(),cp=SIM_CP[0];
   if(key!==simKey){simKey=key;
