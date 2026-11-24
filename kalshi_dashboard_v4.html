@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26f</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26g</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -647,6 +647,7 @@ function simTotal(){let t=0;for(const s of syms)t+=simTr(s,SIM_CP[0]).bank;retur
 function simNote(m){simMsg=m;simMsgT=Date.now()}
 function simResplitCheck(){      // Timed bets (fake money): when the coins' total is simGain % above the total last allocated, take the profit and split everything evenly across all the coins again
   if(simOpenAny()||!syms.length)return;const cp=SIM_CP[0];
+  if(simSt.refV!==2){simSt.ref=Math.round(syms.reduce((t,x)=>t+simStart(x),0)*100)/100;simSt.refV=2}      // the "last allocated" total starts as the money you gave the coins (their Allocated amounts), not whatever they hold when this first runs
   for(const x of syms)if(!(simSt.tr[x]&&simSt.tr[x][cp])){const t=simTr(x,cp);if(simSt.ref!=null)simSt.ref+=t.bank}      // a coin added later brings its own money; that is not profit
   const tot=simTotal();
   if(simSt.ref==null){simSt.ref=tot;simSave();return}

@@ -139,3 +139,6 @@ FAKE TIMED BETS NOW USE ALLOCATED MONEY, WITH AN AUTOMATIC RE-SPLIT
 The fake money row on the Timed bets card now works like the real one: a "Total $ for all coins" box with Split evenly, and an "Allocated $" box for each coin. Each coin's allocation is its bankroll and moves with its wins and losses. A coin that loses everything stays at $0 (the old "After a loss: restart" choice is gone). A coin's box can't be changed while it has an unsettled bet.
 New: "Re-split at +5%" (the number is adjustable). When the coins' total reaches that many % above the total you last allocated, and no bet is open, the profit is taken and the whole total is split evenly across all the coins again. That also revives any coin that was at $0. Setting a coin's amount, Split evenly and a re-split each move the "last allocated" total, so adding money never counts as profit. Reset all puts each coin back to the amount you last set for it.
 The real money Timed bets are unchanged.
+
+FIX: THE FIRST RE-SPLIT LEVEL USES THE MONEY YOU ALLOCATED
+The fake Timed bets' "last allocated" total now starts as the sum of the coins' Allocated amounts (what you gave them), not the coins' balances at the moment the feature first ran. Coins already above +5% of that total re-split at the next moment no bet is open.
