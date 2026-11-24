@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26h</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26i</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -405,7 +405,7 @@ const zr=()=>{zs=(Math.imul(zs,1664525)+1013904223)>>>0;return ZP[zs>>>14]};
 
 /* ============================ live price sources ============================ */
 const CB="https://api.exchange.coinbase.com", KR="https://api.kraken.com/0/public", OKX="https://www.okx.com/api/v5/market", HLI="https://api.hyperliquid.xyz/info";
-const ORDER=["cb","kr","okx","hl"], NAMES={cb:"Coinbase",kr:"Kraken",okx:"OKX",hl:"Hyperliquid",kalshi:"Kalshi (target price)"}, FRESH=8;
+const ORDER=["cb","kr","okx","hl"], NAMES={cb:"Coinbase",kr:"Kraken",okx:"OKX",hl:"Hyperliquid",kalshi:"Kalshi (target price)"}, FRESH=8, CB_FRESH=15;
 const PX={}, curSrc={}, BF={}, minVol={}, SRC={};
 ORDER.concat(["kalshi"]).forEach(k=>SRC[k]={ws:"–",rest:"–",msgs:0,last:0,err:""});
 let cbSet=null, krMap={}, bfLeft=0; const bootMs=Date.now();
@@ -420,9 +420,12 @@ function chooseAll(){
   const now=nowS();
   for(const s of syms){const o=PX[s]; if(!o){delete latest[s];continue}
     const age=k=>o[k]?now-o[k].ts:1e9; let k=curSrc[s];
-    if(!(k&&age(k)<=FRESH)){
-      k=ORDER.find(x=>age(x)<=FRESH)||null;
-      if(!k){let bst=1e9;for(const x of ORDER)if(age(x)<bst){bst=age(x);k=x} if(bst>STALE)k=null}
+    if(age("cb")<=CB_FRESH)k="cb";      // Coinbase is the reference for Kalshi's price: use it whenever it has a recent price, and go back to it the moment it recovers
+    else{      // only while Coinbase has had nothing for CB_FRESH seconds: stay on the current backup if it is fresh, otherwise take the first fresh one
+      if(!(k&&k!=="cb"&&age(k)<=FRESH)){
+        k=ORDER.find(x=>x!=="cb"&&age(x)<=FRESH)||null;
+        if(!k){let bst=1e9;for(const x of ORDER)if(age(x)<bst){bst=age(x);k=x} if(bst>STALE)k=null}
+      }
     }
     if(k){curSrc[s]=k;latest[s]={px:o[k].px,ts:o[k].ts}}else{delete latest[s];delete curSrc[s]}
   }
