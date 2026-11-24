@@ -128,3 +128,6 @@ Kalshi sells contracts in pieces as small as 0.01. Real Auto and Timed orders no
 
 EACH AUTO BET NOW KEEPS HOW MANY OTHER COINS AGREED
 When Auto mode places a bet, the real order log (data/live_orders.jsonl) records two numbers with it: "agree" (how many other coins qualified for a bet the same way at that moment) and "opp" (how many qualified the opposite way). Nothing in the bot's behavior changes. The numbers are only there so you can check later whether bets where no other coin agreed did worse. This needs the helper build 2026-11-26c: close the helper and reopen the dashboard after updating.
+
+CONTRACTS SHOWN TO 2 DECIMALS
+In the real bet history (Auto and Timed) and the all-orders list, the Contracts column now shows two decimals (for example 10.01 or 12.00), since fractional contracts are allowed.

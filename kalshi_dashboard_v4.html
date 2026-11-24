@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26c</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26d</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1654,6 +1654,7 @@ async function releaseDropped(){      // money allocated to a coin that is no lo
   catch(e){}finally{dropBusy=false}
 }
 const money=v=>v==null?"–":"$"+(+v).toFixed(2);
+const ctr=v=>v==null||v===""||isNaN(+v)?"–":(+v).toFixed(2);      // contracts shown rounded to 2 decimals
 function renderAcctMenu(){
   const i=acct.info,t=!i?"":!i.ready?"Not connected":acct.sum&&acct.sum.ok?(i.env==="demo"?"Demo · ":"")+"Balance "+money(acct.sum.balance)+(i.trading?" · betting ON":" · betting off"):"Connected, but Kalshi didn't answer";
   setT($("mAcctS"),t);
@@ -1670,7 +1671,7 @@ function renderKa(){
   setH($("kaPos"),tb(["Market","Side","Contracts","Cost","Realized P&L"],((sm&&sm.positions)||[]).map(r=>`<tr><td>${escH(r.ticker)}</td><td>${r.side}</td><td>${r.contracts}</td><td>${money(r.cost)}</td><td>${money(r.pnl)}</td></tr>`)));
   setH($("kaFills"),tb(["Time","Market","Side","Contracts","Price","Fee"],((sm&&sm.fills)||[]).slice(0,40).map(r=>`<tr><td>${escH(String(r.time||"").replace("T"," ").replace("Z",""))}</td><td>${escH(r.ticker)}</td><td>${escH(r.action)} ${escH(r.side)}</td><td>${r.contracts==null?"–":r.contracts}</td><td>${r.price==null?"–":Math.round(r.price*100)+"¢"}</td><td>${money(r.fee)}</td></tr>`)));
   setH($("kaOrd"),tb(["Time","Mode","Env","Market","Side","Contracts","Limit","Avg paid","Multiplier","Result","Cost","Payout","Net"],(acct.orders||[]).slice(0,60).map(r=>{const res=liveRes[r.ticker],won=r.filled&&res?res===r.side:null,net=won==null?null:pay(r,won)-r.cost_total;
-    return `<tr><td>${escH(r.time)}</td><td>${escH({sim:"timed",auto:"auto"}[r.src]||r.src||"manual")}</td><td>${escH(r.env)}</td><td>${escH(r.ticker)}</td><td>${escH(String(r.side).toUpperCase())}</td><td>${r.count}</td><td>${r.price_cents}¢</td><td>${r.filled&&r.avg_cents!=null?r.avg_cents+"¢":"–"}</td><td>${r.filled&&r.mult?"×"+r.mult.toFixed(2):"–"}</td><td class="${r.filled?(won===false?"miss":"hit"):"miss"}">${r.filled?(won==null?"Filled, waiting":won?"Won":"Lost"):escH(r.refused||r.error||"Not filled")}</td><td>${r.filled?money(r.cost_total):"–"}</td><td>${r.filled&&won!=null?money(pay(r,won)):"–"}</td><td class="${net>0?"hit":net<0?"miss":""}">${net==null?"–":(net>=0?"+":"-")+"$"+Math.abs(net).toFixed(2)}</td></tr>`})));
+    return `<tr><td>${escH(r.time)}</td><td>${escH({sim:"timed",auto:"auto"}[r.src]||r.src||"manual")}</td><td>${escH(r.env)}</td><td>${escH(r.ticker)}</td><td>${escH(String(r.side).toUpperCase())}</td><td>${ctr(r.filled&&r.fill_count!=null?r.fill_count:r.count)}</td><td>${r.price_cents}¢</td><td>${r.filled&&r.avg_cents!=null?r.avg_cents+"¢":"–"}</td><td>${r.filled&&r.mult?"×"+r.mult.toFixed(2):"–"}</td><td class="${r.filled?(won===false?"miss":"hit"):"miss"}">${r.filled?(won==null?"Filled, waiting":won?"Won":"Lost"):escH(r.refused||r.error||"Not filled")}</td><td>${r.filled?money(r.cost_total):"–"}</td><td>${r.filled&&won!=null?money(pay(r,won)):"–"}</td><td class="${net>0?"hit":net<0?"miss":""}">${net==null?"–":(net>=0?"+":"-")+"$"+Math.abs(net).toFixed(2)}</td></tr>`})));
 }
 let rhSrc=null;
 function renderRHGoal(){      // Auto's daily / weekly minimum returns, in its bet history
@@ -1687,7 +1688,7 @@ function renderRH(){      // real bets of one mode, using Kalshi's own price, mu
   let w=0,l=0,net=0,open=0,fail=0;
   const tr=rows.map(r=>{const res=liveRes[r.ticker],won=r.filled&&res?res===r.side:null,n=won==null?null:pay(r,won)-r.cost_total;
     if(r.filled){if(won==null)open++;else{won?w++:l++;net+=n}}else fail++;
-    return `<tr><td>${escH(r.time)}</td><td>${escH(symOf(r)||"")}</td><td>${escH(String(r.side).toUpperCase())}</td><td>${r.filled&&r.fill_count!=null?r.fill_count:r.count}</td><td>${r.price_cents}¢</td><td>${r.filled&&r.avg_cents!=null?r.avg_cents+"¢":"–"}</td><td>${r.filled&&r.mult?"×"+r.mult.toFixed(2):"–"}</td><td class="${r.filled?(won===false?"miss":"hit"):"miss"}">${r.filled?(won==null?"Filled, waiting":won?"Won":"Lost"):escH(r.refused||r.error||"Not filled")}</td><td>${r.filled?money(r.cost_total):"–"}</td><td>${r.filled&&won!=null?money(pay(r,won)):"–"}</td><td class="${n>0?"hit":n<0?"miss":""}">${n==null?"–":(n>=0?"+":"-")+"$"+Math.abs(n).toFixed(2)}</td></tr>`});
+    return `<tr><td>${escH(r.time)}</td><td>${escH(symOf(r)||"")}</td><td>${escH(String(r.side).toUpperCase())}</td><td>${ctr(r.filled&&r.fill_count!=null?r.fill_count:r.count)}</td><td>${r.price_cents}¢</td><td>${r.filled&&r.avg_cents!=null?r.avg_cents+"¢":"–"}</td><td>${r.filled&&r.mult?"×"+r.mult.toFixed(2):"–"}</td><td class="${r.filled?(won===false?"miss":"hit"):"miss"}">${r.filled?(won==null?"Filled, waiting":won?"Won":"Lost"):escH(r.refused||r.error||"Not filled")}</td><td>${r.filled?money(r.cost_total):"–"}</td><td>${r.filled&&won!=null?money(pay(r,won)):"–"}</td><td class="${n>0?"hit":n<0?"miss":""}">${n==null?"–":(n>=0?"+":"-")+"$"+Math.abs(n).toFixed(2)}</td></tr>`});
   const h=["Time","Coin","Side","Contracts","Limit","Avg paid","Multiplier","Result","Cost","Payout","Net"];
   setH($("rhTbl"),'<tr>'+h.map(x=>`<th>${x}</th>`).join("")+'</tr>'+(tr.length?tr.join(""):`<tr><td colspan="${h.length}" class="dim">No real bets yet</td></tr>`));
   renderRHGoal();
