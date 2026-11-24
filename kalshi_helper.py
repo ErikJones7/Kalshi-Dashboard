@@ -35,13 +35,12 @@ import argparse
 import collections
 import csv
 import gzip
-import shutil
 import hashlib
 import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-25f"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-25e"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -269,42 +268,6 @@ def save_prices(body):
         except Exception:
             pass
     return {"ok": True, "rows": len(rows)}
-
-
-def purge_auto():
-    """Removes every fake-money Auto bet (cp == "AUTO") from the saved sim trades, after copying the data files to data/archive-<time>/.
-    Timed-bet rows are kept. The removed rows stay in `seen`, so a page that still holds them can't put them back."""
-    with lock:
-        os.makedirs(DATA, exist_ok=True)
-        arch = os.path.join(DATA, "archive-" + time.strftime("%Y%m%d-%H%M%S"))
-        os.makedirs(arch, exist_ok=True)
-        for fn in ("sim_trades.jsonl", "sim_trades.csv", "sim_state.json"):
-            src = os.path.join(DATA, fn)
-            if os.path.isfile(src):
-                shutil.copy2(src, os.path.join(arch, fn))
-        keep = [r for r in store["sim"] if r.get("cp") != "AUTO"]
-        removed = len(store["sim"]) - len(keep)
-        store["sim"][:] = keep
-        path = os.path.join(DATA, "sim_trades.jsonl")
-        if os.path.isfile(path):
-            lines = []
-            with open(path, encoding="utf-8", errors="replace") as f:
-                for line in f:
-                    try:
-                        if json.loads(line).get("cp") == "AUTO":
-                            continue
-                    except Exception:
-                        pass
-                    lines.append(line if line.endswith("\n") else line + "\n")
-            tmp = path + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as f:
-                f.writelines(lines)
-            os.replace(tmp, path)
-        name, cols, fn = CSVS["sim"]
-        write_csv(name, cols, [fn(r) for r in store["sim"]])
-        csv_stale.discard("sim")
-    log("removed %d fake-money Auto bets (copied to %s)" % (removed, arch))
-    return {"ok": True, "removed": removed, "archive": os.path.basename(arch)}
 
 
 def save_data(body):
@@ -1736,18 +1699,6 @@ class Handler(BaseHTTPRequestHandler):
             threading.Thread(target=self.server.shutdown, daemon=True).start()
             return
         last_active[0] = time.time()
-        if self.path.startswith("/data/purge"):
-            if self.headers.get("X-Kalshi") != "1":
-                return self._send(403, json.dumps({"error": "forbidden"}))
-            try:
-                n = int(self.headers.get("Content-Length", "0"))
-                body = json.loads(self.rfile.read(n).decode("utf-8") or "{}") if n else {}
-                if body.get("kind") != "auto":
-                    return self._send(400, json.dumps({"error": "unknown kind"}))
-                return self._send(200, json.dumps(purge_auto()))
-            except Exception as e:
-                log("purge failed:\n" + traceback.format_exc())
-                return self._send(500, json.dumps({"error": str(e)}))
         if self.path.startswith("/data/prices"):
             try:
                 n = int(self.headers.get("Content-Length", "0"))
