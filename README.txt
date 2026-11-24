@@ -69,6 +69,14 @@ FAKE TIMED BETS ARE PRICED LIKE A REAL FILL
   tally of the bets since then, because earlier Timed results used the old pricing and look better than a real fill would. The real Timed bet
   no longer waits for the fake one's price. (This needs the new helper build, 2026-11-25f; the page tells you if the helper must be restarted.)
 
+FAKE BETS USE KALSHI'S OWN TARGET AND KALSHI'S OWN RESULT
+  Auto and Timed bets (fake and real) are only placed against Kalshi's own target number for the window; if Kalshi's number hasn't loaded yet,
+  the bet waits. When a window closes, a fake bet is no longer judged by the app's own 60-second average: it waits for Kalshi's result for that
+  market ("waiting for Kalshi" is shown on the card) and is settled on that. A window's Auto bets settle together. If Kalshi has not published
+  a result after 15 minutes, the bet is settled on the app's own estimate instead and is marked as such. The Timed and Auto cards show how many
+  bets were settled on Kalshi's result and how many times it differed from the app's own estimate. Closing the page while a bet is waiting
+  drops that bet (its bankroll is left as it was).
+
 PRICE LOG (for testing better models later)
   While the helper is running, the page sends it one row per coin per second to data\prices-YYYYMMDD.csv.gz (one compressed file per UTC
   day, about 5-10 MB a day, the last 14 days are kept): the combined price, each exchange's own price, the best bid / ask and their sizes
