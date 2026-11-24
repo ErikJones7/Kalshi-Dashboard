@@ -142,3 +142,6 @@ The real money Timed bets are unchanged.
 
 FIX: THE FIRST RE-SPLIT LEVEL USES THE MONEY YOU ALLOCATED
 The fake Timed bets' "last allocated" total now starts as the sum of the coins' Allocated amounts (what you gave them), not the coins' balances at the moment the feature first ran. Coins already above +5% of that total re-split at the next moment no bet is open.
+
+ONE-TIME CLEAN-UP OF OLD COINS (ADA, BCH, TON)
+The first time this build opens, it forgets everything it had stored for ADA, BCH and TON (coins Kalshi no longer lists): their signal history, final calls, calibration samples, practice bankrolls and Auto learning counters, in this browser and in the saved state. It runs once. Their rows in the data folder's CSV and JSONL files were removed separately, with a backup copy kept in data/backup_old_coins.

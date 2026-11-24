@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26g</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26h</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -850,9 +850,18 @@ async function saveToHelper(){
 }
 setInterval(()=>{if(hBase)fetch(hBase+"/alive").catch(()=>{})},20000);
 window.addEventListener("pagehide",()=>{try{if(hBase)navigator.sendBeacon(hBase+"/bye","x")}catch(e){}});   // lets the helper close itself when this window closes   // tells the helper this page is still open
+const PURGE_COINS=["ADA","BCH","TON"],PURGE_KEY="k15purge_ADA_BCH_TON";
+function purgeOldCoins(final){      // one-time clean-up: forget everything stored for coins Kalshi no longer lists (the saved copy in this browser and in the loaded state)
+  try{if(localStorage.getItem(PURGE_KEY)==="1")return}catch(e){}
+  const g=x=>PURGE_COINS.includes(x);
+  sigHist=sigHist.filter(x=>!g(x.sym));calSamples=calSamples.filter(x=>!g(x.s));finHist=finHist.filter(x=>!g(x.sym));simLog=simLog.filter(x=>!g(x.sym));
+  for(const c of PURGE_COINS){if(simSt.start)delete simSt.start[c];if(simSt.tr)delete simSt.tr[c];if(autoSt.coin)delete autoSt.coin[c]}
+  if(!sim){ls.set("k15sig",sigHist);ls.set("k15cal",calSamples);ls.set("k15finh",finHist);ls.set("k15simlog",simLog.slice(-300));ls.set("k15sim",simSt);ls.set("k15auto",autoSt)}
+  if(final){try{localStorage.setItem(PURGE_KEY,"1")}catch(e){}}}
 async function syncHelper(){      // at startup: upload anything only the browser has, then adopt the folder's full history
-  if(!(await findHelper())){savState="off";return}
+  if(!(await findHelper())){savState="off";purgeOldCoins(true);return}
   try{
+    purgeOldCoins(false);
     await hpost("/data/save",{sig:sigHist,cal:calSamples,fin:finHist,sim:simLog});
     const st=await hget("/data/state");
     if(st.sig&&st.sig.length)sigHist=st.sig.slice(-5000);
@@ -862,7 +871,7 @@ async function syncHelper(){      // at startup: upload anything only the browse
     if(st.simstate&&st.simstate.autoSt&&st.simstate.autoSt.learn){autoSt=st.simstate.autoSt;ls.set("k15auto",autoSt)}
     if(st.simstate&&Array.isArray(st.simstate.pickHist)&&st.simstate.pickHist.length>pickHist.length){pickHist=st.simstate.pickHist;ls.set("k15pickh",pickHist)}
     if(st.simstate&&st.simstate.simSt){simSt=st.simstate.simSt;if(st.simstate.simDef!=null)simDef=st.simstate.simDef;if(st.simstate.simMode)simMode=st.simstate.simMode;if(st.simstate.simGain>0)simGain=st.simstate.simGain;ls.set("k15sim",simSt)}
-    platt=fitPlatt(calSamples);savState="ok";autoSeed();
+    purgeOldCoins(true);platt=fitPlatt(calSamples);savState="ok";autoSeed();saveToHelper();
   }catch(e){savErr=e.message||"sync error";hBase=null;savState="err"}
 }
 
