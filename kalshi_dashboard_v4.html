@@ -158,7 +158,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-25j</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-25k</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -301,6 +301,7 @@ body{transition:margin-left .14s ease-out}
       <label title="The daily return (local midnight to midnight) Auto aims for at least, as % of the bankroll it started the day with. It is a target tracked in the bet history; Auto does not stop or change how it bets.">Day min +<input type="number" id="autoGoalD" min="0" max="100" step="0.5" style="width:56px">%</label>
       <label title="The weekly return (Monday to Sunday) Auto aims for at least, as % of the bankroll it started the week with. It is a target tracked in the bet history; Auto does not stop or change how it bets.">Week min +<input type="number" id="autoGoalW" min="0" max="500" step="1" style="width:56px">%</label>
       </div>
+      <div class="simctl" style="margin-top:6px"><label title="After the first 5 days of the week, if the week's return is behind the straight-line pace to the weekly minimum, Auto bets this many times its normal amount (and its Max bet limit is raised by a quarter) until it is back on pace. 1 turns it off.">Catch-up bet size ×<input type="number" id="autoCatch" min="1" max="3" step="0.1" style="width:56px"></label></div>
       <div class="s" id="rhGoalTxt" style="margin:6px 0"></div>
       <table class="mini" id="rhGoalTbl" style="margin-bottom:8px"></table>
     </div>
@@ -1584,7 +1585,7 @@ function renderRHGoal(){      // Auto's daily / weekly minimum returns, in its b
   const G=autoGoals(),sg=v=>(v>=0?"+":"")+v.toFixed(1)+"%";
   if(!G){setT($("rhGoalTxt"),"Allocate some real money to Auto mode to track its daily and weekly returns.");setH($("rhGoalTbl"),"");return}
   const st=(p,g)=>g?(p>=g?" · min +"+g+"% met":" · min +"+g+"% not yet"):"";
-  setT($("rhGoalTxt"),"Today "+sg(G.D.pct)+st(G.D.pct,G.gd)+"   |   This week (Mon–Sun) "+sg(G.W.pct)+st(G.W.pct,G.gw)+". Each is settled profit as a share of the bankroll at the start of that day or week.");
+  setT($("rhGoalTxt"),"Today "+sg(G.D.pct)+st(G.D.pct,G.gd)+"   |   This week (Mon–Sun) "+sg(G.W.pct)+st(G.W.pct,G.gw)+". Each is settled profit as a share of the bankroll at the start of that day or week. "+(G.gw?(G.el<5?"Catch-up sizing can start after day 5 of the week (it is day "+(Math.floor(G.el)+1)+").":G.catching?"CATCH-UP ON: behind the pace of +"+G.need.toFixed(1)+"% by now, so Auto bets ×"+G.mult+" its normal size until it is back on pace.":G.mult>1?"On pace (+"+G.need.toFixed(1)+"% needed by now): Auto bets as normal.":"Catch-up sizing is off."):""));
   const nm=t=>new Date(t).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"});
   setH($("rhGoalTbl"),'<tr><th>Day</th><th>Bets settled</th><th>Net</th><th>Return</th><th>Daily min</th></tr>'+G.days.map(d=>`<tr><td>${escH(nm(d.t))}</td><td>${d.n}</td><td class="${d.n?cls(d.net):""}">${d.n?$$(d.net):"–"}</td><td class="${d.n?cls(d.net):""}">${d.n?sg(d.pct):"–"}</td><td class="${!d.n?"dim":d.pct>=G.gd?"hit":"miss"}">${!d.n||!G.gd?"–":d.pct>=G.gd?"Met":"Not met"}</td></tr>`).join(""));
 }
@@ -1666,6 +1667,7 @@ function flashFor(m){      // the newest message for a card, without its time, a
   for(let i=0;i<real.events.length;i++){if(Date.now()-real.evT[i]>20000)return"";if(!m||real.events[i].includes(m))return real.events[i].replace(/^.*? · /,"")}return""}
 const killTxt=m=>/insufficient resting volume/i.test(m||"")?"not enough contracts for sale at that price, nothing was bought":(m||"not placed");
 const goalPct=k=>{const v=ls.get(k==="d"?"k15goalD2":"k15goalW",k==="d"?2:15);return Number.isFinite(+v)?Math.max(0,+v):0};
+const catchMult=()=>{const v=ls.get("k15catch",1.5);return Number.isFinite(+v)?Math.max(1,Math.min(3,+v)):1};      // how much bigger bets get while behind the weekly pace (1 = off)
 function autoGoals(){      // today's and this week's settled real Auto profit, as a share of the bankroll it started that day / week with
   const b=budOf("auto","*");if(!b)return null;
   const rows=realOf("auto").filter(m=>m.won!=null&&m.net!=null),d0=new Date();d0.setHours(0,0,0,0);
@@ -1675,12 +1677,16 @@ function autoGoals(){      // today's and this week's settled real Auto profit, 
   const days=[];for(let i=0;i<7;i++){const t0=new Date(d0);t0.setDate(t0.getDate()-i);const t1=new Date(t0);t1.setDate(t1.getDate()+1);
     const dn=rows.filter(m=>m.r.t>=t0/1000&&m.r.t<t1/1000),net=dn.reduce((a,m)=>a+m.net,0),after=rows.filter(m=>m.r.t>=t1/1000).reduce((a,m)=>a+m.net,0),base=b.bank-after-net;
     days.push({t:+t0,n:dn.length,net,pct:base>0?net/base*100:0})}
-  return{D,W,gd,gw,days};      // minimum daily and weekly returns to aim for: tracked in the bet history only, they never stop or change a bet
+  const el=(Date.now()-w0)/864e5,need=gw*Math.min(el,7)/7,mult=catchMult();      // from the end of day 5, a week return below the straight-line pace to the weekly minimum turns catch-up sizing on
+  const catching=gw>0&&el>=5&&mult>1&&W.pct<need-1e-9;
+  return{D,W,gd,gw,days,el,need,mult,catching};      // minimum daily and weekly returns to aim for: tracked in the bet history only, they never stop or change a bet
 }
 function realAuto(best,two,picks,wEnd){          // the same sizing rule as fake-money auto mode, applied to its real bankroll
   if(!realReady()){realEvent("Auto: not placed (account not ready)");return}
   const b=budOf("auto","*");if(!b||!(b.avail>=1)){realEvent("Auto: not placed (its real bankroll is "+money(b?Math.max(b.avail,0):0)+")");return}
-  const dd=b.peak>0?Math.max(0,1-b.avail/b.peak):0,sc=Math.max(0.25,Math.min(1,1-dd/0.4)),tot=Math.min(autoSt.cap||0.2,best.f*sc*(two?1.3:1));
+  const dd=b.peak>0?Math.max(0,1-b.avail/b.peak):0,sc=Math.max(0.25,Math.min(1,1-dd/0.4)),GO=autoGoals(),cu=GO&&GO.catching?GO.mult:1;
+  const tot=Math.min((autoSt.cap||0.2)*(cu>1?1.25:1),best.f*sc*(two?1.3:1)*cu);      // behind the weekly pace (after day 5): somewhat bigger bets until it is back on pace
+  if(cu>1)realEvent("Auto: behind the weekly pace (+"+GO.W.pct.toFixed(1)+"% so far, +"+GO.need.toFixed(1)+"% needed by now), so bets are ×"+cu+" the normal size");
   const wS=winStart;
   for(const x of picks){const st=Math.floor(b.avail*tot/picks.length*100)/100;if(st>=1)realMirror("auto",x.sym,x.side,st,{w:wEnd,p:x.conf}).then(o=>{if(o==="retry")autoRetry(x,st,wS,wEnd,1)})}
 }
@@ -1781,6 +1787,7 @@ const money2=v=>Math.round(v*100)/100;
 const freeBox=el=>document.activeElement!==el&&Date.now()-(el._dt||0)>30000;
 document.addEventListener("input",e=>{const t=e.target;if(t&&t.matches&&t.matches("#autoRealStart,#simRealAll,input[id^=rs_]"))t._dt=Date.now()});
 const overpay=src=>{const v=ls.get(src==="auto"?"k15overA":"k15overT",1);return Number.isFinite(+v)?Math.max(0,Math.min(10,Math.round(+v))):1};      // cents above "what it is worth" that a real bet may pay
+{const el=$("autoCatch");el.value=catchMult();el.onchange=()=>{const v=parseFloat(el.value);if(v>=1&&v<=3)ls.set("k15catch",v);else el.value=catchMult()}}
 for(const [id,k] of [["autoGoalD","k15goalD2"],["autoGoalW","k15goalW"]]){const el=$(id),w=k==="k15goalD2"?"d":"w";el.value=goalPct(w);
   el.onchange=()=>{const v=parseFloat(el.value);if(v>=0&&v<=500){ls.set(k,v)}else el.value=goalPct(w)}}
 for(const [id,k] of [["autoOver","k15overA"],["simOver","k15overT"]]){const el=$(id);el.value=overpay(k==="k15overA"?"auto":"sim");el.onchange=()=>{const v=Math.max(0,Math.min(10,Math.round(parseFloat(el.value))));if(Number.isFinite(v)){ls.set(k,v);el.value=v}else el.value=overpay(k==="k15overA"?"auto":"sim")}}

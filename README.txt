@@ -49,8 +49,12 @@ BETS YOU ADD BY HAND
 DAILY AND WEEKLY GOALS (real Auto mode)
   Auto aims for at least +2% a day and +15% over the week (Monday to Sunday). Open "View real bet history" on the Auto card to see today's
   and this week's settled profit as a share of the bankroll at the start of that day or week, whether each minimum is met, and the last
-  7 days one by one. The two minimums can be changed there in the "Day min" and "Week min" boxes. They are targets only: Auto never
+  7 days one by one. The two minimums can be changed there in the "Day min" and "Week min" boxes. They are targets, and the daily one never changes a bet: Auto never
   stops betting or changes how it bets because of them, and they are not guarantees.
+  Weekly catch-up: for the first 5 days of the week Auto bets as normal. From the end of day 5, if the week's return is behind the
+  straight-line pace to the weekly minimum (for example +10.7% by the end of day 5 for +15%), Auto bets 1.5 times its normal amount
+  (and its Max bet limit is raised by a quarter) until the week is back on pace, then it goes back to normal. The size is the
+  "Catch-up bet size" box in the bet history (1 turns it off). Bigger bets can lose more, so this is riskier, not safer.
 
 NOTIFICATIONS
   While real Auto betting is on, the Auto popup and sound come from the real bet (when its order is actually bought), not from the
