@@ -158,7 +158,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-25w</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-25x</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1824,9 +1824,12 @@ const SESSION=Date.now();
    refused or never filled: the fake bet is dropped too. If no real order was attempted (account not ready, no real money left) or the answer is unknown, it keeps its own estimated price. */
 function fakeFind(rk){return pendAuto.find(b=>b.rk===rk)||(settleQ.find(x=>x.kind==="auto"&&x.b.rk===rk)||{}).b||null}
 function fakeKeep(rk){const b=rk&&fakeFind(rk);if(b)b.rw=0}
-function fakeLink(rk,mult){const b=rk&&fakeFind(rk);if(!b||!(mult>0)||!isFinite(mult))return;
-  const old=b.mult;b.m0=old;b.mult=mult;b.rw=0;b.px="real";autoSt.rn=(autoSt.rn||0)+1;
-  realEvent("Fake Auto "+b.sym+" "+b.side+": now uses the real fill, "+mx(mult)+" instead of "+mx(old));autoSave()}
+function fakeLink(rk,mult,spent,rbank){const b=rk&&fakeFind(rk);if(!b||!(mult>0)||!isFinite(mult))return;
+  const old=b.mult,oldS=b.stake;b.m0=old;b.mult=mult;b.rw=0;b.px="real";autoSt.rn=(autoSt.rn||0)+1;
+  let sz="";      // the fake stake becomes the same share of the fake bankroll as the real fill was of the real bankroll
+  if(spent>0&&rbank>0&&autoSt.bank>0){const ns=Math.min(autoSt.bank,Math.floor(spent/rbank*autoSt.bank*100)/100);
+    if(ns>0){b.s0=oldS;b.stake=ns;b.pct=spent/rbank;sz=", stake "+$$(ns)+" ("+(100*spent/rbank).toFixed(1)+"% of the bankroll, like the real bet) instead of "+$$(oldS)}}
+  realEvent("Fake Auto "+b.sym+" "+b.side+": now uses the real fill, "+mx(mult)+" instead of "+mx(old)+sz);autoSave()}
 function fakeDrop(rk,why){const b=rk&&fakeFind(rk);if(!b)return;
   pendAuto=pendAuto.filter(x=>x!==b);settleQ=settleQ.filter(x=>!(x.kind==="auto"&&x.b===b));
   autoSt.rskip=(autoSt.rskip||0)+1;realEvent("Fake Auto "+b.sym+" "+b.side+": skipped, the real order didn't fill ("+String(why||"").replace(/\.$/,"")+")");autoSave()}
@@ -1847,7 +1850,7 @@ function realMirror(src,sym,side,stake,meta){
           autoNewFlag=true}
         if(acct.info)acct.info.spent_today=(acct.info.spent_today||0)+d.cost;if(acct.sum&&acct.sum.ok&&acct.sum.balance!=null)acct.sum.balance-=d.cost;
         const bk=budOf(src,au?"*":sym);if(bk){bk.avail-=d.cost;bk.open+=d.cost}
-        if(au&&d.cost>0&&d.fill_count>0)fakeLink(rk,d.fill_count/d.cost);else fakeKeep(rk);
+        if(au&&d.cost>0&&d.fill_count>0)fakeLink(rk,d.fill_count/d.cost,d.cost,bk&&bk.bank>0?bk.bank:(bk?bk.avail+bk.open:0));else fakeKeep(rk);
         acctRefresh(true);return "placed"}
       else{const why=d.ok?"NOT filled (the price moved), nothing was bought":"NOT placed. "+killTxt(d.error);note(why+(au?", will keep looking":""));acctRefresh(true);
         const rt=/price is now|Nothing is for sale|insufficient resting|not enough contracts|no longer fits|NOT filled/i.test(why+" "+(d.error||""));
