@@ -40,7 +40,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-25f"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-25g"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -1486,7 +1486,9 @@ def _place_order(body):
 def acct_info():
     t = trade_cfg()
     s = acct_status()
-    s.update(trading=t["trading"], max_bet=t["max_bet"], daily=t["daily"], spent_today=round(spent_today(s["env"]), 2), build=HELPER_BUILD)
+    rs = load_settings().get("kalshi_resume") or {}
+    resume = {"auto": bool(rs.get("auto")) and t["trading"], "sim": bool(rs.get("sim")) and t["trading"]}      # which Start real betting buttons were on when the app last ran; nothing resumes while betting is switched off
+    s.update(trading=t["trading"], max_bet=t["max_bet"], daily=t["daily"], spent_today=round(spent_today(s["env"]), 2), build=HELPER_BUILD, resume=resume)
     return s
 
 
@@ -1510,6 +1512,10 @@ def acct_set(body):
             cfg[name] = v
     if "trading" in body:
         cfg["kalshi_trading"] = bool(body["trading"])
+    if isinstance(body.get("resume"), dict):
+        cfg["kalshi_resume"] = {"auto": bool(body["resume"].get("auto")), "sim": bool(body["resume"].get("sim"))}
+    if not cfg.get("kalshi_trading"):
+        cfg["kalshi_resume"] = {"auto": False, "sim": False}            # betting switched off (by you, a new environment, or a removed key): nothing may restart by itself
     save_settings(cfg)
     acct_cache["data"] = None
     return acct_info()

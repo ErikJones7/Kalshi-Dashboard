@@ -113,3 +113,6 @@ FILES
   keys\                       your Kalshi private key file (only if you connect your account; never share this folder)
   data\                       created on first run: signals, final calls, calibration, simulated bets (CSV files)
   build_exe.bat               optional: builds a single KalshiDashboard.exe
+
+THE START REAL BETTING BUTTONS ARE REMEMBERED
+Auto mode and Timed bets each have a Start real betting button. Whatever you left them on (or off) is saved in settings.json, so closing the app, restarting it or updating it puts them back the way they were. Only your own presses change what is remembered. Switching all real betting off in Menu, Kalshi account forgets both, and nothing restarts by itself after that: you press Start again. If the account isn't ready or there is no real money allocated when the app comes back, it says so in the real-betting log and leaves the button off. The first time you update to this version the buttons start off, because the older version did not remember anything.

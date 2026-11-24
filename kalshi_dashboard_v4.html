@@ -158,7 +158,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-25u</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-25v</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1608,7 +1608,7 @@ let acct={info:null,sum:null,orders:[],bud:{},err:"",busy:false}, lv={armed:null
 // real-money mirrors: in memory only, so they are always OFF after a restart and have to be switched on on purpose
 let real={sim:false,auto:false,autoView:true,simView:true,events:[],evT:[],autoLast:null,q:Promise.resolve()};
 let liveRes={};
-const HELPER_EXPECT="2026-11-25f";      // the helper build this page needs (changes only when the helper program itself changes)
+const HELPER_EXPECT="2026-11-25g";      // the helper build this page needs (changes only when the helper program itself changes)
 const staleMsg="The helper program that is running is older than this page. Fully close it (Ctrl+Shift+Esc, end pythonw.exe / python.exe) and reopen the dashboard from its icon, or some real-money controls won't work right.";
 const oldHelper="The helper that is running is an older version that doesn't know about Kalshi accounts. Fully close it and reopen the dashboard from its icon: press Ctrl+Shift+Esc, open the Details tab, end every pythonw.exe (or python.exe) entry, then double-click the Kalshi Dashboard icon.";
 const acctNeed="Open the dashboard from its icon (the address starts with http://127.0.0.1) to use your Kalshi account.";
@@ -1632,7 +1632,7 @@ async function acctRefresh(full){
     acct.bud=(await aget("/account/budget")).budget||{};
     releaseDropped();sweepDust();
   }catch(e){acct.err=e.message||"Couldn't reach your account.";if(!acct.info)acct.sum=null}
-  acct.busy=false;renderAcctMenu();if($("kaw").style.display!=="none")renderKa();if($("rhw").style.display!=="none")renderRH();
+  acct.busy=false;realRestore().catch(()=>{});renderAcctMenu();if($("kaw").style.display!=="none")renderKa();if($("rhw").style.display!=="none")renderRH();
 }
 let dustBusy=false;
 async function sweepDust(){      // a coin that lost most of its money can't bet the few cents left, so those go back to cash and it shows $0
@@ -1839,8 +1839,22 @@ function realMirror(src,sym,side,stake,meta){
   real.q=job.catch(()=>{});
   return job.catch(()=>"stop");
 }
+/* The two Start real betting buttons are remembered by the helper (settings.json), so an update or restart puts them back as they were.
+   Only your own presses (and starting a practice run) change what is remembered; a restart, a slow connection or a refused resume never does.
+   Nothing resumes while betting is switched off in Menu, Kalshi account; switching it off forgets both buttons. */
+let resumeDone=false,resumeTries=0;
+function realPersist(){resumeDone=true;apost("/account/config",{resume:{auto:!!real.auto,sim:!!real.sim}}).catch(()=>{})}
+async function realRestore(){
+  if(resumeDone||!acct.info)return;
+  const rs=acct.info.resume;if(!rs){resumeDone=true;return}      // an older helper doesn't remember them
+  if(!(rs.auto||rs.sim)){resumeDone=true;return}
+  if(sim)return;      // a practice run is on; try again when it ends
+  if(!realReady()||!acct.bud){if(++resumeTries>=8){resumeDone=true;realEvent("Couldn't put real betting back after the restart (the account wasn't ready). Press Start real betting.")}return}
+  resumeDone=true;
+  for(const k of ["auto","sim"])if(rs[k]&&!real[k]){realEvent((k==="auto"?"Auto mode":"Timed bets")+": putting real betting back on, as it was before the restart");await realSwitch(k,true)}
+}
 function realGuard(s){
-  if((real.sim||real.auto)&&(s.sim||!(acct.info&&acct.info.ready&&acct.info.trading))){real.sim=real.auto=false;realEvent("Real betting stopped ("+(s.sim?"practice run started":"betting was switched off")+")")}
+  if((real.sim||real.auto)&&(s.sim||!(acct.info&&acct.info.ready&&acct.info.trading))){real.sim=real.auto=false;realEvent("Real betting stopped ("+(s.sim?"practice run started":"betting was switched off")+")");if(s.sim)realPersist()}
   setT($("autoOnBtn"),real.auto?"Stop real betting":"Start real betting");setT($("simOnBtn"),real.sim?"Stop real betting":"Start real betting");
   $("autoOnBtn").classList.toggle("arm",real.auto);$("simOnBtn").classList.toggle("arm",real.sim);
 }
@@ -1868,10 +1882,10 @@ for(const id of ["autoFakeD","simFakeD"]){const d=$(id);d.open=!!ls.get("k15"+id
 $("autoOnBtn").onclick=async()=>{      // a number typed in the box but not yet set is applied first, so Start never uses a stale amount
   const el=$("autoRealStart"),b=budOf("auto","*"),v=parseFloat(el.value);
   if(!real.auto&&v>=0&&Math.abs(v-(b?b.bank:0))>=0.005)await realAlloc("auto","*",v,el,b?money2(b.bank):0);
-  realSwitch("auto",!real.auto)};$("simOnBtn").onclick=async()=>{      // amounts typed in the coin boxes but not yet set are applied first, as on Auto mode
+  await realSwitch("auto",!real.auto);realPersist()};$("simOnBtn").onclick=async()=>{      // amounts typed in the coin boxes but not yet set are applied first, as on Auto mode
   if(!real.sim)for(const s of syms){const el=$("rs_"+s),b=budOf("sim",s),v=el?parseFloat(el.value):NaN;
     if(v>=0&&Math.abs(v-(b?b.bank:0))>=0.005&&!(await realAlloc("sim",s,v,el,b?money2(b.bank):0,true)))break}
-  realSwitch("sim",!real.sim)};
+  await realSwitch("sim",!real.sim);realPersist()};
 const money2=v=>Math.round(v*100)/100;
 // An amount box that has just been typed in is left alone for 30 s (or until it is applied), so the once-a-second refresh can't put the old number back between typing and pressing Set
 const freeBox=el=>document.activeElement!==el&&Date.now()-(el._dt||0)>30000;
