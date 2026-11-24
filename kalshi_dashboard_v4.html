@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26e</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26f</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -222,13 +222,14 @@ body{transition:margin-left .14s ease-out}
     </div>
   </div>
   <div><div class="s" id="trNote" style="margin:6px 0"></div><div style="overflow:auto"><table class="mini simtbl" id="trTbl"></table></div></div>
-  <details class="fakebox" id="simFakeD"><summary><span class="modetag fake">Fake money</span> practice version <span class="s">(always running, shown for comparison)</span></summary>
-    <div class="simctl" style="margin:8px 0">
-      <label>Start $ <input type="number" id="simAll" min="0" step="10"></label><button id="simAllB">Apply to all</button>
-      <label>After a loss <select id="simMode"><option value="restart">Restart from start $</option><option value="zero">Stay at $0</option></select></label>
+  <details class="fakebox" id="simFakeD"><summary><span class="modetag fake">Fake money</span> practice version <span class="s">(always running, shown for comparison)</span>
+    <span class="simctl" id="simFakeCtl" style="margin-left:auto">
+      <label title="Practice money for all coins. It is split evenly across every coin when you press Split evenly (or Enter), the same way as the real Timed bets.">Total $ for all coins <input type="number" id="simAll" min="0" step="0.01" style="width:90px"></label><button id="simAllB">Split evenly</button>
+      <label title="When the coins' total is this many % above the total you last allocated, the profit is taken and everything is split evenly across all the coins again. Only happens when no bet is open.">Re-split at +<input type="number" id="simGain" min="0.1" max="1000" step="0.5" style="width:60px">%</label>
       <button id="simReset">Reset all</button>
-    </div>
-    <div style="overflow:auto"><table class="mini simtbl" id="simTbl"></table></div>
+    </span></summary>
+    <div style="overflow:auto;margin-top:8px"><table class="mini simtbl" id="simTbl"></table></div>
+    <div class="s" id="simReNote" style="margin:6px 0"></div>
     <div class="s" id="simPxNote" style="margin:6px 0"></div>
   </details>
 </div>
@@ -380,7 +381,7 @@ function autoAllow(conf,tau){
   return conf>=0.92}
 function autoGate(tb){let g=null;for(let c=0.995;c>=0.80;c-=0.005){if(autoAllow(c,tb===0?200:tb===1?110:50))g=c;else break}return g}
 const AUTO_EDGE=0.03, AUTO_KELLY=0.25;
-let simBusy=new Set(), simMin=ls.get("k15simmin",0.90), simWait=new Set(), simDef=ls.get("k15simdef",100), simMode=ls.get("k15simmode","restart"), simSt=ls.get("k15sim",{start:{},tr:{}}), simLog=ls.get("k15simlog",[]), pendSim=[], simFired=new Set(), simKey="";
+let simBusy=new Set(), simMin=ls.get("k15simmin",0.90), simWait=new Set(), simDef=ls.get("k15simdef",100), simMode=ls.get("k15simmode","zero"), simGain=ls.get("k15simgain",5), simMsg="", simMsgT=0, simSt=ls.get("k15sim",{start:{},tr:{}}), simLog=ls.get("k15simlog",[]), pendSim=[], simFired=new Set(), simKey="";
 let showAvg=ls.get("k15showavg",true), showPavg=ls.get("k15showpavg",true);
 let pickHist=ls.get("k15pickh",[]), pendPick=[];
 let pickTimes=ls.get("k15pickt",[300,180,60]), pickFired=new Set(), curPicks=[];
@@ -639,7 +640,22 @@ async function refreshMarket(sym,end,isSel){
 const lastTry={};
 function simStart(sym){const v=simSt.start[sym];return v==null?simDef:v}
 function simTr(sym,cp){const t=simSt.tr[sym]=simSt.tr[sym]||{};return t[cp]=t[cp]||{bank:simStart(sym),w:0,l:0,net:0}}
-function simSave(){if(sim)return;ls.set("k15sim",simSt);ls.set("k15simdef",simDef);ls.set("k15simmode",simMode);ls.set("k15simlog",simLog.slice(-300))}
+function simSave(){if(sim)return;ls.set("k15sim",simSt);ls.set("k15simdef",simDef);ls.set("k15simmode",simMode);ls.set("k15simgain",simGain);ls.set("k15simlog",simLog.slice(-300))}
+const simOpenAny=()=>pendSim.length>0||settleQ.some(x=>x.kind==="sim");
+const simOpenCoin=sym=>pendSim.some(b=>b.sym===sym)||settleQ.some(x=>x.kind==="sim"&&x.b.sym===sym);
+function simTotal(){let t=0;for(const s of syms)t+=simTr(s,SIM_CP[0]).bank;return Math.round(t*100)/100}
+function simNote(m){simMsg=m;simMsgT=Date.now()}
+function simResplitCheck(){      // Timed bets (fake money): when the coins' total is simGain % above the total last allocated, take the profit and split everything evenly across all the coins again
+  if(simOpenAny()||!syms.length)return;const cp=SIM_CP[0];
+  for(const x of syms)if(!(simSt.tr[x]&&simSt.tr[x][cp])){const t=simTr(x,cp);if(simSt.ref!=null)simSt.ref+=t.bank}      // a coin added later brings its own money; that is not profit
+  const tot=simTotal();
+  if(simSt.ref==null){simSt.ref=tot;simSave();return}
+  if(!(simSt.ref>0)||!(simGain>0))return;
+  if(tot<simSt.ref*(1+simGain/100)-1e-9)return;
+  const cents=Math.round(tot*100),base=Math.floor(cents/syms.length),extra=cents-base*syms.length;
+  syms.forEach((x,i)=>{simTr(x,cp).bank=(base+(i<extra?1:0))/100});
+  const from=simSt.ref;simSt.ref=tot;simSt.resplits=(simSt.resplits||0)+1;simSt.lastRe={t:Date.now()/1000,from,to:tot,pct:simGain};
+  simSave();if(!sim)saveToHelper()}
 function finRec(r,q,wEnd,tick){   // attach Kalshi's live multipliers at the moment the final call was made
   if(q&&Math.abs(q.close-wEnd)<=5&&Date.now()/1000-q.ts<=12&&q.yes_ask!=null){
     const m=mults(q.yes_ask,q.yes_bid,q.no_ask);r.ask=q.yes_ask;r.bid=q.yes_bid;r.mUp=m.up;r.mDn=m.dn;r.m=r.side==="UP"?m.up:m.dn}
@@ -828,7 +844,7 @@ async function saveToHelper(){
   if(sim)return;
   if(!hBase&&!(await findHelper())){savState="off";return}
   const o=hOutbox;hOutbox={sig:[],cal:[],fin:[],sim:[]};
-  try{await hpost("/data/save",{sig:o.sig,cal:o.cal,fin:o.fin,sim:o.sim,simstate:{simSt,simDef,simMode,autoSt,pickHist:pickHist.slice(-1500)},summary:{platt,bins:calibBins(),samples_in_browser:calSamples.length}});savState="ok"}
+  try{await hpost("/data/save",{sig:o.sig,cal:o.cal,fin:o.fin,sim:o.sim,simstate:{simSt,simDef,simMode,simGain,autoSt,pickHist:pickHist.slice(-1500)},summary:{platt,bins:calibBins(),samples_in_browser:calSamples.length}});savState="ok"}
   catch(e){savErr=e.message||"save error";hBase=null;savState="err";hOutbox.sig.push(...o.sig);hOutbox.cal.push(...o.cal);hOutbox.fin.push(...o.fin);hOutbox.sim.push(...o.sim)}
 }
 setInterval(()=>{if(hBase)fetch(hBase+"/alive").catch(()=>{})},20000);
@@ -844,7 +860,7 @@ async function syncHelper(){      // at startup: upload anything only the browse
     if(st.sim&&st.sim.length)simLog=st.sim.slice(-300);
     if(st.simstate&&st.simstate.autoSt&&st.simstate.autoSt.learn){autoSt=st.simstate.autoSt;ls.set("k15auto",autoSt)}
     if(st.simstate&&Array.isArray(st.simstate.pickHist)&&st.simstate.pickHist.length>pickHist.length){pickHist=st.simstate.pickHist;ls.set("k15pickh",pickHist)}
-    if(st.simstate&&st.simstate.simSt){simSt=st.simstate.simSt;if(st.simstate.simDef!=null)simDef=st.simstate.simDef;if(st.simstate.simMode)simMode=st.simstate.simMode;ls.set("k15sim",simSt)}
+    if(st.simstate&&st.simstate.simSt){simSt=st.simstate.simSt;if(st.simstate.simDef!=null)simDef=st.simstate.simDef;if(st.simstate.simMode)simMode=st.simstate.simMode;if(st.simstate.simGain>0)simGain=st.simstate.simGain;ls.set("k15sim",simSt)}
     platt=fitPlatt(calSamples);savState="ok";autoSeed();
   }catch(e){savErr=e.message||"sync error";hBase=null;savState="err"}
 }
@@ -855,7 +871,7 @@ function noteOv(b,kind){if(sim)return;const o=ovSt[kind]=ovSt[kind]||{n:0,off:0,
 function settleSimRow(b){      // one Timed bet, once b.up (did the price finish at or above the target) is known
   b.hit=(b.side==="UP")===b.up;const tr=simTr(b.sym,SIM_CP[0]);
   b.payout=b.hit?b.stake*b.mult:0;b.pnl=b.payout-b.stake;tr.net+=b.pnl;const rest=b.rest||0;      // rest = the part of the bankroll that was not for sale at the time (0 for older bets)
-  if(b.hit){tr.bank=rest+b.payout;tr.w++}else{tr.l++;tr.bank=simMode==="restart"?simStart(b.sym):rest}
+  if(b.hit){tr.bank=rest+b.payout;tr.w++}else{tr.l++;tr.bank=rest}
   if(b.pv===2&&!sim){const v=simSt.v2=simSt.v2||{n:0,w:0,l:0,net:0,st:0};v.n++;if(b.hit)v.w++;else v.l++;v.net+=b.pnl;v.st+=b.stake}
   b.bank=tr.bank;b.cp=b.at||b.cp;simLog.push(b);if(!sim)hOutbox.sim.push(b)}
 function settleAutoRows(rows){      // the Auto bets of one window
@@ -1028,6 +1044,7 @@ function step(tick,light){
       finAll.add(fk);const side=r.pCal>=0.5?"UP":"DOWN";
       pendFin.push(finRec({w:wStart,sym,side,p:side==="UP"?r.pCal:1-r.pCal,final:r.q[2],anchorLn:r.anchorLn,tau:r.tau,sel:false},quoteBy[sym],wEnd,tick))}
   }
+  simResplitCheck();
   if(tau<=simAt&&tau>=1)for(const cp of SIM_CP){
     if(!(tau<=simAt))continue;                       // from the checkpoint on, keep checking until confident enough
     for(let i=0;i<n;i++){const sym=syms[i],r=res[sym],k=wStart+"|"+sym+"|"+cp;
@@ -1472,24 +1489,27 @@ function renderPicks(){
 function renderSim(){
   renderAuto();renderPicks();
   setT($("simK"),sim?"Timed bets · "+SIM_SPEED+"x practice run (not saved)":"Timed bets");
-  const key=syms.join();
+  const key=syms.join(),cp=SIM_CP[0];
   if(key!==simKey){simKey=key;
-    $("simTbl").innerHTML='<tr><th>Coin</th><th>Start $</th>'+SIM_CP.map(()=>'<th class="gs">Bankroll</th><th>Wins / losses</th><th>Net</th><th>Open bet</th>').join("")+"</tr>"+
-      syms.map(s=>`<tr><td>${s}</td><td><input type="number" min="0" step="10" id="ss_${s}"></td>`+SIM_CP.map(cp=>`<td class="gs" id="sb_${s}_${cp}"></td><td id="sw_${s}_${cp}"></td><td id="sn_${s}_${cp}"></td><td class="dim" id="so_${s}_${cp}"></td>`).join("")+"</tr>").join("")+
-      `<tr class="tot"><td>All</td><td id="ts_all"></td>`+SIM_CP.map(cp=>`<td class="gs" id="tb_${cp}"></td><td id="tw_${cp}"></td><td id="tn_${cp}"></td><td class="dim" id="to_${cp}"></td>`).join("")+"</tr>";
-    syms.forEach(s=>{$("ss_"+s).onchange=e=>{const v=parseFloat(e.target.value);if(v>=0){resetSimCoin(s,v);simSave();saveToHelper()}else e.target.value=simStart(s)}});
-  }
-  const tot={};SIM_CP.forEach(cp=>tot[cp]={b:0,w:0,l:0,n:0});let startTot=0;
-  for(const s of syms){const inp=$("ss_"+s);if(inp&&document.activeElement!==inp)inp.value=simStart(s);startTot+=simStart(s)||0;
-    for(const cp of SIM_CP){const t=simTr(s,cp),ob0=pendSim.find(b=>b.sym===s),wq=settleQ.find(x=>x.kind==="sim"&&x.b.sym===s),ob=ob0||(wq&&wq.b),T_=tot[cp];T_.b+=t.bank;T_.w+=t.w;T_.l+=t.l;T_.n+=t.net;
-      setT($("sb_"+s+"_"+cp),$$(t.bank));setT($("sw_"+s+"_"+cp),t.w+" / "+t.l);
-      const nn=$("sn_"+s+"_"+cp);setT(nn,$$(t.net));setC(nn,t.net>0?"hit":t.net<0?"miss":"");
-      setT($("so_"+s+"_"+cp),ob?`${ob.side} ${$$(ob.stake)} @ ${mx(ob.mult)}${ob0?"":" · waiting for Kalshi"}`:simWait.has(s+"|"+cp)?"Waiting":"–")}}
-  setT($("ts_all"),$$(startTot));
+    $("simTbl").innerHTML='<tr><th>Coin</th><th>Allocated $</th><th>Wins / losses</th><th>Net</th><th>Open bet</th></tr>'+
+      syms.map(s=>`<tr><td>${s}</td><td><input type="number" min="0" step="0.01" id="ss_${s}" style="width:90px"></td><td id="sw_${s}"></td><td id="sn_${s}"></td><td class="dim" id="so_${s}"></td></tr>`).join("")+
+      `<tr class="tot"><td>All</td><td id="tb_all"></td><td id="tw_all"></td><td id="tn_all"></td><td class="dim" id="to_all"></td></tr>`;
+    syms.forEach(s=>{const el=$("ss_"+s),go=()=>{const v=parseFloat(el.value);if(!(v>=0)){el.value=money2(simTr(s,cp).bank);return}
+      if(simOpenCoin(s)){simNote(s+" has an unsettled bet, so its amount can't be changed yet. Try again after it settles.");el.value=money2(simTr(s,cp).bank);return}
+      const t=simTr(s,cp),old=t.bank;t.bank=Math.round(v*100)/100;simSt.start[s]=t.bank;if(simSt.ref!=null)simSt.ref+=t.bank-old;el._dt=0;simNote(s+": allocated "+$$(t.bank)+" (was "+$$(old)+")");simSave();saveToHelper()};
+      el.onchange=go;el.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();go()}}})}
+  const T={b:0,w:0,l:0,n:0};
+  for(const s of syms){const inp=$("ss_"+s),t=simTr(s,cp),ob0=pendSim.find(b=>b.sym===s),wq=settleQ.find(x=>x.kind==="sim"&&x.b.sym===s),ob=ob0||(wq&&wq.b);T.b+=t.bank;T.w+=t.w;T.l+=t.l;T.n+=t.net;
+    if(inp&&freeBox(inp))inp.value=money2(t.bank);
+    setT($("sw_"+s),t.w+" / "+t.l);const nn=$("sn_"+s);setT(nn,$$(t.net));setC(nn,t.net>0?"hit":t.net<0?"miss":"");
+    setT($("so_"+s),ob?`${ob.side} ${$$(ob.stake)} @ ${mx(ob.mult)}${ob0?"":" · waiting for Kalshi"}`:simWait.has(s+"|"+cp)?"Waiting":!(t.bank>0)?"Out of money":"–")}
+  {const a=$("simAll");if(a&&freeBox(a))a.value=T.b>0?money2(T.b):"";const g=$("simGain");if(g&&document.activeElement!==g)g.value=simGain}
+  setT($("tb_all"),$$(T.b));setT($("tw_all"),T.w+" / "+T.l);{const e=$("tn_all");setT(e,$$(T.n));setC(e,T.n>0?"hit":T.n<0?"miss":"")}
+  {const op=pendSim.filter(b=>syms.includes(b.sym)),os=op.reduce((t,b)=>t+b.stake,0);setT($("to_all"),op.length?op.length+" open · "+$$(os):simWait.size?"Waiting":"–")}
+  {const r=simSt.ref,L=simSt.lastRe,fd=t=>new Date(t*1000).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});
+   setT($("simReNote"),(Date.now()-simMsgT<20000&&simMsg?simMsg+"  ":"")+(r>0?"Re-split happens when the total reaches "+$$(r*(1+simGain/100))+" ("+simGain+"% above the "+$$(r)+" last allocated), once no bet is open. ":"")+(simSt.resplits?"Re-splits so far: "+simSt.resplits+(L?"; last "+fd(L.t)+", "+$$(L.from)+" to "+$$(L.to)+" split evenly.":"."):"")+" A coin that loses everything stays at $0 until the next re-split or until you allocate more.")}
   {const v=simSt.v2,sn=simSt.bookSince,fd=t=>new Date(t*1000).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});
    setT($("simPxNote"),"Prices: Timed bets are priced like a real fill (Kalshi's order book, level by level, plus its fee, and only what is for sale)"+(sn?" since "+fd(sn)+(v&&v.n?" · "+v.n+" bets, "+v.w+"W/"+v.l+"L, "+(v.net>=0?"+":"-")+$$(Math.abs(v.net))+" ("+(v.net>=0?"+":"-")+(Math.abs(v.net)/Math.max(v.st,1e-9)*100).toFixed(1)+"% of stakes)":" · none settled yet")+". Results before that used the quoted price with no fee, so they look better than a real fill would.":".")+(o=>o&&o.n?" Settled on Kalshi's own result: "+o.off+" of "+o.n+" bets"+(o.mis?" (it differed from the app's own estimate on "+o.mis+")":"")+".":"")(ovSt.sim)) }
-  const openAll=pendSim.filter(b=>syms.includes(b.sym)),openStake=openAll.reduce((t,b)=>t+b.stake,0);
-  for(const cp of SIM_CP){setT($("to_"+cp),openAll.length?openAll.length+" open · "+$$(openStake):simWait.size?"Waiting":"–");setT($("tb_"+cp),$$(tot[cp].b));setT($("tw_"+cp),tot[cp].w+" / "+tot[cp].l);const e=$("tn_"+cp);setT(e,$$(tot[cp].n));setC(e,tot[cp].n>0?"hit":tot[cp].n<0?"miss":"")}
 }
 try{if(localStorage.getItem("k15tblopen")==="0")$("tblBox").open=false}catch(e){}
 $("tblBox").addEventListener("toggle",()=>{try{localStorage.setItem("k15tblopen",$("tblBox").open?"1":"0")}catch(e){}});
@@ -1502,11 +1522,16 @@ $("autoCap").onchange=e=>{const v=parseFloat(e.target.value);if(v>=1&&v<=100){au
 $("autoStart").onchange=e=>{const v=parseFloat(e.target.value);if(v>=1){Object.assign(autoSt,{start:v,bank:v,peak:v,w:0,l:0,net:0,streak:0,pause:0,skipped:0,windows:0});autoSave();saveToHelper()}else e.target.value=autoSt.start};
 $("autoReset").onclick=()=>{if(confirm("Reset the auto bankroll and its win/loss record? What it has learned is kept.")){Object.assign(autoSt,{bank:autoSt.start,peak:autoSt.start,w:0,l:0,net:0,streak:0,pause:0,skipped:0,windows:0,rn:0,rskip:0});pendAuto=[];autoSave();saveToHelper()}};
 $("mForget").onclick=()=>{if((prompt("This erases everything Auto mode and the best-pick ranking have learned, and it can't be undone. Type RESET to confirm.")||"").trim()==="RESET"){autoSt.learn={};autoSt.coin={};autoSave();saveToHelper()}};
-$("simAll").value=simDef;$("simMode").value=simMode;
-$("simAllB").onclick=()=>{const v=parseFloat($("simAll").value);if(!(v>=0))return;simDef=v;syms.forEach(s=>resetSimCoin(s,v));simSave();saveToHelper()};
+$("simAll").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();$("simAllB").click()}};
+$("simAllB").onclick=()=>{      // the box is the TOTAL for all coins, split evenly across them (leftover cents go to the first coins)
+  const v=parseFloat($("simAll").value);if(!(v>=0)||!syms.length)return;
+  if(simOpenAny()){simNote("NOT changed: a bet is still open or waiting for Kalshi. Try again after it settles.");return}
+  const cp=SIM_CP[0],cents=Math.round(v*100),base=Math.floor(cents/syms.length),extra=cents-base*syms.length;
+  syms.forEach((x,i)=>{const t=simTr(x,cp);t.bank=(base+(i<extra?1:0))/100;simSt.start[x]=t.bank});simDef=base/100;simSt.ref=Math.round(v*100)/100;
+  $("simAll")._dt=0;simNote($$(v)+" split evenly across "+syms.length+" coins ("+$$(base/100)+" each"+(extra?", plus a cent on the first "+extra:"")+")");simSave();saveToHelper()};
+$("simGain").value=simGain;$("simGain").onchange=e=>{const v=parseFloat(e.target.value);if(v>0&&v<=1000){simGain=v;simSave();saveToHelper()}else e.target.value=simGain};
 $("simMin").value=Math.round(simMin*1000)/10;$("simMin").onchange=e=>{const v=parseFloat(e.target.value);if(v>=50&&v<=99.9){simMin=v/100;ls.set("k15simmin",simMin)}else e.target.value=Math.round(simMin*1000)/10};
-$("simMode").onchange=e=>{simMode=e.target.value;simSave()};
-$("simReset").onclick=()=>{if(confirm("Reset every coin's timed-bet bankroll, wins and losses to its start amount? (The saved bet history stays in the data folder.)")){syms.forEach(s=>resetSimCoin(s,simStart(s)));simLog=[];pendSim=[];simSave();saveToHelper()}};
+$("simReset").onclick=()=>{if(confirm("Reset every coin's practice bankroll, wins and losses to the amount you last allocated to it? (The saved bet history stays in the data folder.)")){const cp=SIM_CP[0];syms.forEach(s=>resetSimCoin(s,simStart(s)));simLog=[];pendSim=[];settleQ=settleQ.filter(x=>x.kind!=="sim");simSt.ref=simTotal();simSt.resplits=0;delete simSt.lastRe;simSave();saveToHelper()}};
 
 /* ============================ signal data viewer ============================ */
 let vwRows=[];
@@ -1903,7 +1928,7 @@ function realAlloc(src,key,v,el,prev,quiet){      // set a mode's (or one coin's
   })();
   real.pend=p;return p;
 }
-{const c=$("autoFakeCtl");c.addEventListener("click",e=>{if(e.target.closest("input"))e.preventDefault()});for(const ev of ["keydown","keypress","keyup"])c.addEventListener(ev,e=>{e.stopPropagation();if(e.key===" "||e.key==="Enter")e.preventDefault()})}      // typing or clicking in the controls on the fake Auto header row must not fold the box
+for(const cid of ["autoFakeCtl","simFakeCtl"]){const c=$(cid);c.addEventListener("click",e=>{if(e.target.closest("input"))e.preventDefault()});for(const ev of ["keydown","keypress","keyup"])c.addEventListener(ev,e=>{e.stopPropagation();if(e.key===" "||e.key==="Enter")e.preventDefault()})}      // typing or clicking in the controls on the fake Auto header row must not fold the box
 for(const id of ["autoFakeD","simFakeD"]){const d=$(id);d.open=!!ls.get("k15"+id,false);d.addEventListener("toggle",()=>ls.set("k15"+id,d.open))}      // the fake-money dropdowns remember whether you left them open
 $("autoOnBtn").onclick=async()=>{      // a number typed in the box but not yet set is applied first, so Start never uses a stale amount
   const el=$("autoRealStart"),b=budOf("auto","*"),v=parseFloat(el.value);
@@ -1915,7 +1940,7 @@ $("autoOnBtn").onclick=async()=>{      // a number typed in the box but not yet 
 const money2=v=>Math.round(v*100)/100;
 // An amount box that has just been typed in is left alone for 30 s (or until it is applied), so the once-a-second refresh can't put the old number back between typing and pressing Set
 const freeBox=el=>document.activeElement!==el&&Date.now()-(el._dt||0)>30000;
-document.addEventListener("input",e=>{const t=e.target;if(t&&t.matches&&t.matches("#autoRealStart,#simRealAll,input[id^=rs_]"))t._dt=Date.now()});
+document.addEventListener("input",e=>{const t=e.target;if(t&&t.matches&&t.matches("#autoRealStart,#simRealAll,#simAll,input[id^=rs_],input[id^=ss_]"))t._dt=Date.now()});
 const overpay=src=>{const v=ls.get(src==="auto"?"k15overA":"k15overT",1);return Number.isFinite(+v)?Math.max(0,Math.min(10,Math.round(+v))):1};      // cents above "what it is worth" that a real bet may pay
 {const el=$("autoCatch");el.value=catchMult();el.onchange=()=>{const v=parseFloat(el.value);if(v>=1&&v<=3)ls.set("k15catch",v);else el.value=catchMult()}}
 for(const [id,k] of [["autoGoalD","k15goalD2"],["autoGoalW","k15goalW"]]){const el=$(id),w=k==="k15goalD2"?"d":"w";el.value=goalPct(w);
