@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26b</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26c</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1432,7 +1432,8 @@ function autoStep(tick,tau,wStart,wEnd){
     const f=edge/(1-cost)*AUTO_KELLY,g=e.lb*Math.log(1+f*(1-cost)/cost)+(1-e.lb)*Math.log(1-f);
     cands.push({sym,side,conf,e,cost,edge,f,g,tau:r.tau,anchorLn:r.anchorLn,ask:q.yes_ask,bid:q.yes_bid,tk:q.tk})}
   if(!cands.length){autoNote=waiting?(autoBookSkip&&now-autoBookSkipT<5?autoBookSkip:"Checking prices"):"Waiting for a steady, confident signal";return}
-  cands.sort((a,b)=>b.g-a.g);const best=cands[0];autoG=Math.max(autoG,best.g);
+  cands.sort((a,b)=>b.g-a.g);for(const c of cands){c.agree=cands.filter(o=>o!==c&&o.side===c.side).length;c.opp=cands.filter(o=>o.side!==c.side).length}      // how many other coins qualify the same way / the opposite way right now (kept with each bet, to check later whether lone signals do worse)
+  const best=cands[0];autoG=Math.max(autoG,best.g);
   autoNote="Best so far: "+best.sym+" "+best.side+" · "+pc(best.e.lb)+" safe estimate";
   if(!(best.g>=0.9*autoG)||!(tau<=150||best.edge>=0.08))return;      // buy once the signal is steady and not fading
   const dd=1-autoSt.bank/Math.max(autoSt.peak,1e-9),scale=Math.max(0.25,Math.min(1,1-dd/0.4));   // bet smaller while below the peak
@@ -1441,7 +1442,7 @@ function autoStep(tick,tau,wStart,wEnd){
   const place=[];for(const x of picks){const stake=Math.floor(autoSt.bank*tot/picks.length*100)/100;if(stake>=1)place.push({x,stake})}
   autoDone=true;
   if(!place.length){autoNote="Edge too small to bet";return}
-  for(const {x,stake} of place)pendAuto.push({w:wStart,sym:x.sym,side:x.side,p:x.e.p,lb:x.e.lb,edge:x.edge,tau:x.tau,anchorLn:x.anchorLn,ask:x.ask,bid:x.bid,mult:1/x.cost,stake,split:place.length>1,tk:x.tk,rk:wEnd+"|"+x.sym+"|"+x.side,rw:real.auto?1:0,rs:SESSION});
+  for(const {x,stake} of place)pendAuto.push({w:wStart,sym:x.sym,side:x.side,p:x.e.p,lb:x.e.lb,edge:x.edge,tau:x.tau,anchorLn:x.anchorLn,ask:x.ask,bid:x.bid,mult:1/x.cost,stake,split:place.length>1,tk:x.tk,rk:wEnd+"|"+x.sym+"|"+x.side,rw:real.auto?1:0,rs:SESSION,agree:x.agree,opp:x.opp});
   if(real.auto)safe("real auto bet",()=>realAuto(best,two,picks,wEnd));
   if(!real.auto){curAutoAlert={w:wStart,end:wEnd,tau,bets:place.map(({x,stake})=>({sym:x.sym,side:x.side,stake,mult:1/x.cost,conf:x.conf,lb:x.e.lb,edge:x.edge}))};autoNewFlag=true}      // with real Auto betting on, the popup and sound come from the real bet instead (see realMirror)
   autoNote="Bet placed";autoSave()}
@@ -1610,7 +1611,7 @@ let acct={info:null,sum:null,orders:[],bud:{},err:"",busy:false}, lv={armed:null
 // real-money mirrors: in memory only, so they are always OFF after a restart and have to be switched on on purpose
 let real={sim:false,auto:false,autoView:true,simView:true,events:[],evT:[],autoLast:null,q:Promise.resolve()};
 let liveRes={};
-const HELPER_EXPECT="2026-11-26b";      // the helper build this page needs (changes only when the helper program itself changes)
+const HELPER_EXPECT="2026-11-26c";      // the helper build this page needs (changes only when the helper program itself changes)
 const staleMsg="The helper program that is running is older than this page. Fully close it (Ctrl+Shift+Esc, end pythonw.exe / python.exe) and reopen the dashboard from its icon, or some real-money controls won't work right.";
 const oldHelper="The helper that is running is an older version that doesn't know about Kalshi accounts. Fully close it and reopen the dashboard from its icon: press Ctrl+Shift+Esc, open the Details tab, end every pythonw.exe (or python.exe) entry, then double-click the Kalshi Dashboard icon.";
 const acctNeed="Open the dashboard from its icon (the address starts with http://127.0.0.1) to use your Kalshi account.";
@@ -1781,7 +1782,7 @@ function realAuto(best,two,picks,wEnd){          // the same sizing rule as fake
   const tot=Math.min((autoSt.cap||0.2)*(cu>1?1.25:1),best.f*sc*(two?1.3:1)*cu);      // behind the weekly pace (after day 5): somewhat bigger bets until it is back on pace
   if(cu>1)realEvent("Auto: behind the weekly pace (+"+GO.W.pct.toFixed(1)+"% so far, +"+GO.need.toFixed(1)+"% needed by now), so bets are ×"+cu+" the normal size");
   const wS=winStart;
-  for(const x of picks){const st=Math.floor(b.avail*tot/picks.length*100)/100;if(!(st>=1))fakeKeep(wEnd+"|"+x.sym+"|"+x.side);if(st>=1)realMirror("auto",x.sym,x.side,st,{w:wEnd,p:x.conf}).then(o=>{if(o==="retry")autoRetry(x,st,wS,wEnd,1)})}
+  for(const x of picks){const st=Math.floor(b.avail*tot/picks.length*100)/100;if(!(st>=1))fakeKeep(wEnd+"|"+x.sym+"|"+x.side);if(st>=1)realMirror("auto",x.sym,x.side,st,{w:wEnd,p:x.conf,agree:x.agree,opp:x.opp}).then(o=>{if(o==="retry")autoRetry(x,st,wS,wEnd,1)})}
 }
 function simRetry(sym,side,wS,wEnd,n){      // a Timed bet refused only on price keeps looking every few seconds while the signal holds and the price is worth it
   const tag="Timed bet "+sym+" "+side,stop=why=>realEvent(tag+": stopped trying ("+why+")");
@@ -1807,7 +1808,7 @@ function autoRetry(x,stake,wS,wEnd,n){      // the real order was refused only b
     if(sd!==x.side||!autoAllow(conf,r.tau)){stop("the signal changed");return}
     const b=budOf("auto","*"),st=Math.min(stake,b?Math.floor(b.avail*100)/100:0);if(!(st>=1)){stop("not enough bankroll left",true);return}
     try{await refreshMarket(x.sym,wEnd,false)}catch(e){}
-    const o=await realMirror("auto",x.sym,x.side,st,{w:wEnd,p:conf,retry:n});
+    const o=await realMirror("auto",x.sym,x.side,st,{w:wEnd,p:conf,retry:n,agree:x.agree,opp:x.opp});
     if(o==="retry")autoRetry(x,stake,wS,wEnd,n+1)}),3000);
 }
 const mxc=c=>"×"+(100/Math.max(1,+c)).toFixed(2);      // a price in cents shown as the payout multiplier it gives
@@ -1845,7 +1846,7 @@ function realMirror(src,sym,side,stake,meta){
     if(pl.err){const rt=/stale|is above the|No price available/.test(pl.err);note("not placed ("+pl.err+")"+(au&&rt&&!meta.retry?", will keep looking":""));if(!rt)fakeDrop(rk,pl.err);return rt?"retry":"stop"}
     note("placing "+pl.count+" contracts"+(au?", paying out at least "+mxc(pl.price)+" each":", paying up to "+pl.price+"¢ each")+" (about "+money(pl.cost)+")",{tk:pl.ticker,price:pl.price,pending:true});
     try{
-      const d=await apost("/account/order",{ticker:pl.ticker,side:pl.side,count:pl.count,price:pl.price,max_price:maxPx,slack:3,budget:pl.cap,src,w:meta.w,sym,conf:meta.p});
+      const d=await apost("/account/order",{ticker:pl.ticker,side:pl.side,count:pl.count,price:pl.price,max_price:maxPx,slack:3,budget:pl.cap,src,w:meta.w,sym,conf:meta.p,agree:meta.agree,opp:meta.opp});
       if(d.ok&&d.filled){note("bought "+d.fill_count+" contracts for "+money(d.cost)+(au?" ("+(d.fill_count>0&&d.cost>0?"×"+(d.fill_count/d.cost).toFixed(2)+" payout":"")+")":" (limit "+pl.price+"¢)"),{tk:pl.ticker,price:pl.price,bought:true,cost:d.cost,fc:d.fill_count});if(au){real.autoBet=true;
           const bet={sym,side,stake:d.cost,mult:d.fill_count>0&&d.cost>0?d.fill_count/d.cost:null,conf:meta.p,real:true,fc:d.fill_count,avg:d.avg_cents!=null?d.avg_cents:null},key=meta.w;
           if(curAutoAlert&&curAutoAlert.real&&curAutoAlert.w===key)curAutoAlert.bets.push(bet);else curAutoAlert={w:key,end:meta.w,tau:Math.max(0,meta.w-Date.now()/1000),real:true,bets:[bet]};

@@ -40,7 +40,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-26b"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-26c"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -1349,7 +1349,8 @@ def _place_order(body):
     row = {"t": time.time(), "day": time.strftime("%Y-%m-%d"), "time": time.strftime("%Y-%m-%d %H:%M:%S"), "env": env, "ticker": ticker,
            "side": side, "count": count, "price_cents": price, "filled": False, "cost_total": 0.0,
            "src": body.get("src") if body.get("src") in ("manual", "sim", "auto") else "manual",
-           "w": _f(body.get("w")), "sym": sym_of(ticker) or str(body.get("sym") or "")[:12], "conf": _f(body.get("conf"))}
+           "w": _f(body.get("w")), "sym": sym_of(ticker) or str(body.get("sym") or "")[:12], "conf": _f(body.get("conf")),
+           "agree": _f(body.get("agree")), "opp": _f(body.get("opp"))}      # how many other coins qualified the same / the opposite way when an Auto bet was placed
     try:
         if not t["trading"]:
             raise TradeError("Betting is switched off. Turn it on in Menu > Kalshi account.")
