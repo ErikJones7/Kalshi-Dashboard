@@ -158,7 +158,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-25l</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-25m</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -658,6 +658,7 @@ async function kalshiLoop(){
         const near=(end-now)<=Math.max(finSec,300)+15&&now-(lastTry[s]||0)>=3;   // live multipliers for every coin around its final-call time
         if(fast||isSel||near||(need&&now-(lastTry[s]||0)>5)){lastTry[s]=now;jobs.push(refreshMarket(s,end,isSel))}}
       await Promise.race([Promise.all(jobs),new Promise((_,rej)=>setTimeout(()=>rej(new Error("Kalshi market request timed out")),15000))]);
+      if(fast&&jobs.length)repaintLive();
     }catch(e){kalshiStatus="unreachable";SRC.kalshi.rest="failing";SRC.kalshi.err=(e&&e.message)||"request failed";
       if(/429|too many/i.test(SRC.kalshi.err)){kalshiSlowUntil=Date.now()/1000+60;kalshiBlockedUntil=Date.now()+1500;SRC.kalshi.err="Kalshi asked us to slow down; prices refresh once a second for a minute"}
       else kalshiBlockedUntil=Date.now()+10000}
@@ -1166,6 +1167,15 @@ function draw(ch){
 
 let lastS=null;
 document.addEventListener("visibilitychange",()=>{if(document.hidden)return;if(sim){if(lastS)render(lastS)}else tickNow()});
+function liveQ(sym,s){      // Kalshi's newest prices for this coin in this window (the fetch loop refreshes them twice a second in the last 4 minutes), or null
+  const q=quoteBy[sym];if(!q||q.yes_ask==null)return null;if(sim)return q;
+  const wEnd=s.tick-s.elapsed+WINDOW;return Math.abs(q.close-wEnd)<=5&&Date.now()/1000-q.ts<=20?q:null}
+const liveMult=(x,s)=>{const q=liveQ(x.sym,s);if(!q)return x.mult;const m=mults(q.yes_ask,q.yes_bid,q.no_ask),v=x.side==="UP"?m.up:m.dn;return v||x.mult};
+const livePick=(x,s)=>{const m=liveMult(x,s);if(m===x.mult)return x;let ev=x.ev;try{const r=res[x.sym];ev=pickRank(x.sym,x.conf,m,r&&r.tau!=null?r.tau:0).ev}catch(e){}return Object.assign({},x,{mult:m,ev})};
+let lastLive=0;
+function repaintLive(){      // every multiplier on the page follows the Kalshi price refresh instead of waiting for the next one-second tick
+  if(!lastS||document.hidden||Date.now()-lastLive<300)return;lastLive=Date.now();
+  try{render(Object.assign({},lastS,{newSignal:false,newFinal:false,newAutoAlert:false,newPicks:[]}))}catch(e){noteErr("live prices",e)}}
 function render(s){
   if(!built){built=true;$("sel").onchange=e=>{selected=e.target.value;quote=null;yMan=null;try{localStorage.setItem("k15sel",selected)}catch(_){}tickNow()}}
   const selKey=s.coins.map(r=>r.sym+(r.price!=null?"1":"0")).join();
@@ -1189,7 +1199,7 @@ function render(s){
       <span>68% range $${f(fc.lo)} – $${f(fc.hi)}</span>
       ${fc.target!=null?`<span>Target $${f(fc.target)} · now $${f(fc.price)}</span>`:`<span>Now $${f(fc.price)}</span>`}</div>`;
   const pks=(s.picks||[]).filter(x=>!dismissed.has("pick|"+x.w+"|"+x.T));
-  for(const pk of pks){const t=pk.top,rw=x=>`${x.sym} ${x.side==="UP"?"UP":"DOWN"} · ${pc(x.conf)} · ${mx(x.mult)} · ${(x.ev>=0?"+":"")+Math.round(x.ev*100)}%`;
+  for(const pk0 of pks){const pk=Object.assign({},pk0,{top:pk0.top&&livePick(pk0.top,s),more:(pk0.more||[]).map(x=>livePick(x,s))}),t=pk.top,rw=x=>`${x.sym} ${x.side==="UP"?"UP":"DOWN"} · ${pc(x.conf)} · ${mx(x.mult)} · ${(x.ev>=0?"+":"")+Math.round(x.ev*100)}%`;
     html+=`<div class="sigrow pick"><button class="x" data-k="pick|${pk.w}|${pk.T}" title="dismiss">&times;</button>
       <b>BEST PICK · ${mmss(pk.T)} left</b>`+(t?`<span class="big ${t.side==="UP"?"up":"dn"}">${t.sym} ${t.side==="UP"?"ABOVE":"BELOW"} target</span>
       <span>Confidence <b>${pc(t.conf)}</b>${t.est!=null&&Math.abs(t.est-t.conf)>=0.005?` (past results: ${pc(t.est)})`:""} · Kalshi <b>${mx(t.mult)}</b></span>
@@ -1207,11 +1217,11 @@ function render(s){
       <span>68%: $${f(x.lo)} – $${f(x.hi)}</span>
       <span>Target $${f(x.target)} · now $${f(x.price)}</span>
       <span>Model ${pc(x.p)} (raw ${pc(x.raw)}) · ${mmss(x.tau)} left</span>
-      ${x.yes_ask!=null?(()=>{const m=mults(x.yes_ask,x.yes_bid,x.no_ask);return `<span>Kalshi live: UP <b>${mx(m.up)}</b> · DOWN <b>${mx(m.dn)}</b></span>`})():""}</div>`).join("");
+      ${x.yes_ask!=null?(()=>{const lq=liveQ(x.sym,s)||x,m=mults(lq.yes_ask,lq.yes_bid,lq.no_ask);return `<span>Kalshi live: UP <b>${mx(m.up)}</b> · DOWN <b>${mx(m.dn)}</b></span>`})():""}</div>`).join("");
   syncSig(html);
   if(soundOn){if(s.newSignal&&shown.length)beep("sig");if(s.newFinal&&fc)beep("fin",s.newSignal&&shown.length?0.7:0);if(s.newAutoAlert&&aa)beep("auto",(s.newSignal&&shown.length?0.7:0)+(s.newFinal&&fc?1.0:0)+(s.newPicks&&s.newPicks.length&&pks.length?1.0:0));if(s.newPicks&&s.newPicks.length&&pks.length)beep("pick",(s.newSignal&&shown.length?0.7:0)+(s.newFinal&&fc?1.0:0))}
 
-  const p=s.pred,q=s.quote,m=$("msg");
+  const p=s.pred,q=(s.selected&&liveQ(s.selected,s))||s.quote,m=$("msg");
   const noFeed=!s.sim&&s.live===0&&Date.now()-bootMs>12000;
   m.style.display=((s.reason&&!p)||noFeed)?"block":"none";
   setT(m,noFeed?"No live prices are arriving. Your browser or network may be blocking the exchange connections (ad blocker, VPN, firewall, or opening the file in a restricted viewer). If you're viewing this inside a preview window, download the file and open it in its own Chrome/Edge/Firefox tab (the address bar should start with file:///). Open 'Data sources' below to see exactly what failed, or press Simulate to test the page.":(s.reason||""));
