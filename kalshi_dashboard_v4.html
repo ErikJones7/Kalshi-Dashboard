@@ -158,7 +158,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-25k</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-25l</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1197,7 +1197,7 @@ function render(s){
       :`<span class="big">No coin at ${pc(pk.min)}+</span>`+(pk.closest?`<span>Closest: ${pk.closest.sym} ${pk.closest.side==="UP"?"ABOVE":"BELOW"} · ${pc(pk.closest.conf)}</span>`:"")+`<span style="color:var(--mut)">Waiting for confidence</span>`)+`</div>`}
   const aa=(s.autoAlert&&!dismissed.has("auto|"+s.autoAlert.w))?s.autoAlert:null;
   if(aa)html+=`<div class="sigrow auto"><button class="x" data-k="auto|${aa.w}" title="dismiss">&times;</button>
-      <b>${aa.real?"REAL AUTO BET PLACED":"AUTO MODE BET"} · ${mmss(aa.tau)} left</b>`+aa.bets.map(b=>`<span class="big ${b.side==="UP"?"up":"dn"}">${b.sym} ${b.side==="UP"?"ABOVE":"BELOW"} target</span>
+      <b>${aa.real?"REAL AUTO BET PLACED":"AUTO MODE BET"} · ${mmss(aa.end!=null&&s.tick!=null?Math.max(0,aa.end-s.tick):aa.tau)} left</b>`+aa.bets.map(b=>`<span class="big ${b.side==="UP"?"up":"dn"}">${b.sym} ${b.side==="UP"?"ABOVE":"BELOW"} target</span>
       <span>${b.real?`Bought <b>${b.fc}</b> contracts for <b>${$$(b.stake)}</b>${b.mult?` · <b>${mx(b.mult)}</b>`:""}`:`Stake <b>${$$(b.stake)}</b> @ <b>${mx(b.mult)}</b>`} · Confidence ${pc(b.conf)}</span>`).join("")+
       (aa.bets[0].sym!==s.selected?`<button class="swbtn" data-sw="${aa.bets[0].sym}" data-k="auto|${aa.w}">Switch to ${aa.bets[0].sym}</button>`:"")+`</div>`;
   html+=shown.map(x=>`<div class="sigrow ${x.side==="UP"?"up":"dn"}"><button class="x" data-k="${x.w}|${x.sym}|${x.side}" title="dismiss">&times;</button>
@@ -1353,7 +1353,7 @@ function autoStep(tick,tau,wStart,wEnd){
   if(!place.length){autoNote="Edge too small to bet";return}
   for(const {x,stake} of place)pendAuto.push({w:wStart,sym:x.sym,side:x.side,p:x.e.p,lb:x.e.lb,edge:x.edge,tau:x.tau,anchorLn:x.anchorLn,ask:x.ask,bid:x.bid,mult:1/x.cost,stake,split:place.length>1});
   if(real.auto)safe("real auto bet",()=>realAuto(best,two,picks,wEnd));
-  if(!real.auto){curAutoAlert={w:wStart,tau,bets:place.map(({x,stake})=>({sym:x.sym,side:x.side,stake,mult:1/x.cost,conf:x.conf,lb:x.e.lb,edge:x.edge}))};autoNewFlag=true}      // with real Auto betting on, the popup and sound come from the real bet instead (see realMirror)
+  if(!real.auto){curAutoAlert={w:wStart,end:wEnd,tau,bets:place.map(({x,stake})=>({sym:x.sym,side:x.side,stake,mult:1/x.cost,conf:x.conf,lb:x.e.lb,edge:x.edge}))};autoNewFlag=true}      // with real Auto betting on, the popup and sound come from the real bet instead (see realMirror)
   autoNote="Bet placed";autoSave()}
 
 /* ============================ simulated bets ============================ */
@@ -1737,7 +1737,7 @@ function realMirror(src,sym,side,stake,meta){
       const d=await apost("/account/order",{ticker:pl.ticker,side:pl.side,count:pl.count,price:pl.price,max_price:maxPx,slack:3,src,w:meta.w,sym,conf:meta.p});
       if(d.ok&&d.filled){note("bought "+d.fill_count+" contracts for "+money(d.cost)+(au?" ("+(d.fill_count>0&&d.cost>0?"×"+(d.fill_count/d.cost).toFixed(2)+" payout":"")+")":" (limit "+pl.price+"¢)"),{tk:pl.ticker,price:pl.price,bought:true,cost:d.cost,fc:d.fill_count});if(au){real.autoBet=true;
           const bet={sym,side,stake:d.cost,mult:d.fill_count>0&&d.cost>0?d.fill_count/d.cost:null,conf:meta.p,real:true,fc:d.fill_count,avg:d.avg_cents!=null?d.avg_cents:null},key=meta.w;
-          if(curAutoAlert&&curAutoAlert.real&&curAutoAlert.w===key)curAutoAlert.bets.push(bet);else curAutoAlert={w:key,tau:Math.max(0,meta.w-Date.now()/1000),real:true,bets:[bet]};
+          if(curAutoAlert&&curAutoAlert.real&&curAutoAlert.w===key)curAutoAlert.bets.push(bet);else curAutoAlert={w:key,end:meta.w,tau:Math.max(0,meta.w-Date.now()/1000),real:true,bets:[bet]};
           autoNewFlag=true}
         if(acct.info)acct.info.spent_today=(acct.info.spent_today||0)+d.cost;if(acct.sum&&acct.sum.ok&&acct.sum.balance!=null)acct.sum.balance-=d.cost;
         const bk=budOf(src,au?"*":sym);if(bk){bk.avail-=d.cost;bk.open+=d.cost}
