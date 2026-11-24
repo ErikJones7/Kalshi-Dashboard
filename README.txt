@@ -61,6 +61,12 @@ AUTO'S PRICE CHECK
   quoted price on the market page, and works out its edge and multiplier from that. If nothing is for sale on the side it wants, it skips
   that coin. If the helper can't read the book, it falls back to the quoted price as before.
 
+FAKE-MONEY AUTO CLEAN-UP (build 2026-11-25q)
+  The fake-money Auto's earlier bets and bankroll were priced with inaccurate multipliers. The first time this build runs with the helper
+  connected, those fake Auto bets are copied to data\archive-<date-time>\ and removed from the saved history, and the fake-money Auto
+  starts again from $50 (its learning is kept). Timed-bet records, best-pick records and everything on your real Kalshi account are
+  untouched. Delete the archive folder whenever you don't want the backup.
+
 PRICE LOG (for testing better models later)
   While the helper is running, the page sends it one row per coin per second to data\prices-YYYYMMDD.csv.gz (one compressed file per UTC
   day, about 5-10 MB a day, the last 14 days are kept): the combined price, each exchange's own price, the best bid / ask and their sizes

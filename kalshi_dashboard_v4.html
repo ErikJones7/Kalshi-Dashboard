@@ -158,7 +158,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-25p</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-25q</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1444,6 +1444,18 @@ $("simAt").value=simAt;$("simAt").onchange=e=>{const v=parseInt(e.target.value);
 $("autoCap").value=Math.round((autoSt.cap||0.2)*1000)/10;
 $("autoCap").onchange=e=>{const v=parseFloat(e.target.value);if(v>=1&&v<=100){autoSt.cap=v/100;autoSave();saveToHelper()}else e.target.value=Math.round((autoSt.cap||0.2)*1000)/10};
 $("autoStart").onchange=e=>{const v=parseFloat(e.target.value);if(v>=1){Object.assign(autoSt,{start:v,bank:v,peak:v,w:0,l:0,net:0,streak:0,pause:0,skipped:0,windows:0});autoSave();saveToHelper()}else e.target.value=autoSt.start};
+// One-time clean-up: the fake-money Auto's bets and bankroll so far were priced with the old, inaccurate multipliers. They are archived
+// by the helper (data/archive-<time>), removed everywhere, and the fake Auto starts again from $50. Learning and Timed bets are kept.
+async function purgeOldAuto(){
+  if(ls.get("k15purgeAuto1",false)||sim||!hBase)return;
+  try{
+    const d=await apost("/data/purge",{kind:"auto"});if(!d||!d.ok)return;
+    simLog=simLog.filter(x=>x.cp!=="AUTO");hOutbox.sim=hOutbox.sim.filter(x=>x.cp!=="AUTO");pendAuto=[];
+    Object.assign(autoSt,{start:50,bank:50,peak:50,w:0,l:0,net:0,streak:0,pause:0,skipped:0,windows:0});
+    autoSave();simSave();saveToHelper();ls.set("k15purgeAuto1",true);
+    realEvent("Fake-money Auto: old bets removed ("+d.removed+" bets, backup in the data folder: "+d.archive+") and restarted from $50");
+  }catch(e){}}
+setInterval(()=>safe("purge old auto",purgeOldAuto),8000);
 $("autoReset").onclick=()=>{if(confirm("Reset the auto bankroll and its win/loss record? What it has learned is kept.")){Object.assign(autoSt,{bank:autoSt.start,peak:autoSt.start,w:0,l:0,net:0,streak:0,pause:0,skipped:0,windows:0});pendAuto=[];autoSave();saveToHelper()}};
 $("autoForget").onclick=()=>{if(confirm("Erase everything auto mode and the best-pick ranking have learned?")){autoSt.learn={};autoSt.coin={};autoSave();saveToHelper()}};
 $("simAll").value=simDef;$("simMode").value=simMode;
@@ -1555,7 +1567,7 @@ let acct={info:null,sum:null,orders:[],bud:{},err:"",busy:false}, lv={armed:null
 // real-money mirrors: in memory only, so they are always OFF after a restart and have to be switched on on purpose
 let real={sim:false,auto:false,autoView:true,simView:true,events:[],evT:[],autoLast:null,q:Promise.resolve()};
 let liveRes={};
-const HELPER_EXPECT="2026-11-25e";      // the helper build this page needs (changes only when the helper program itself changes)
+const HELPER_EXPECT="2026-11-25f";      // the helper build this page needs (changes only when the helper program itself changes)
 const staleMsg="The helper program that is running is older than this page. Fully close it (Ctrl+Shift+Esc, end pythonw.exe / python.exe) and reopen the dashboard from its icon, or some real-money controls won't work right.";
 const oldHelper="The helper that is running is an older version that doesn't know about Kalshi accounts. Fully close it and reopen the dashboard from its icon: press Ctrl+Shift+Esc, open the Details tab, end every pythonw.exe (or python.exe) entry, then double-click the Kalshi Dashboard icon.";
 const acctNeed="Open the dashboard from its icon (the address starts with http://127.0.0.1) to use your Kalshi account.";
