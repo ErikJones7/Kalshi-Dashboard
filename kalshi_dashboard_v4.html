@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26d</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26e</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -200,12 +200,12 @@ body{transition:margin-left .14s ease-out}
     </div>
   </div>
   <div><div class="s" id="arNote" style="margin:6px 0"></div><div class="autostats" id="arStats"></div></div>
-  <details class="fakebox" id="autoFakeD"><summary><span class="modetag fake">Fake money</span> practice version <span class="s">(always running, shown for comparison)</span></summary>
-    <div class="simctl" style="margin:8px 0">
+  <details class="fakebox" id="autoFakeD"><summary><span class="modetag fake">Fake money</span> practice version <span class="s">(always running, shown for comparison)</span>
+    <span class="simctl" id="autoFakeCtl" style="margin-left:auto">
       <label>Start $ <input type="number" id="autoStart" min="1" step="10"></label>
       <button id="autoHist">View bet history</button><button id="autoReset">Reset bankroll</button>
-    </div>
-    <div class="autostats" id="autoStats"></div>
+    </span></summary>
+    <div class="autostats" id="autoStats" style="margin-top:8px"></div>
   </details>
 </div>
 
@@ -1903,6 +1903,7 @@ function realAlloc(src,key,v,el,prev,quiet){      // set a mode's (or one coin's
   })();
   real.pend=p;return p;
 }
+{const c=$("autoFakeCtl");c.addEventListener("click",e=>{if(e.target.closest("input"))e.preventDefault()});for(const ev of ["keydown","keypress","keyup"])c.addEventListener(ev,e=>{e.stopPropagation();if(e.key===" "||e.key==="Enter")e.preventDefault()})}      // typing or clicking in the controls on the fake Auto header row must not fold the box
 for(const id of ["autoFakeD","simFakeD"]){const d=$(id);d.open=!!ls.get("k15"+id,false);d.addEventListener("toggle",()=>ls.set("k15"+id,d.open))}      // the fake-money dropdowns remember whether you left them open
 $("autoOnBtn").onclick=async()=>{      // a number typed in the box but not yet set is applied first, so Start never uses a stale amount
   const el=$("autoRealStart"),b=budOf("auto","*"),v=parseFloat(el.value);

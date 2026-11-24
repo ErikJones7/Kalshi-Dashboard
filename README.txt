@@ -131,3 +131,6 @@ When Auto mode places a bet, the real order log (data/live_orders.jsonl) records
 
 CONTRACTS SHOWN TO 2 DECIMALS
 In the real bet history (Auto and Timed) and the all-orders list, the Contracts column now shows two decimals (for example 10.01 or 12.00), since fractional contracts are allowed.
+
+FAKE AUTO CONTROLS ON THE TOP ROW
+On the Auto mode card, the fake money row now holds its Start $ box, View bet history and Reset bankroll buttons on the same line as its title, so they are visible without opening the dropdown. Clicking them, or typing in the box, does not fold the dropdown; click the arrow or the title to open or close it.
