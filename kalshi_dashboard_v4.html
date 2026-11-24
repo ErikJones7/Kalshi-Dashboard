@@ -127,6 +127,7 @@ body{transition:margin-left .14s ease-out}
         <div style="display:flex;justify-content:space-between;align-items:center;padding:2px 4px 4px 10px"><b>Menu</b><button id="mClose" title="Close" style="padding:0 8px;font-size:18px;line-height:22px;border-radius:6px">&times;</button></div>
         <div class="mi"><div class="mt">Folders</div><button id="mData">Open data folder</button><button id="mApp">Open program folder</button><div class="s" id="mPath"></div></div>
         <div class="mi"><div class="mt">Data</div><button id="mView">View all signal data</button></div>
+        <div class="mi"><div class="mt">Learning</div><button id="mForget">Reset learning…</button><div class="s">Erases everything Auto mode and the best-pick ranking have learned. You have to type RESET to confirm.</div></div>
         <div class="mi"><div class="mt">Appearance</div><select id="mTheme"><option value="auto">Match my system</option><option value="dark">Dark</option><option value="light">Light</option></select></div>
         <div class="mi"><div class="mt">Alert volume</div><input type="range" id="mVol" min="0" max="100" step="5"></div>
         <div class="mi"><div class="mt">Helper</div><label><input type="checkbox" id="mKeep"> Keep the helper running after this window closes</label></div>
@@ -158,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-25z</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26a</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -202,7 +203,7 @@ body{transition:margin-left .14s ease-out}
   <details class="fakebox" id="autoFakeD"><summary><span class="modetag fake">Fake money</span> practice version <span class="s">(always running, shown for comparison)</span></summary>
     <div class="simctl" style="margin:8px 0">
       <label>Start $ <input type="number" id="autoStart" min="1" step="10"></label>
-      <button id="autoHist">View bet history</button><button id="autoReset">Reset bankroll</button><button id="autoForget">Reset learning</button>
+      <button id="autoHist">View bet history</button><button id="autoReset">Reset bankroll</button>
     </div>
     <div class="autostats" id="autoStats"></div>
   </details>
@@ -1455,7 +1456,7 @@ function renderAuto(){
   const wa=settleQ.filter(x=>x.kind==="auto").map(x=>x.b),st=ob.length?"Open: "+ob.map(b=>`${b.sym} ${b.side} ${$$(b.stake)} @ ${mx(b.mult)}`).join(" + "):wa.length?"Settling: "+wa.map(b=>`${b.sym} ${b.side} ${$$(b.stake)}`).join(" + ")+" (waiting for Kalshi's result)":(autoNote||"Waiting for the next window");
   const cell=(l,v,c)=>`<div>${l}<b${c?` class="${c}"`:""}>${v}</b></div>`;
   setH($("autoStats"),cell("Bankroll",$$(a.bank))+cell("Net",$$(a.net),a.net>0?"hit":a.net<0?"miss":"")+cell("Wins / losses",a.w+" / "+a.l)+
-    cell("Hit rate",tot?Math.round(a.w/tot*1000)/10+"%":"–")+cell("Windows skipped",a.skipped)+cell("Peak",$$(a.peak))+cell("Min confidence now",(g=>g==null?"none":Math.round(g*1000)/10+"%")(autoGate(1)))+cell("Learned from",samples+" samples")+(a.rn||a.rskip?cell("Real fill copied / skipped",(a.rn||0)+" / "+(a.rskip||0)):"")+(o=>o&&o.n?cell("Kalshi's result used",o.off+" of "+o.n+(o.mis?" · differed from the app's estimate "+o.mis+"x":"")):"")(ovSt.auto)+cell("Status",st));
+    cell("Hit rate",tot?Math.round(a.w/tot*1000)/10+"%":"–")+cell("Windows skipped",a.skipped)+cell("Peak",$$(a.peak))+cell("Min confidence now",(g=>g==null?"none":Math.round(g*1000)/10+"%")(autoGate(1)))+cell("Learned from",samples+" samples")+cell("Status",st));
 }
 function renderPicks(){
   setT($("pickK"),sim?"Best pick record · "+SIM_SPEED+"x practice run (not saved)":"Best pick record");
@@ -1499,7 +1500,7 @@ $("autoCap").value=Math.round((autoSt.cap||0.2)*1000)/10;
 $("autoCap").onchange=e=>{const v=parseFloat(e.target.value);if(v>=1&&v<=100){autoSt.cap=v/100;autoSave();saveToHelper()}else e.target.value=Math.round((autoSt.cap||0.2)*1000)/10};
 $("autoStart").onchange=e=>{const v=parseFloat(e.target.value);if(v>=1){Object.assign(autoSt,{start:v,bank:v,peak:v,w:0,l:0,net:0,streak:0,pause:0,skipped:0,windows:0});autoSave();saveToHelper()}else e.target.value=autoSt.start};
 $("autoReset").onclick=()=>{if(confirm("Reset the auto bankroll and its win/loss record? What it has learned is kept.")){Object.assign(autoSt,{bank:autoSt.start,peak:autoSt.start,w:0,l:0,net:0,streak:0,pause:0,skipped:0,windows:0,rn:0,rskip:0});pendAuto=[];autoSave();saveToHelper()}};
-$("autoForget").onclick=()=>{if(confirm("Erase everything auto mode and the best-pick ranking have learned?")){autoSt.learn={};autoSt.coin={};autoSave();saveToHelper()}};
+$("mForget").onclick=()=>{if((prompt("This erases everything Auto mode and the best-pick ranking have learned, and it can't be undone. Type RESET to confirm.")||"").trim()==="RESET"){autoSt.learn={};autoSt.coin={};autoSave();saveToHelper()}};
 $("simAll").value=simDef;$("simMode").value=simMode;
 $("simAllB").onclick=()=>{const v=parseFloat($("simAll").value);if(!(v>=0))return;simDef=v;syms.forEach(s=>resetSimCoin(s,v));simSave();saveToHelper()};
 $("simMin").value=Math.round(simMin*1000)/10;$("simMin").onchange=e=>{const v=parseFloat(e.target.value);if(v>=50&&v<=99.9){simMin=v/100;ls.set("k15simmin",simMin)}else e.target.value=Math.round(simMin*1000)/10};
