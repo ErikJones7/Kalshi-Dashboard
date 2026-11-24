@@ -40,7 +40,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-25g"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-26b"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -884,6 +884,13 @@ def spent_today(env):
     return sum(r.get("cost_total") or 0 for r in live_rows() if r.get("day") == day and r.get("env") == env and r.get("filled"))
 
 
+# Kalshi's order format takes contract counts with up to 2 decimals. Auto and Timed orders use it to spend the whole budget instead of rounding
+# down to whole contracts. If Kalshi ever refuses a fractional count (a clear 400/422 saying so), that order is re-sent as whole contracts and
+# fractions stay off until the helper restarts. Anything unclear (a timeout, a fill-or-kill kill) is never re-sent.
+FRAC = {"ok": True}
+FRAC_ERR = re.compile(r"fraction|decimal|whole|integer|increment|granular|precision|multiple|count", re.I)
+
+
 def est_fee(count, price_cents):
     p = price_cents / 100.0
     return math.ceil(0.07 * count * p * (1 - p) * 100 - 1e-9) / 100.0          # Kalshi's taker fee formula, rounded up to the cent
@@ -1357,6 +1364,7 @@ def _place_order(body):
             raise TradeError("That price or number of contracts is out of range.")
         fee = est_fee(count, price)
         cost = count * price / 100.0 + fee
+        bud_ref = cost                                   # what this bet may spend, at its limit price
         row["est_cost"] = round(cost, 4)
         avail_cap = None
         if row["src"] in ("sim", "auto"):
@@ -1372,6 +1380,9 @@ def _place_order(body):
                 held = sum(max(v["avail"], 0) for ks in budget_stats(env).values() for v in ks.values())
                 if cost > sm["balance"] - held + 1e-9:
                     raise TradeError("This bet would cost about $%.2f but only $%.2f of your cash isn't allocated to a mode." % (cost, max(sm["balance"] - held, 0)))
+        bud_in = _f(body.get("budget"))                  # the stake the page meant to spend (the whole contracts it could buy leave a few cents over)
+        if row["src"] in ("sim", "auto") and bud_in and bud_in > cost:
+            bud_ref = max(cost, min(bud_in, avail_cap) if avail_cap else bud_in)
         if row["src"] != "manual" and any(r.get("src") == row["src"] and r.get("ticker") == ticker and r.get("env") == env and r.get("order_id")
                                           for r in live_rows()):
             raise TradeError("Already bet on this market from this mode.")
@@ -1398,9 +1409,10 @@ def _place_order(body):
                 raise TradeError("The price is now %d¢, above the %d¢ this bet is worth, so it wasn't placed. (%s)" % (live, maxp, ask_note))
             new = max(1, min(99, maxp, live + int(max(0, min(slack or 0, 5)))))
             if new != price:
-                budget = cost
+                budget = bud_ref
                 if row["src"] == "sim" and avail_cap:          # a Timed bet uses its whole bankroll, so a price that moved up may use all of it
                     budget = max(budget, avail_cap)
+                bud_ref = budget
                 # size the bet at the live price so the whole budget is used (the estimate was a few seconds old), then use whatever is left
                 # over as room for the limit, so even a fill at the limit can never cost more than the budget
                 cnt = count
@@ -1434,13 +1446,40 @@ def _place_order(body):
                 fee = est_fee(count, price)
                 cost = count * price / 100.0 + fee
                 row["est_cost"] = round(cost, 4)
-        order = {"ticker": ticker, "side": "bid" if side == "yes" else "ask", "count": "%d.00" % count, "price": "%.2f" % (yes_px / 100.0),
+        fcount = float(count)
+        if FRAC["ok"] and row["src"] in ("sim", "auto"):
+            # top up with a fraction of a contract: the most that still fits the budget (even at the limit price) and the contracts for sale
+            for step in range(99, 0, -1):
+                c2 = count + step / 100.0
+                if depth is not None and c2 > depth + 1e-9:
+                    continue
+                if c2 * price / 100.0 + est_fee(c2, price) <= bud_ref + 1e-9:
+                    fcount = round(c2, 2)
+                    break
+            if fcount != count:
+                row["count"] = fcount
+                cost = fcount * price / 100.0 + est_fee(fcount, price)
+                row["est_cost"] = round(cost, 4)
+        order = {"ticker": ticker, "side": "bid" if side == "yes" else "ask", "count": "%.2f" % fcount, "price": "%.2f" % (yes_px / 100.0),
                  "time_in_force": "fill_or_kill", "self_trade_prevention_type": "taker_at_cross",
                  "client_order_id": "kd-%d-%s" % (int(time.time() * 1000), os.urandom(3).hex())}
         row["client_order_id"] = order["client_order_id"]
         base = _bases(env)[0]
         st, rb = signed_post(base, "/portfolio/events/orders", order)
         data = json.loads(rb.decode("utf-8", "ignore") or "{}")
+        if st in (400, 422) and fcount != count and FRAC_ERR.search(acct_error_text(st, data) + " " + json.dumps(data)):
+            FRAC["ok"] = False                           # Kalshi refused the fraction: nothing was bought, so re-send the same bet as whole contracts
+            log("fractional count refused, using whole contracts from now on: %s" % acct_error_text(st, data))
+            fcount = float(count)
+            order["count"] = "%.2f" % fcount
+            order["client_order_id"] = "kd-%d-%s" % (int(time.time() * 1000), os.urandom(3).hex())
+            row["client_order_id"] = order["client_order_id"]
+            row["count"] = count
+            row["note"] = ((row.get("note") + "; ") if row.get("note") else "") + "Kalshi refused a fractional count, bought whole contracts"
+            cost = count * price / 100.0 + est_fee(count, price)
+            row["est_cost"] = round(cost, 4)
+            st, rb = signed_post(base, "/portfolio/events/orders", order)
+            data = json.loads(rb.decode("utf-8", "ignore") or "{}")
         if st >= 400:
             row["error"] = acct_error_text(st, data)
             raise TradeError(row["error"])

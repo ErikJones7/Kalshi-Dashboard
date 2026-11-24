@@ -122,3 +122,6 @@ While real Auto betting is on, a fake Auto bet on the same coin and side as a re
 
 AUTO MODE: A SECOND COIN MUST POINT THE OTHER WAY
 Auto mode bets one coin per window. It adds a second coin only if that coin points the opposite way (one UP, one DOWN) and passes the same checks as the first: confidence, a steady signal, a safe-estimate edge over the price paid, and a real order-book price. Coins mostly move together, so two bets the same way would usually win or lose together; an UP and a DOWN bet partly offset a market-wide reversal. The two bets share 1.3 times the one-bet size, split evenly, on the fake and the real side.
+
+REAL AUTO AND TIMED ORDERS CAN USE PART OF A CONTRACT
+Kalshi sells contracts in pieces as small as 0.01. Real Auto and Timed orders now top the whole contracts up with a fraction, so the bet spends the stake it was sized for (never more than the stake, and never more than the contracts for sale) instead of rounding down to whole contracts. Payouts are therefore no longer whole dollars. If Kalshi ever refuses a fractional count, the same bet is sent again as whole contracts and fractions stay off until the helper is restarted; the order log notes it. Orders you place by hand are unchanged. This needs the helper build 2026-11-26b: close the helper and reopen the dashboard after updating.
