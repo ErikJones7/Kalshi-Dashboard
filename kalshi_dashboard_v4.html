@@ -158,7 +158,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-25r</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-25s</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1460,7 +1460,7 @@ function renderAuto(){
   const wa=settleQ.filter(x=>x.kind==="auto").map(x=>x.b),st=ob.length?"Open: "+ob.map(b=>`${b.sym} ${b.side} ${$$(b.stake)} @ ${mx(b.mult)}`).join(" + "):wa.length?"Settling: "+wa.map(b=>`${b.sym} ${b.side} ${$$(b.stake)}`).join(" + ")+" (waiting for Kalshi's result)":(autoNote||"Waiting for the next window");
   const cell=(l,v,c)=>`<div>${l}<b${c?` class="${c}"`:""}>${v}</b></div>`;
   setH($("autoStats"),cell("Bankroll",$$(a.bank))+cell("Net",$$(a.net),a.net>0?"hit":a.net<0?"miss":"")+cell("Wins / losses",a.w+" / "+a.l)+
-    cell("Hit rate",tot?Math.round(a.w/tot*1000)/10+"%":"–")+cell("Windows skipped",a.skipped)+cell("Below peak",Math.round(dd*1000)/10+"%")+cell("Min confidence now",(g=>g==null?"none":Math.round(g*1000)/10+"%")(autoGate(1)))+cell("Learned from",samples+" samples")+(o=>o&&o.n?cell("Kalshi's result used",o.off+" of "+o.n+(o.mis?" · differed from the app's estimate "+o.mis+"x":"")):"")(ovSt.auto)+cell("Status",st));
+    cell("Hit rate",tot?Math.round(a.w/tot*1000)/10+"%":"–")+cell("Windows skipped",a.skipped)+cell("Peak",$$(a.peak))+cell("Min confidence now",(g=>g==null?"none":Math.round(g*1000)/10+"%")(autoGate(1)))+cell("Learned from",samples+" samples")+(o=>o&&o.n?cell("Kalshi's result used",o.off+" of "+o.n+(o.mis?" · differed from the app's estimate "+o.mis+"x":"")):"")(ovSt.auto)+cell("Status",st));
 }
 function renderPicks(){
   setT($("pickK"),sim?"Best pick record · "+SIM_SPEED+"x practice run (not saved)":"Best pick record");
@@ -1924,7 +1924,7 @@ function renderRealAuto(){
   const L=real.autoLast,st=!b?"Allocate some real money to begin":!real.auto?"Real betting is off. Press Start real betting to begin. Fake-money Auto mode keeps running either way.":(L&&L.win===winStart?L.text:(autoNote==="Bet placed"?"Waiting for the real bet":autoNote)||"Waiting for the next window");
   const cell=(l,v,c)=>`<div>${l}<b${c?` class="${c}"`:""}>${v}</b></div>`;
   setH($("arStats"),cell("Allocated",b?$$(b.bank):"–")+cell("Free to bet",b?$$(b.avail):"–")+cell("Net",b?$$(b.net):"–",b?cls(b.net):"")+cell("Wins / losses",b?b.w+" / "+b.l:"–")+
-    cell("Hit rate",tot?Math.round(b.w/tot*1000)/10+"%":"–")+cell("Windows skipped",b?realSkip().n:"–")+cell("Currently bet",b?$$(b.open):"–")+cell("Below peak",Math.round(dd*1000)/10+"%")+
+    cell("Hit rate",tot?Math.round(b.w/tot*1000)/10+"%":"–")+cell("Windows skipped",b?realSkip().n:"–")+cell("Currently bet",b?$$(b.open):"–")+cell("Peak",b?$$(b.peak):"–")+
     cell("Min confidence now",(g=>g==null?"none":Math.round(g*1000)/10+"%")(autoGate(1)))+cell("Learned from",samples+" samples")+cell("Status",st));
   setH($("arNote"),(acct.stale?'<b class="miss">'+escH(staleMsg)+"</b><br>":"")+escH(flashFor("· Auto")));
 }
