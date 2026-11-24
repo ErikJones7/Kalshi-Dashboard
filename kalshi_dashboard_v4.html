@@ -158,7 +158,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-25m</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-25n</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -647,23 +647,25 @@ function mults(yAsk,yBid,nAsk){
   const na=(nAsk!=null&&isFinite(nAsk)&&nAsk>0)?nAsk:(yBid!=null?1-yBid:null);
   return {up:(yAsk>0&&yAsk<1)?1/yAsk:null,dn:(na>0&&na<1)?1/na:null}}
 const mx=v=>v==null?"–":v.toFixed(2)+"x";
-async function kalshiLoop(){
-  let wait=1000;
+const kInflight={}, kStamps=[];
+function kalshiFail(e){
+  kalshiStatus="unreachable";SRC.kalshi.rest="failing";SRC.kalshi.err=(e&&e.message)||"request failed";
+  if(/429|too many/i.test(SRC.kalshi.err)){kalshiSlowUntil=Date.now()/1000+60;kalshiBlockedUntil=Date.now()+1500;SRC.kalshi.err="Kalshi asked us to slow down; prices refresh once a second for a minute"}
+  else kalshiBlockedUntil=Date.now()+10000}
+const kRate=()=>{const t=Date.now()-4000;while(kStamps.length&&kStamps[0]<t)kStamps.shift();return syms.length?kStamps.length/4/syms.length:0};      // price updates per coin per second, over the last 4 s
+function kalshiLoop(){      // every coin has its own schedule: a slow answer for one coin never holds the others back, and the next request starts 0.5 s after the last one STARTED (up to 2 can be in flight, so a slow answer doesn't cut the rate)
   if(!sim&&Date.now()>kalshiBlockedUntil){
     try{
-      const now=Date.now()/1000,end=(Math.floor(now/WINDOW)+1)*WINDOW,jobs=[];
+      const now=Date.now()/1000,end=(Math.floor(now/WINDOW)+1)*WINDOW;
       const fast=end-now<=240&&now>kalshiSlowUntil;      // the last 4 minutes of a window: every coin's Kalshi price twice a second
-      if(fast)wait=500;
-      for(const s of syms){const h=strike[s],need=!h||h.end!==end,isSel=s===selected;
-        const near=(end-now)<=Math.max(finSec,300)+15&&now-(lastTry[s]||0)>=3;   // live multipliers for every coin around its final-call time
-        if(fast||isSel||near||(need&&now-(lastTry[s]||0)>5)){lastTry[s]=now;jobs.push(refreshMarket(s,end,isSel))}}
-      await Promise.race([Promise.all(jobs),new Promise((_,rej)=>setTimeout(()=>rej(new Error("Kalshi market request timed out")),15000))]);
-      if(fast&&jobs.length)repaintLive();
-    }catch(e){kalshiStatus="unreachable";SRC.kalshi.rest="failing";SRC.kalshi.err=(e&&e.message)||"request failed";
-      if(/429|too many/i.test(SRC.kalshi.err)){kalshiSlowUntil=Date.now()/1000+60;kalshiBlockedUntil=Date.now()+1500;SRC.kalshi.err="Kalshi asked us to slow down; prices refresh once a second for a minute"}
-      else kalshiBlockedUntil=Date.now()+10000}
+      for(const s of syms){const h=strike[s],need=!h||h.end!==end,isSel=s===selected,gap=now-(lastTry[s]||0);
+        const near=(end-now)<=Math.max(finSec,300)+15&&gap>=3;   // live multipliers for every coin around its final-call time
+        const due=fast?gap>=0.48:((isSel&&gap>=1)||near||(need&&gap>5));
+        if(due&&(kInflight[s]||0)<2){lastTry[s]=now;kInflight[s]=(kInflight[s]||0)+1;
+          refreshMarket(s,end,isSel).then(()=>{kStamps.push(Date.now());if(fast)repaintLive()},kalshiFail).finally(()=>{kInflight[s]--})}}
+    }catch(e){kalshiFail(e)}
   }
-  setTimeout(kalshiLoop,wait);
+  setTimeout(kalshiLoop,100);
 }
 
 /* ============================ forecasting engine ============================ */
@@ -1186,7 +1188,7 @@ function render(s){
   setT($("phase"),s.phase==="active"?"LAST 5 MIN – predicting":"Predicting · last 5 minutes start in "+mmss(s.to_active));
   const fe=$("feed");setT(fe,s.live+"/"+s.total+" coins live"+(s.sim?" (SIMULATED "+SIM_SPEED+"x)":Object.keys(s.srcCount).length?" · "+Object.entries(s.srcCount).map(([k,v])=>NAMES[k]+" "+v).join(", "):""));setC(fe,"pill "+(s.live>0?"ok":"bad"));
   {const sv=$("sav");setT(sv,savState==="ok"?"Data folder: saving":savState==="off"?(savErr?"Data folder: "+savErr:"Data folder: helper not running (saved in browser only)"):savState==="err"?"Data folder: save failed ("+savErr+"), will retry":"Data folder: checking…");setA(sv,"title",savErr?("Reason: "+savErr):(helperPage?"Page served from: "+helperPage+" · ":"")+"Signal, final-call and calibration data are saved to the data folder next to kalshi_helper.py");setC(sv,"pill "+(savState==="ok"?"ok":savState==="checking"?"":"bad"))}
-  {const kk=$("kal"),ok=s.sim||kalshiStatus==="live";setT(kk,ok?"Kalshi: connected":kalshiStatus==="unreachable"?"Kalshi: not connected":"Kalshi: connecting");setC(kk,"pill "+(ok?"ok":kalshiStatus==="unreachable"?"bad":""))}
+  {const kk=$("kal"),ok=s.sim||kalshiStatus==="live";setT(kk,ok?"Kalshi: connected"+((()=>{const nw=Date.now()/1000,fa=(Math.floor(nw/WINDOW)+1)*WINDOW-nw<=240&&nw>kalshiSlowUntil;return fa&&!s.sim?" · "+kRate().toFixed(1)+" price updates/s per coin":""})()):kalshiStatus==="unreachable"?"Kalshi: not connected":"Kalshi: connecting");setC(kk,"pill "+(ok?"ok":kalshiStatus==="unreachable"?"bad":""))}
 
   // popups (left side): only for the selected coin. Other coins still feed the track record and calibration.
   const sg_=$("sig"), shown=s.signals.filter(x=>x.sym===s.selected&&!dismissed.has(x.w+"|"+x.sym+"|"+x.side));
