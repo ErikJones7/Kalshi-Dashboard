@@ -56,6 +56,12 @@ DAILY AND WEEKLY GOALS (real Auto mode)
   (and its Max bet limit is raised by a quarter) until the week is back on pace, then it goes back to normal. The size is the
   "Catch-up bet size" box in the bet history (1 turns it off). Bigger bets can lose more, so this is riskier, not safer.
 
+PRICE LOG (for testing better models later)
+  While the helper is running, the page sends it one row per coin per second to data\prices-YYYYMMDD.csv.gz (one compressed file per UTC
+  day, about 5-10 MB a day, the last 14 days are kept): the combined price, each exchange's own price, the best bid / ask and their sizes
+  on OKX and Coinbase, and Kalshi's quote and target. Nothing in the app reads it. It exists so alternative models can be compared on
+  exactly what the page saw. To stop it, type  localStorage.setItem("k15pricelog","false")  in the browser console.
+
 NOTIFICATIONS
   While real Auto betting is on, the Auto popup and sound come from the real bet (when its order is actually bought), not from the
   fake-money one. With real Auto betting off, the fake-money Auto bet still notifies as before.

@@ -34,12 +34,13 @@ remembers where they are). Python 3.7+ is the only requirement; no extra package
 import argparse
 import collections
 import csv
+import gzip
 import hashlib
 import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-25c"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-25d"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -231,6 +232,42 @@ def _load_store():
                 k = cal_key(r)
                 cal_seen.append(k)
                 cal_seen_set.add(k)
+
+
+PRICE_HEADER = ("t,coin,px,cb,kr,okx,hl,okx_bid,okx_ask,okx_bidsz,okx_asksz,cb_bid,cb_ask,cb_bidsz,cb_asksz,"
+                "k_yes_bid,k_yes_ask,k_no_bid,k_no_ask,k_strike,k_close")
+PRICE_KEEP_DAYS = 14
+
+
+def save_prices(body):
+    """Per-second price research log (data/prices-YYYYMMDD.csv.gz, one file per UTC day, rows appended as gzip members so the file
+    stays valid at all times and small): the combined price, each exchange's own price, top-of-book sizes and Kalshi's quote.
+    Nothing in the app reads it; it exists so alternative models can be tested later on exactly what the page saw."""
+    rows = [str(r) for r in (body.get("rows") or []) if isinstance(r, str) and 10 < len(r) < 400]
+    if not rows:
+        return {"ok": True, "rows": 0}
+    by_day = {}
+    for r in rows:
+        try:
+            day = time.strftime("%Y%m%d", time.gmtime(int(r.split(",", 1)[0])))
+        except Exception:
+            continue
+        by_day.setdefault(day, []).append(r)
+    with lock:
+        os.makedirs(DATA, exist_ok=True)
+        for day, rs in by_day.items():
+            path = os.path.join(DATA, "prices-%s.csv.gz" % day)
+            text = ("" if os.path.exists(path) else PRICE_HEADER + "\n") + "\n".join(rs) + "\n"
+            with open(path, "ab") as f:
+                f.write(gzip.compress(text.encode("utf-8"), 6))
+        try:      # keep two weeks
+            cutoff = time.strftime("%Y%m%d", time.gmtime(time.time() - PRICE_KEEP_DAYS * 86400))
+            for fn in os.listdir(DATA):
+                if fn.startswith("prices-") and fn.endswith(".csv.gz") and fn[7:15] < cutoff:
+                    os.remove(os.path.join(DATA, fn))
+        except Exception:
+            pass
+    return {"ok": True, "rows": len(rows)}
 
 
 def save_data(body):
@@ -1623,6 +1660,15 @@ class Handler(BaseHTTPRequestHandler):
             threading.Thread(target=self.server.shutdown, daemon=True).start()
             return
         last_active[0] = time.time()
+        if self.path.startswith("/data/prices"):
+            try:
+                n = int(self.headers.get("Content-Length", "0"))
+                if n > 8 * 1024 * 1024:
+                    return self._send(413, json.dumps({"error": "too large"}))
+                return self._send(200, json.dumps(save_prices(json.loads(self.rfile.read(n).decode("utf-8") or "{}"))))
+            except Exception as e:
+                log("price log failed: %s" % e)
+                return self._send(400, json.dumps({"error": str(e)}))
         if not self.path.startswith("/data/save"):
             return self._send(404, json.dumps({"error": "not found"}))
         try:

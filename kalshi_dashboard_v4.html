@@ -158,7 +158,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-25n</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-25o</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -408,6 +408,7 @@ ORDER.concat(["kalshi"]).forEach(k=>SRC[k]={ws:"–",rest:"–",msgs:0,last:0,er
 let cbSet=null, krMap={}, bfLeft=0; const bootMs=Date.now();
 const nowS=()=>Date.now()/1000;
 const BASEMAP={XBT:"BTC",XDG:"DOGE"};
+const TOB={};      // best bid / ask and their sizes per coin and exchange, kept for the price log
 function setPx(src,sym,price){
   if(sim||!(price>0)||!hist[sym])return;
   (PX[sym]=PX[sym]||{})[src]={px:price,ts:nowS()}; SRC[src].msgs++; SRC[src].last=nowS();
@@ -492,13 +493,13 @@ function wsRun(key,url,onOpen,onMsg){
 function startFeeds(){
   const cbList=syms.filter(s=>!cbSet||cbSet.has(s+"-USD"));
   if(cbList.length)wsRun("cb","wss://ws-feed.exchange.coinbase.com",ws=>cbList.forEach(s=>ws.send(JSON.stringify({type:"subscribe",product_ids:[s+"-USD"],channels:["ticker"]}))),
-    d=>{if(d.type==="ticker"&&d.price)setPx("cb",String(d.product_id).replace("-USD",""),+d.price);else if(d.type==="error")SRC.cb.err=d.message||"error"});
+    d=>{if(d.type==="ticker"&&d.price){const cs=String(d.product_id).replace("-USD","");setPx("cb",cs,+d.price);(TOB[cs]=TOB[cs]||{}).cb={b:+d.best_bid,a:+d.best_ask,bs:+d.best_bid_size,as:+d.best_ask_size,ts:nowS()}}else if(d.type==="error")SRC.cb.err=d.message||"error"});
   const krList=Object.keys(krMap).length?Object.values(krMap).map(x=>x.ws):syms.map(s=>s+"/USD");
   wsRun("kr","wss://ws.kraken.com/v2",ws=>ws.send(JSON.stringify({method:"subscribe",params:{channel:"ticker",symbol:krList}})),
     d=>{if(d.channel==="ticker"&&Array.isArray(d.data))for(const x of d.data){let b=String(x.symbol).split("/")[0];b=BASEMAP[b]||b;setPx("kr",b,+(x.last??x.ask))}
         else if(d.error)SRC.kr.err=String(d.error)});
   wsRun("okx","wss://ws.okx.com:8443/ws/v5/public",ws=>{syms.filter(s=>!okxSet||okxSet.has(s)).forEach(s=>ws.send(JSON.stringify({op:"subscribe",args:[{channel:"tickers",instId:s+"-USDT"}]})));ws._t=setInterval(()=>{try{ws.send("ping")}catch(e){}},20000)},
-    d=>{if(d.data&&d.arg&&d.arg.channel==="tickers")for(const x of d.data)setPx("okx",String(x.instId).split("-")[0],+x.last);else if(d.event==="error")SRC.okx.err="OKX: "+(d.msg||"error")});
+    d=>{if(d.data&&d.arg&&d.arg.channel==="tickers")for(const x of d.data){const os=String(x.instId).split("-")[0];setPx("okx",os,+x.last);(TOB[os]=TOB[os]||{}).okx={b:+x.bidPx,a:+x.askPx,bs:+x.bidSz,as:+x.askSz,ts:nowS()}}else if(d.event==="error")SRC.okx.err="OKX: "+(d.msg||"error")});
   wsRun("hl","wss://api.hyperliquid.xyz/ws",ws=>ws.send(JSON.stringify({method:"subscribe",subscription:{type:"allMids"}})),
     d=>{if(d.channel==="allMids"&&d.data&&d.data.mids)for(const s of syms)if(d.data.mids[s]!=null)setPx("hl",s,+d.data.mids[s])});
 }
@@ -668,6 +669,18 @@ function kalshiLoop(){      // every coin has its own schedule: a slow answer fo
   setTimeout(kalshiLoop,100);
 }
 
+/* ---- research price log: one row per coin per second (combined price, each exchange's own price, top of book, Kalshi's quote), sent to the helper once a minute ---- */
+const recBuf=[];
+const rv=v=>v==null||!isFinite(v)?"":String(+(+v).toPrecision(8));
+function recSecond(tick){
+  if(sim||ls.get("k15pricelog",true)===false)return;
+  const now=nowS();
+  for(const s of syms){const o=PX[s]||{},fr=k=>o[k]&&now-o[k].ts<=3?rv(o[k].px):"",t=TOB[s]||{},ok=t.okx&&now-t.okx.ts<=3?t.okx:null,cb=t.cb&&now-t.cb.ts<=3?t.cb:null,q=quoteBy[s],qq=q&&q.yes_ask!=null&&now-q.ts<=5?q:null,st=strike[s];
+    const p=latest[s];if(!p)continue;
+    recBuf.push([tick,s,rv(p.px),fr("cb"),fr("kr"),fr("okx"),fr("hl"),ok?rv(ok.b):"",ok?rv(ok.a):"",ok?rv(ok.bs):"",ok?rv(ok.as):"",cb?rv(cb.b):"",cb?rv(cb.a):"",cb?rv(cb.bs):"",cb?rv(cb.as):"",
+      qq?rv(qq.yes_bid):"",qq?rv(qq.yes_ask):"",qq?rv(qq.no_bid):"",qq?rv(qq.no_ask):"",qq&&st&&Math.abs(st.end-qq.close)<=5?rv(st.v):"",qq?qq.close:""].join(","))}
+  if(recBuf.length>40000)recBuf.splice(0,recBuf.length-40000)}
+setInterval(async()=>{try{if(!hBase||!recBuf.length)return;const n=Math.min(recBuf.length,6000),rows=recBuf.slice(0,n);await hpost("/data/prices",{rows});recBuf.splice(0,n)}catch(e){noteErr("price log",e)}},30000);
 /* ============================ forecasting engine ============================ */
 // Return features for every coin over the last ~1900 s
 function buildFeat(){
@@ -897,6 +910,7 @@ function step(tick,light){
   if(wStart!==winStart){if(winStart!==null)finalizeWindow(el);winStart=wStart;res={};fired=new Set();lastCal={};finFired=new Set();if(autoSt.on&&!autoDone&&winStart!==null){autoSt.skipped++}if(real.auto&&winStart!==null)realWindowEnd();autoDone=false;curAutoAlert=null;autoNote="";autoStab={};autoG=0;autoSnap=new Set();if(autoSt.on&&autoSt.pause>0){autoSt.pause--;autoDone=true;autoNote="Sitting out this window after losses"}pickFired=new Set();curPicks=[];finAll=new Set();simFired=new Set();simWait=new Set();simBusy=new Set()}
   if(light)return null;
   if(predSel!==selected){predC.fill(null);predA.fill(null);predSel=selected}
+  try{if(nt>0)recSecond(Math.floor(now))}catch(e){noteErr("price log",e)}
   const N=hist[syms[0]].length, active=el>=MARK;
   const last=syms.map(s=>hist[s][N-1]), valid=last.map(isFinite);
   const anchor=Array(n).fill(NaN), asrc=Array(n).fill(""), mark=Array(n).fill(NaN);
@@ -1530,7 +1544,7 @@ let acct={info:null,sum:null,orders:[],bud:{},err:"",busy:false}, lv={armed:null
 // real-money mirrors: in memory only, so they are always OFF after a restart and have to be switched on on purpose
 let real={sim:false,auto:false,autoView:true,simView:true,events:[],evT:[],autoLast:null,q:Promise.resolve()};
 let liveRes={};
-const HELPER_EXPECT="2026-11-25c";      // the helper build this page needs (changes only when the helper program itself changes)
+const HELPER_EXPECT="2026-11-25d";      // the helper build this page needs (changes only when the helper program itself changes)
 const staleMsg="The helper program that is running is older than this page. Fully close it (Ctrl+Shift+Esc, end pythonw.exe / python.exe) and reopen the dashboard from its icon, or some real-money controls won't work right.";
 const oldHelper="The helper that is running is an older version that doesn't know about Kalshi accounts. Fully close it and reopen the dashboard from its icon: press Ctrl+Shift+Esc, open the Details tab, end every pythonw.exe (or python.exe) entry, then double-click the Kalshi Dashboard icon.";
 const acctNeed="Open the dashboard from its icon (the address starts with http://127.0.0.1) to use your Kalshi account.";
