@@ -40,7 +40,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-25e"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-25f"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -1266,6 +1266,12 @@ def ask_snapshot(ticker, env):
         top = max((p for p, q in live), default=None)
         out[side + "_ask"] = None if top is None else round(100 - top, 2)
         out[side + "_qty"] = 0 if top is None else sum(q for p, q in live if abs(p - top) < 1e-9)
+        # the whole ladder, cheapest first: [[ask in cents, contracts for sale at that price], ...] (a fake bet is priced level by level)
+        by = {}
+        for p, q in live:
+            k = round(100 - p, 2)
+            by[k] = by.get(k, 0) + q
+        out[side + "_lv"] = [[k, round(by[k], 2)] for k in sorted(by)[:12]]
     return out
 
 

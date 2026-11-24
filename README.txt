@@ -61,6 +61,14 @@ AUTO'S PRICE CHECK
   quoted price on the market page, and works out its edge and multiplier from that. If nothing is for sale on the side it wants, it skips
   that coin. If the helper can't read the book, it falls back to the quoted price as before.
 
+FAKE TIMED BETS ARE PRICED LIKE A REAL FILL
+  A fake Timed bet used to take the quoted price with no fee and bet the whole bankroll at that price, however few contracts were for sale. Now
+  it is priced the way a real order would be: it reads Kalshi's order book (through the helper), buys the cheapest level first and works
+  upward, adds Kalshi's fee, and only bets what is actually for sale (the rest of that coin's bankroll stays put until the bet settles). If the
+  book can't be read, or in a practice run, it uses the quoted price plus the fee. The Timed card shows the date this started and a separate
+  tally of the bets since then, because earlier Timed results used the old pricing and look better than a real fill would. The real Timed bet
+  no longer waits for the fake one's price. (This needs the new helper build, 2026-11-25f; the page tells you if the helper must be restarted.)
+
 PRICE LOG (for testing better models later)
   While the helper is running, the page sends it one row per coin per second to data\prices-YYYYMMDD.csv.gz (one compressed file per UTC
   day, about 5-10 MB a day, the last 14 days are kept): the combined price, each exchange's own price, the best bid / ask and their sizes

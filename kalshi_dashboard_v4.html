@@ -158,7 +158,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-25p</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-25q</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -228,6 +228,7 @@ body{transition:margin-left .14s ease-out}
       <button id="simReset">Reset all</button>
     </div>
     <div style="overflow:auto"><table class="mini simtbl" id="simTbl"></table></div>
+    <div class="s" id="simPxNote" style="margin:6px 0"></div>
   </details>
 </div>
 
@@ -860,8 +861,9 @@ function finalizeWindow(elNow){
   for(const s of pendFin){const f=getFinal(s.sym);if(f==null)continue;s.up=f>=s.anchorLn;s.hit=(s.side==="UP")===s.up;finHist.push(s);if(!sim)hOutbox.fin.push(s)}
   for(const b of pendSim){const f=getFinal(b.sym);if(f==null)continue;
     b.up=f>=b.anchorLn;b.hit=(b.side==="UP")===b.up;const tr=simTr(b.sym,SIM_CP[0]);
-    b.payout=b.hit?b.stake*b.mult:0;b.pnl=b.payout-b.stake;tr.net+=b.pnl;
-    if(b.hit){tr.bank=b.payout;tr.w++}else{tr.l++;tr.bank=simMode==="restart"?simStart(b.sym):0}
+    b.payout=b.hit?b.stake*b.mult:0;b.pnl=b.payout-b.stake;tr.net+=b.pnl;const rest=b.rest||0;      // rest = the part of the bankroll that was not for sale at the time (0 for older bets)
+    if(b.hit){tr.bank=rest+b.payout;tr.w++}else{tr.l++;tr.bank=simMode==="restart"?simStart(b.sym):rest}
+    if(b.pv===2&&!sim){const v=simSt.v2=simSt.v2||{n:0,w:0,l:0,net:0,st:0};v.n++;if(b.hit)v.w++;else v.l++;v.net+=b.pnl;v.st+=b.stake}
     b.bank=tr.bank;b.cp=b.at||b.cp;simLog.push(b);if(!sim)hOutbox.sim.push(b)}
   for(const c of pendASnap){const f=getFinal(c.sym);if(f==null)continue;const hit=(c.side==="UP")===(f>=c.anchorLn)?1:0,k=c.tb+"|"+c.bi,L=autoSt.learn[k]=autoSt.learn[k]||{n:0,w:0};L.n++;L.w+=hit;
     if(c.conf>=0.8){const C=autoSt.coin[c.sym]=autoSt.coin[c.sym]||{n:0,w:0,e:0};C.n++;C.w+=hit;C.e+=c.conf}}
@@ -1001,10 +1003,14 @@ function step(tick,light){
       let q=quoteBy[sym];
       if(!q||Math.abs(q.close-wEnd)>5||Date.now()/1000-q.ts>2||q.yes_ask==null){   // about to bet: get Kalshi's price right now, bet on the next second
         simBusy.add(k);refreshMarket(sym,wEnd,sym===selected).catch(()=>{}).then(()=>simBusy.delete(k));continue}
-      const side=r.pCal>=0.5?"UP":"DOWN",m=mults(q.yes_ask,q.yes_bid,q.no_ask),mult=side==="UP"?m.up:m.dn;
-      if(!mult)continue;
-      simWait.delete(sym+"|"+cp);simFired.add(k);if(real.sim){const bk=budOf("sim",sym);if(bk&&bk.avail>=1)safe("real timed bet",()=>{const wS=winStart;realMirror("sim",sym,side,Math.floor(bk.avail*100)/100,{w:wEnd,p:side==="UP"?r.pCal:1-r.pCal}).then(o=>{if(o==="retry")simRetry(sym,side,wS,wEnd,1)})})}const tr=simTr(sym,cp);if(!(tr.bank>0))continue;     // busted and set to stay at $0
-      pendSim.push({w:wStart,sym,cp,at:simAt,side,p:side==="UP"?r.pCal:1-r.pCal,tau:r.tau,anchorLn:r.anchorLn,ask:q.yes_ask,bid:q.yes_bid,mult,stake:tr.bank})}
+      const side=r.pCal>=0.5?"UP":"DOWN",m=mults(q.yes_ask,q.yes_bid,q.no_ask),mult0=side==="UP"?m.up:m.dn;
+      if(!mult0)continue;
+      {const rk=k+"|r";if(!simFired.has(rk)){simFired.add(rk);if(real.sim){const bk=budOf("sim",sym);if(bk&&bk.avail>=1)safe("real timed bet",()=>{const wS=winStart;realMirror("sim",sym,side,Math.floor(bk.avail*100)/100,{w:wEnd,p:side==="UP"?r.pCal:1-r.pCal}).then(o=>{if(o==="retry")simRetry(sym,side,wS,wEnd,1)})})}}}      // the real Timed bet goes as soon as the quote is fresh; it never waits for the fake bet's price
+      const tr=simTr(sym,cp);let mult=mult0,stakeB=tr.bank,px="quote";
+      if(tr.bank>0){const pz=timedPrice(sym,side,q,mult0,tr.bank,Date.now()/1000);if(!pz)continue;mult=pz.mult;stakeB=pz.stake;px=pz.px}
+      simWait.delete(sym+"|"+cp);simFired.add(k);if(!(tr.bank>0))continue;     // busted and set to stay at $0
+      pendSim.push({w:wStart,sym,cp,at:simAt,side,p:side==="UP"?r.pCal:1-r.pCal,tau:r.tau,anchorLn:r.anchorLn,ask:q.yes_ask,bid:q.yes_bid,mult,stake:stakeB,rest:Math.max(0,tr.bank-stakeB),pv:2,px})
+      if(!sim&&!simSt.bookSince){simSt.bookSince=Date.now()/1000;simSave()}}
   }
   autoStep(tick,tau,wStart,wEnd);
 
@@ -1343,8 +1349,24 @@ setTimeout(autoSeed,25000);
 const bookBy={}, bookBusy={}; let autoBookSkip="",autoBookSkipT=0;
 function refreshBook(sym,tk){      // Kalshi's real best asking prices for this market, read from its order book by the helper (at most one lookup per coin at a time)
   if(bookBusy[sym])return;bookBusy[sym]=1;
-  aget("/account/ask?ticker="+encodeURIComponent(tk)).then(d=>{bookBy[sym]={tk,ts:Date.now()/1000,ok:!!(d&&d.ok),yes:d&&d.yes_ask,no:d&&d.no_ask}})
+  aget("/account/ask?ticker="+encodeURIComponent(tk)).then(d=>{bookBy[sym]={tk,ts:Date.now()/1000,ok:!!(d&&d.ok),yes:d&&d.yes_ask,no:d&&d.no_ask,yq:d&&d.yes_qty,nq:d&&d.no_qty,yl:d&&d.yes_lv,nl:d&&d.no_lv}})
     .catch(()=>{bookBy[sym]={tk,ts:Date.now()/1000,ok:false}}).finally(()=>{bookBusy[sym]=0})}
+function bookFill(bk,side,stake){      // what spending up to `stake` dollars would really buy from the order book: cheapest level first, Kalshi's fee included (null = nothing for sale)
+  let lv=side==="UP"?bk.yl:bk.nl;
+  if(!lv){const a=side==="UP"?bk.yes:bk.no,q=side==="UP"?bk.yq:bk.nq;lv=(a>0&&a<100)?[[a,q>0?q:1e9]]:null}      // an older helper only knows the best price
+  if(!lv||!lv.length)return null;
+  let left=stake,cn=0,spent=0;
+  for(const [a,q] of lv){if(!(a>0&&a<100))continue;const c=a/100,per=c+0.07*c*(1-c),n=Math.min(q,Math.floor(left/per));
+    if(n<=0)break;cn+=n;spent+=n*per;left-=n*per;if(n<q)break}
+  if(!(cn>0&&spent>0))return null;
+  const st=Math.min(stake,Math.ceil(spent*100)/100);return {stake:st,cn,mult:cn/st}}
+function timedPrice(sym,side,q,mult0,bank,now){      // price of a fake Timed bet, worked out the way a real fill would be: Kalshi's order book level by level (only what is for sale), plus the fee. null = not ready yet, keep waiting
+  if(!sim&&hBase&&q.tk){
+    const bk=bookBy[sym];
+    if(!bk||bk.tk!==q.tk||now-bk.ts>3){refreshBook(sym,q.tk);return null}
+    if(now-bk.ts>1.2)refreshBook(sym,q.tk);
+    if(bk.ok){const f=bookFill(bk,side,bank);return f?{mult:f.mult,stake:f.stake,px:"book"}:null}}
+  const c=1/mult0;return {mult:1/(c+0.07*c*(1-c)),stake:bank,px:"quote"}}      // book unreadable (or a practice run): the quoted price, with the fee
 function autoStep(tick,tau,wStart,wEnd){
   autoSt.on=true;      // fake-money auto mode is always running
   if(tau<1)return;
@@ -1432,6 +1454,8 @@ function renderSim(){
       const nn=$("sn_"+s+"_"+cp);setT(nn,$$(t.net));setC(nn,t.net>0?"hit":t.net<0?"miss":"");
       setT($("so_"+s+"_"+cp),ob?`${ob.side} ${$$(ob.stake)} @ ${mx(ob.mult)}`:simWait.has(s+"|"+cp)?"Waiting":"–")}}
   setT($("ts_all"),$$(startTot));
+  {const v=simSt.v2,sn=simSt.bookSince,fd=t=>new Date(t*1000).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});
+   setT($("simPxNote"),"Prices: Timed bets are priced like a real fill (Kalshi's order book, level by level, plus its fee, and only what is for sale)"+(sn?" since "+fd(sn)+(v&&v.n?" · "+v.n+" bets, "+v.w+"W/"+v.l+"L, "+(v.net>=0?"+":"-")+$$(Math.abs(v.net))+" ("+(v.net>=0?"+":"-")+(Math.abs(v.net)/Math.max(v.st,1e-9)*100).toFixed(1)+"% of stakes)":" · none settled yet")+". Results before that used the quoted price with no fee, so they look better than a real fill would.":".")) }
   const openAll=pendSim.filter(b=>syms.includes(b.sym)),openStake=openAll.reduce((t,b)=>t+b.stake,0);
   for(const cp of SIM_CP){setT($("to_"+cp),openAll.length?openAll.length+" open · "+$$(openStake):simWait.size?"Waiting":"–");setT($("tb_"+cp),$$(tot[cp].b));setT($("tw_"+cp),tot[cp].w+" / "+tot[cp].l);const e=$("tn_"+cp);setT(e,$$(tot[cp].n));setC(e,tot[cp].n>0?"hit":tot[cp].n<0?"miss":"")}
 }
@@ -1555,7 +1579,7 @@ let acct={info:null,sum:null,orders:[],bud:{},err:"",busy:false}, lv={armed:null
 // real-money mirrors: in memory only, so they are always OFF after a restart and have to be switched on on purpose
 let real={sim:false,auto:false,autoView:true,simView:true,events:[],evT:[],autoLast:null,q:Promise.resolve()};
 let liveRes={};
-const HELPER_EXPECT="2026-11-25e";      // the helper build this page needs (changes only when the helper program itself changes)
+const HELPER_EXPECT="2026-11-25f";      // the helper build this page needs (changes only when the helper program itself changes)
 const staleMsg="The helper program that is running is older than this page. Fully close it (Ctrl+Shift+Esc, end pythonw.exe / python.exe) and reopen the dashboard from its icon, or some real-money controls won't work right.";
 const oldHelper="The helper that is running is an older version that doesn't know about Kalshi accounts. Fully close it and reopen the dashboard from its icon: press Ctrl+Shift+Esc, open the Details tab, end every pythonw.exe (or python.exe) entry, then double-click the Kalshi Dashboard icon.";
 const acctNeed="Open the dashboard from its icon (the address starts with http://127.0.0.1) to use your Kalshi account.";
