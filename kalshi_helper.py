@@ -40,10 +40,11 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-26j"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-26k"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
+import shutil
 import ssl
 import subprocess
 import sys
@@ -2285,6 +2286,28 @@ def restart_self(port):
     subprocess.Popen(cmd, **kw)
 
 
+BACKUPS_KEPT = 2
+
+
+def prune_backups(keep=BACKUPS_KEPT):
+    """Keep only the newest `keep` folders in backup/ (judged by the date and time at the end of the folder name); the older ones are deleted.
+    Only folders named like <version>_<YYYYMMDD-HHMMSS> directly inside backup/ are ever touched."""
+    root = os.path.join(HERE, "backup")
+    try:
+        found = []
+        for n in os.listdir(root):
+            m = re.search(r"_(\d{8}-\d{6})$", n)
+            p = os.path.join(root, n)
+            if m and os.path.isdir(p) and not os.path.islink(p):
+                found.append((m.group(1), n, p))
+        found.sort()
+        for _stamp, n, p in found[:max(0, len(found) - keep)]:
+            shutil.rmtree(p, ignore_errors=True)
+            log("removed old backup %s (keeping the newest %d)" % (n, keep))
+    except Exception:
+        log("could not tidy the backup folder:\n" + traceback.format_exc())
+
+
 def update_apply(port):
     cfg = load_settings()
     base, man, ver = update_manifest(cfg)
@@ -2332,6 +2355,7 @@ def update_apply(port):
         os.replace(tmp, os.path.join(HERE, name))
     restart = any(n.lower().endswith(".py") for n in fetched)
     log("updated %s -> %s (%s)" % (loc, ver, ", ".join(fetched)))
+    prune_backups()
     return {"ok": True, "updated": True, "local": loc, "remote": ver, "restart": restart, "backup": bdir, "skipped": skipped}
 
 

@@ -127,6 +127,14 @@ st, d = call("/account/raw"); ok(st == 200 and d["balance"]["reply"]["balance_br
                                     "/account/raw returns the balance split by pool, resting orders and sub-account balances")
 st, d = call("/account/summary?force=1"); ok(st == 200 and d.get("ok") and abs(d["balance"] - 90.0) < 0.01, "account summary reads the $90.00 balance")
 
+# ---- old backups are tidied: only the newest two are kept
+bk = os.path.join(H.HERE, "backup"); os.makedirs(bk, exist_ok=True)
+for n in ("2026-11-23a_20261122-204602", "2026-11-23h_20261122-210729", "2026-11-26b_20261124-135944", "2026-11-26k_20261125-173500", "notes"):
+    os.makedirs(os.path.join(bk, n), exist_ok=True)
+open(os.path.join(bk, "keepme.txt"), "w").write("x")
+H.prune_backups()
+left = sorted(os.listdir(bk)); ok(left == ["2026-11-26b_20261124-135944", "2026-11-26k_20261125-173500", "keepme.txt", "notes"], "only the newest two backups are kept; other files and folders are left alone: %s" % left)
+
 shutil.rmtree(TMP, ignore_errors=True)
 print("\n%d failed" % len(FAILS) if FAILS else "\nall passed")
 sys.exit(1 if FAILS else 0)
