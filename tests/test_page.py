@@ -79,6 +79,44 @@ with sync_playwright() as p:
       hpost=async(p,o)=>{body=o;return {}};await saveToHelper();const s=body&&body.simstate;return s&&{simSt:s.simSt,simDef:s.simDef,simMode:s.simMode,simGain:s.simGain}}""")
     ok(sent == {"simSt": {"start": {"BTC": 5}, "tr": {}, "ref": 9}, "simDef": 22.22, "simMode": "zero", "simGain": 10},
        "saving to the data folder still sends Timed's saved state unchanged: %s" % sent)
+    # ---- the Kalshi live multipliers card stays on screen when Kalshi's price is late (window change, slow reply)
+    pg.click("#simBtn"); pg.wait_for_timeout(6000)
+    cards = pg.evaluate("""()=>{
+      const s0=Object.assign({},lastS,{sim:false,quote:null});sim=false;const sym=s0.selected,wE=s0.tick-s0.elapsed+WINDOW,now=Date.now()/1000;
+      const base={sym,tk:"X",yes_bid:0.89,yes_ask:0.90,no_bid:0.10,no_ask:0.11,last:0.9};
+      const show=q=>{if(q)quoteBy[sym]=Object.assign({},base,q);else delete quoteBy[sym];render(s0);
+        const c=[...document.querySelectorAll('#cards .card')].filter(x=>x.innerText.toLowerCase().includes('kalshi live multipliers'));
+        return c.length?c[0].innerText.replace(/\\n+/g,' | ').toLowerCase():null};
+      return {fresh:show({close:wE,ts:now}),old10:show({close:wE,ts:now-10}),old30:show({close:wE,ts:now-30}),
+              prev:show({close:wE-900,ts:now-2}),none:show(null)}}""")
+    ok(cards["fresh"] and "up 1.11x" in cards["fresh"] and "down 9.09x" in cards["fresh"] and "from" not in cards["fresh"], "a fresh Kalshi price shows UP and DOWN multipliers: %s" % cards["fresh"])
+    ok(cards["old10"] and "up 1.11x" in cards["old10"] and "price from 10 s ago" in cards["old10"], "a 10 s old price still shows, with its age: %s" % cards["old10"])
+    ok(cards["old30"] and "waiting for kalshi's price" in cards["old30"] and "1.11x" not in cards["old30"], "a price older than 20 s is not shown as live: %s" % cards["old30"])
+    ok(cards["prev"] and "waiting for kalshi to open this window" in cards["prev"] and "1.11x" not in cards["prev"], "the last window's price is never shown for the new window: %s" % cards["prev"])
+    ok(cards["none"] and "waiting for kalshi's price" in cards["none"], "with no price at all the card still shows, saying it is waiting: %s" % cards["none"])
+    # ---- a new window's market is fetched by name right away (Kalshi's open-markets list only shows it ~28 s after it opens)
+    bn = pg.evaluate("""async()=>{
+      sim=false;const out={},real_get=kalshiGet;
+      const mk=(tk,end,o)=>Object.assign({ticker:tk,close_time:new Date(end*1000).toISOString(),status:"active",floor_strike:"60000.5",yes_bid_dollars:"0.5000",yes_ask_dollars:"0.5200",no_bid_dollars:"0.4800",no_ask_dollars:"0.5000",last_price_dollars:"0.5100"},o||{});
+      const run=async(label,ago,byName,listOf)=>{const sym="BTC",end=Date.now()/1000+900-ago,calls=[];delete quoteBy[sym];delete strike[sym];
+        kalshiGet=async p=>{calls.push(p.startsWith("/markets/")?"by-name":"list");if(p.startsWith("/markets/")){const r=byName(p,end);if(r instanceof Error)throw r;return r}return {markets:listOf(end)}};
+        let err=null;try{await refreshMarket(sym,end,true)}catch(e){err=e.message}
+        const q=quoteBy[sym];out[label]={calls:calls.join("+"),err,got:!!q&&Math.abs(q.close-end)<=5,strike:strike[sym]&&strike[sym].v||null}};
+      const prevOnly=end=>[mk("OLD",end-900)],both=end=>[mk("OLD",end-900),mk("NEW",end)];
+      byNameOff.BTC=0;
+      await run("a",10,(p,end)=>p==="/markets/"+windowTicker("BTC",end)?{market:mk(windowTicker("BTC",end),end)}:new Error("HTTP 404"),prevOnly);
+      await run("b",2,(p,end)=>({market:mk(windowTicker("BTC",end),end,{status:"initialized",floor_strike:null})}),prevOnly);
+      byNameOff.BTC=0;await run("c",10,()=>new Error("HTTP 404 not found"),both);await run("c2",11,()=>({market:null}),both);
+      byNameOff.BTC=0;await run("d",100,()=>{throw new Error("by-name must not be used")},both);
+      await run("e",10,()=>new Error("HTTP 429 too many requests"),prevOnly);
+      out.ex=windowTicker("BTC",1795649400)+" "+windowTicker("ETH",Date.UTC(2026,10,26,5,0)/1000)+" "+windowTicker("SOL",Date.UTC(2026,2,8,7,15)/1000);
+      kalshiGet=real_get;return out}""")
+    ok(bn["a"] == {"calls": "by-name", "err": None, "got": True, "strike": 60000.5}, "10 s into a window the new market is found by name, with its strike, even though the list lacks it: %s" % bn["a"])
+    ok(bn["b"]["calls"] == "by-name+list" and not bn["b"]["got"] and bn["b"]["err"] is None, "a market that is not open yet (no strike) is not used: %s" % bn["b"])
+    ok(bn["c"]["calls"] == "by-name+list" and bn["c"]["got"] and bn["c2"]["calls"] == "list", "a failed by-name fetch falls back to the list and is not retried for a minute: %s / %s" % (bn["c"], bn["c2"]))
+    ok(bn["d"]["calls"] == "list" and bn["d"]["got"], "after 45 s into the window only the list is used: %s" % bn["d"])
+    ok(bn["e"]["err"] and "429" in bn["e"]["err"], "'too many requests' still reaches the slow-down handling: %s" % bn["e"])
+    ok(bn["ex"] == "KXBTC15M-26NOV251830-30 KXETH15M-26NOV260000-00 KXSOL15M-26MAR080315-15", "market names are built in New York time, midnight and the March clock change included: %s" % bn["ex"])
     ok(not errs, "no script errors during the checks: %s" % errs[:1])
     b.close()
 

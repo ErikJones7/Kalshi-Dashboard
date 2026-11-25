@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26w</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26x</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -640,9 +640,19 @@ function exitSim(){
   Promise.race([backfillAll(),new Promise(r=>setTimeout(r,20000))]).catch(()=>{});
 }
 
+const NYF=new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",year:"2-digit",month:"short",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"});
+function windowTicker(sym,end){const p={};for(const x of NYF.formatToParts(new Date(end*1000)))p[x.type]=x.value;return `KX${sym}15M-${p.year}${p.month.toUpperCase()}${p.day}${p.hour}${p.minute}-${p.minute}`}      // e.g. KXBTC15M-26NOV251830-30 for the window that ends 18:30 New York time
+const byNameOff={};
 async function refreshMarket(sym,end,isSel){
-  const d=await kalshiGet(`/markets?series_ticker=KX${sym}15M&status=open&limit=20`); const now=Date.now()/1000; let best=null,bct=1e18;
-  for(const m of d.markets||[]){const ct=Date.parse(m.close_time)/1000; if(ct>now-1&&ct<bct){bct=ct;best=m}}
+  let best=null,bct=1e18,now=Date.now()/1000;
+  if(now-(end-WINDOW)<45&&Date.now()>(byNameOff[sym]||0)){      // Kalshi's open-markets list shows a new window only about 28 s after it opens, but the market can be fetched by its name about 4 s after it opens
+    try{const m=(await kalshiGet(`/markets/${windowTicker(sym,end)}`)).market,ct=m&&Date.parse(m.close_time)/1000;
+      if(m&&m.status==="active"&&Math.abs(ct-end)<=5&&isFinite(parseFloat(m.floor_strike))){best=m;bct=ct}}
+    catch(e){if(/429|too many/i.test((e&&e.message)||""))throw e;byNameOff[sym]=Date.now()+60000}      // any other failure: use the list for a minute
+    now=Date.now()/1000}
+  if(!best){
+    const d=await kalshiGet(`/markets?series_ticker=KX${sym}15M&status=open&limit=20`); now=Date.now()/1000;
+    for(const m of d.markets||[]){const ct=Date.parse(m.close_time)/1000; if(ct>now-1&&ct<bct){bct=ct;best=m}}}
   SRC.kalshi.rest="ok";SRC.kalshi.err="";SRC.kalshi.msgs++;SRC.kalshi.last=now;
   if(!best||Math.abs(bct-end)>5)return;       // this window's market isn't listed yet; try again next second
   let fs=parseFloat(best.floor_strike);
@@ -1032,7 +1042,6 @@ function step(tick,light){
       coin_move_bps:mv5[selI]*1e4,others_move_bps:oth5.length?mean(oth5)*1e4:null,
       drift_bps:an.drift*1e4,lead:an.lead,
       pred_final_bps:(Math.log(mdn)-base)*1e4,signal:known&&(rS.pCal>=thr||rS.pCal<=1-thr)};
-    if(known&&q&&q.yes_ask!=null&&q.yes_bid!=null){pred.edge_yes=rS.pCal-q.yes_ask;pred.edge_no=(1-rS.pCal)-(1-q.yes_bid)}
     predC[N-1]=Math.log(mdn/P); predA[N-1]=selAn?selAn.driftA*Math.min(1,tau/HZ):null;
   }
 
@@ -1291,8 +1300,10 @@ function render(s){
     const L=p.lead;
     h+=p.prior?card("Lead-lag edge","warming up",""):
       card("Lead-lag edge",L?`t = ${L.t.toFixed(1)}`:"–","");
-    if(q&&q.yes_ask!=null&&q.yes_bid!=null&&p.edge_yes!=null){const m=mults(q.yes_ask,q.yes_bid,q.no_ask);
-      h+=card("Kalshi live multipliers",`<div>UP ${mx(m.up)}</div><div>DOWN ${mx(m.dn)}</div>`,"")}
+    {const wE=s.tick-s.elapsed+WINDOW,sq=quoteBy[s.selected];      // this card always stays on screen: Kalshi's newest price (with its age once it is a few seconds old), or why there is none yet
+     if(q&&q.yes_ask!=null&&q.yes_bid!=null){const m=mults(q.yes_ask,q.yes_bid,q.no_ask),age=Math.round(Date.now()/1000-q.ts);
+       h+=card("Kalshi live multipliers",`<div>UP ${mx(m.up)}</div><div>DOWN ${mx(m.dn)}</div>`,!s.sim&&age>=6?"price from "+age+" s ago":"")}
+     else h+=card("Kalshi live multipliers","<div>UP –</div><div>DOWN –</div>",sq&&Math.abs(sq.close-wE)>5?"waiting for Kalshi to open this window":"waiting for Kalshi's price")}
   }
   setH($("cards"),h); lastCh=s.chart; draw(s.chart);
 
