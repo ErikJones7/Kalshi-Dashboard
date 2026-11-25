@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26q</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26r</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -207,6 +207,7 @@ body{transition:margin-left .14s ease-out}
     </span></summary>
     <div class="autostats" id="autoStats" style="margin-top:8px"></div>
     <div id="autoCo" style="margin:8px 0"></div>
+    <div id="autoRc" style="margin:8px 0"></div>
   </details>
 </div>
 
@@ -929,7 +930,7 @@ function settleAutoRows(rows){      // the Auto bets of one window
   let wp=0;
   for(const b of rows){b.hit=(b.side==="UP")===b.up;b.payout=b.hit?b.stake*b.mult:0;b.pnl=b.payout-b.stake;wp+=b.pnl;
     autoSt.net+=b.pnl;autoSt.bank+=b.pnl;if(b.hit)autoSt.w++;else autoSt.l++;autoSt.windows++;
-    cashBook(b);b.bank=autoSt.bank;b.cp="AUTO";simLog.push(b);if(!sim)hOutbox.sim.push(b)}
+    cashBook(b);rcBook(b);b.bank=autoSt.bank;b.cp="AUTO";simLog.push(b);if(!sim)hOutbox.sim.push(b)}
   autoSt.peak=Math.max(autoSt.peak,autoSt.bank);
   if(wp<0){autoSt.streak++;if(autoSt.streak>=3){autoSt.pause=2;autoSt.streak=0}}else if(wp>0)autoSt.streak=0;
   if(autoSt.bank<1){autoSt.bank=autoSt.start;autoSt.peak=autoSt.start;autoSt.streak=0;autoNote="Fake bankroll used up, restarted from the start amount"}}
@@ -1481,6 +1482,25 @@ function autoCashWatch(tick,tau){
     const ps=b.side==="UP"?r.pCal:1-r.pCal,nb=bid-0.07*bid*(1-bid);      // nb = what one contract nets after the selling fee
     b.co=b.co||{};
     for(const k in CASH_RULES)if(!b.co[k]&&CASH_RULES[k][1](ps,nb))b.co[k]={tau,bid:Math.round(bid*1000)/1000,nb:Math.round(nb*10000)/10000,ps:Math.round(ps*1000)/1000}}}
+/* Shrink-and-edge test (shadow only, nothing is skipped): the predicted chances ran about 5 points too high on settled bets, so each fake Auto bet is
+   stamped with a shrunk chance (rp) and the shrunk chance minus the price paid (re). At settlement the page books what a rule "only bet when re >= X points"
+   would have kept and dropped, for all fake Auto bets and for the ones that followed a real fill. The shrink (0.78 x logit - 0.08) was fitted on 76 fake bets and
+   held up on the next 51; this runs it live to see whether the dropped bets really are the worse ones. */
+const RC_A=0.78,RC_B=-0.08,RC_T={e2:0.02,e4:0.04,e6:0.06};
+function rcP(p){p=Math.min(Math.max(p,1e-4),1-1e-4);return 1/(1+Math.exp(-(RC_A*Math.log(p/(1-p))+RC_B)))}
+function rcBook(b){if(!(b.re!=null))return;
+  const rc=autoSt.rc=autoSt.rc||{};
+  for(const grp of(b.px==="real"?["all","real"]:["all"])){const g=rc[grp]=rc[grp]||{n:0};g.n++;
+    for(const k in RC_T){const e=g[k]=g[k]||{kn:0,kw:0,ks:0,kp:0,dn:0,dw:0,ds:0,dp:0},keep=b.re>=RC_T[k],pre=keep?"k":"d";
+      e[pre+"n"]++;if(b.hit)e[pre+"w"]++;e[pre+"s"]+=b.stake;e[pre+"p"]+=b.pnl}}}
+function renderRc(){
+  const rc=autoSt.rc,el=$("autoRc");if(!el)return;
+  if(!rc||!rc.all||!rc.all.n){setH(el,'<div class="s">Shrink-and-edge test: collecting data. Nothing is ever skipped; each bet records whether the rule would have kept it.</div>');return}
+  const cl=v=>v>0.0005?"hit":v<-0.0005?"miss":"",pc1=v=>(v>=0?"+":"")+(100*v).toFixed(1)+"%",hr=(w,n)=>n?Math.round(100*w/n)+"% ("+w+"/"+n+")":"–";
+  const row=(grp,lab,k)=>{const g=rc[grp];if(!g||!g[k])return"";const e=g[k];return `<tr><td style="text-align:left">${lab}</td><td>${RC_T[k]*100} pts</td><td>${e.kn}</td><td>${hr(e.kw,e.kn)}</td><td class="${cl(e.kp/(e.ks||1))}">${e.ks?pc1(e.kp/e.ks):"–"}</td><td>${e.dn}</td><td>${hr(e.dw,e.dn)}</td><td class="${cl(e.dp/(e.ds||1))}">${e.ds?pc1(e.dp/e.ds):"–"}</td></tr>`};
+  setH(el,'<div class="s" style="margin:6px 0 4px">Shrink-and-edge test on '+rc.all.n+' settled fake Auto bets'+(rc.real?" ("+rc.real.n+" followed a real fill)":"")+' (shadow only, nothing is skipped). The rule: shrink the predicted chance (95% counts as about 90%) and only bet when it beats the price paid by at least the points shown. Return = profit divided by money staked.</div>'+
+    '<table class="mini"><tr><th style="text-align:left">Bets</th><th>Min. edge</th><th>Would keep</th><th>Kept: hit rate</th><th>Kept: return</th><th>Would drop</th><th>Dropped: hit rate</th><th>Dropped: return</th></tr>'+
+    Object.keys(RC_T).map(k=>row("all","All fake bets",k)).join("")+Object.keys(RC_T).map(k=>row("real","Real-fill bets",k)).join("")+'</table>')}
 function cashBook(b){      // at settlement: what each rule would have changed on this bet
   const cs=autoSt.cs=autoSt.cs||{},cn=b.stake*b.mult;cs.n=(cs.n||0)+1;
   for(const k in CASH_RULES){const e=cs[k]=cs[k]||{ex:0,saved:0,sold:0,d:0,ds:0,dw:0},x=b.co&&b.co[k];
@@ -1531,7 +1551,7 @@ function autoStep(tick,tau,wStart,wEnd){
   const place=[];for(const x of picks){const stake=Math.floor(autoSt.bank*tot/picks.length*100)/100;if(stake>=1)place.push({x,stake})}
   autoDone=true;
   if(!place.length){autoNote="Edge too small to bet";return}
-  for(const {x,stake} of place)pendAuto.push({w:wStart,sym:x.sym,side:x.side,p:x.e.p,lb:x.e.lb,edge:x.edge,tau:x.tau,anchorLn:x.anchorLn,ask:x.ask,bid:x.bid,mult:1/x.cost,stake,split:place.length>1,tk:x.tk,rk:wEnd+"|"+x.sym+"|"+x.side,rw:real.auto?1:0,rs:SESSION,agree:x.agree,opp:x.opp});
+  for(const {x,stake} of place)pendAuto.push({w:wStart,sym:x.sym,side:x.side,p:x.e.p,rp:rcP(x.e.p),re:Math.round((rcP(x.e.p)-x.cost)*1000)/1000,lb:x.e.lb,edge:x.edge,tau:x.tau,anchorLn:x.anchorLn,ask:x.ask,bid:x.bid,mult:1/x.cost,stake,split:place.length>1,tk:x.tk,rk:wEnd+"|"+x.sym+"|"+x.side,rw:real.auto?1:0,rs:SESSION,agree:x.agree,opp:x.opp});
   if(real.auto)safe("real auto bet",()=>realAuto(best,two,picks,wEnd));
   if(!real.auto){curAutoAlert={w:wStart,end:wEnd,tau,bets:place.map(({x,stake})=>({sym:x.sym,side:x.side,stake,mult:1/x.cost,conf:x.conf,lb:x.e.lb,edge:x.edge}))};autoNewFlag=true}      // with real Auto betting on, the popup and sound come from the real bet instead (see realMirror)
   autoNote="Bet placed";autoSave()}
@@ -1566,7 +1586,7 @@ function renderPicks(){
     keys.map(k=>row(k%60===0?k/60+(k===60?" minute":" minutes"):k+" seconds",by[k]||[])).join("")+row("All",all,"tot"));
 }
 function renderSim(){
-  renderAuto();renderCash();renderPicks();
+  renderAuto();renderCash();renderRc();renderPicks();
   setT($("simK"),sim?"Timed bets · "+SIM_SPEED+"x practice run (not saved)":"Timed bets");
   const key=syms.join(),cp=SIM_CP[0];
   if(key!==simKey){simKey=key;
