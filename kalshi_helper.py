@@ -40,7 +40,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-26c"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-26d"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -1351,6 +1351,14 @@ def _place_order(body):
            "src": body.get("src") if body.get("src") in ("manual", "sim", "auto") else "manual",
            "w": _f(body.get("w")), "sym": sym_of(ticker) or str(body.get("sym") or "")[:12], "conf": _f(body.get("conf")),
            "agree": _f(body.get("agree")), "opp": _f(body.get("opp"))}      # how many other coins qualified the same / the opposite way when an Auto bet was placed
+    row["ms"] = {}                                       # how long each step took, in milliseconds (checks, gap, market, book, post, total)
+    _tl = [time.perf_counter()]
+    _t0 = _tl[0]
+
+    def _mark(k):
+        n = time.perf_counter()
+        row["ms"][k] = int((n - _tl[0]) * 1000)
+        _tl[0] = n
     try:
         if not t["trading"]:
             raise TradeError("Betting is switched off. Turn it on in Menu > Kalshi account.")
@@ -1387,6 +1395,7 @@ def _place_order(body):
         if row["src"] != "manual" and any(r.get("src") == row["src"] and r.get("ticker") == ticker and r.get("env") == env and r.get("order_id")
                                           for r in live_rows()):
             raise TradeError("Already bet on this market from this mode.")
+        _mark("checks")
         with order_lock:
             gap = 1.5 if row["src"] == "manual" else 0.25
             wait = gap - (time.time() - _last_order[0])
@@ -1395,10 +1404,13 @@ def _place_order(body):
                     raise TradeError("Slow down: one bet at a time.")
                 time.sleep(wait)                         # automatic bets queue up instead of being refused
             _last_order[0] = time.time()
+        _mark("gap")
         m, close = market_check(ticker, env)
+        _mark("market")
         if close is not None and close - time.time() < 6:
             raise TradeError("That market is about to close.")
         levels = book_levels(ticker, side, env)
+        _mark("book")
         ask, ask_note = live_ask(m, side, levels)
         maxp, slack = _f(body.get("max_price")), _f(body.get("slack"))
         if maxp is not None and ask is not None and row["src"] != "manual":
@@ -1466,7 +1478,9 @@ def _place_order(body):
                  "client_order_id": "kd-%d-%s" % (int(time.time() * 1000), os.urandom(3).hex())}
         row["client_order_id"] = order["client_order_id"]
         base = _bases(env)[0]
+        _mark("sizing")
         st, rb = signed_post(base, "/portfolio/events/orders", order)
+        _mark("post")
         data = json.loads(rb.decode("utf-8", "ignore") or "{}")
         if st in (400, 422) and fcount != count and FRAC_ERR.search(acct_error_text(st, data) + " " + json.dumps(data)):
             FRAC["ok"] = False                           # Kalshi refused the fraction: nothing was bought, so re-send the same bet as whole contracts
@@ -1518,6 +1532,7 @@ def _place_order(body):
         return {"ok": False, "error": "The order couldn't be sent (%s). It may or may not have gone through; check the Kalshi site before trying again." % e}
     finally:
         try:
+            row["ms"]["total"] = int((time.perf_counter() - _t0) * 1000)
             live_append(row)
         except Exception:
             pass

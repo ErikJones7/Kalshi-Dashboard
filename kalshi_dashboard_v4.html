@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26k</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26l</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1689,7 +1689,7 @@ let acct={info:null,sum:null,orders:[],bud:{},err:"",busy:false}, lv={armed:null
 // real-money mirrors: in memory only, so they are always OFF after a restart and have to be switched on on purpose
 let real={sim:false,auto:false,autoView:true,simView:true,events:[],evT:[],autoLast:null,q:Promise.resolve()};
 let liveRes={};
-const HELPER_EXPECT="2026-11-26c";      // the helper build this page needs (changes only when the helper program itself changes)
+const HELPER_EXPECT="2026-11-26d";      // the helper build this page needs (changes only when the helper program itself changes)
 const staleMsg="The helper program that is running is older than this page. Fully close it (Ctrl+Shift+Esc, end pythonw.exe / python.exe) and reopen the dashboard from its icon, or some real-money controls won't work right.";
 const oldHelper="The helper that is running is an older version that doesn't know about Kalshi accounts. Fully close it and reopen the dashboard from its icon: press Ctrl+Shift+Esc, open the Details tab, end every pythonw.exe (or python.exe) entry, then double-click the Kalshi Dashboard icon.";
 const acctNeed="Open the dashboard from its icon (the address starts with http://127.0.0.1) to use your Kalshi account.";
@@ -1863,32 +1863,33 @@ function realAuto(best,two,picks,wEnd){          // the same sizing rule as fake
   const wS=winStart;
   for(const x of picks){const st=Math.floor(b.avail*tot/picks.length*100)/100;if(!(st>=1))fakeKeep(wEnd+"|"+x.sym+"|"+x.side);if(st>=1)realMirror("auto",x.sym,x.side,st,{w:wEnd,p:x.conf,agree:x.agree,opp:x.opp}).then(o=>{if(o==="retry")autoRetry(x,st,wS,wEnd,1)})}
 }
+const RETRY_MS=1000;      // a refused bet looks again after this long (it was 3 s: in your logs the price moved by 6¢ on average in that time)
 function simRetry(sym,side,wS,wEnd,n){      // a Timed bet refused only on price keeps looking every few seconds while the signal holds and the price is worth it
   const tag="Timed bet "+sym+" "+side,stop=why=>realEvent(tag+": stopped trying ("+why+")");
   setTimeout(()=>safe("real timed retry",async()=>{
     if(!real.sim||winStart!==wS)return;
-    const left=wEnd-Date.now()/1000;if(left<15||n>40){stop("no good price before the window closed");return}
+    const left=wEnd-Date.now()/1000;if(left<15||n>120){stop("no good price before the window closed");return}
     const r=res[sym];if(!r||r.pCal==null){stop("no signal");return}
     const sd=r.pCal>=0.5?"UP":"DOWN",conf=sd==="UP"?r.pCal:1-r.pCal;
     if(sd!==side||conf<simMin){stop("the signal changed");return}
     const b=budOf("sim",sym),st=b?Math.floor(b.avail*100)/100:0;if(!(st>=1)){stop("not enough bankroll left");return}
     try{await refreshMarket(sym,wEnd,false)}catch(e){}
     const o=await realMirror("sim",sym,side,st,{w:wEnd,p:conf,retry:n});
-    if(o==="retry")simRetry(sym,side,wS,wEnd,n+1)}),3000);
+    if(o==="retry")simRetry(sym,side,wS,wEnd,n+1)}),RETRY_MS);
 }
 function autoRetry(x,stake,wS,wEnd,n){      // the real order was refused only because the price wasn't there yet: look again every few seconds while the signal still holds and the price is worth it
   const tag="Auto "+x.sym+" "+x.side,rk=wEnd+"|"+x.sym+"|"+x.side,stop=(why,keep)=>{realEvent(tag+": stopped trying ("+why+")");if(keep)fakeKeep(rk);else fakeDrop(rk,why)};
   setTimeout(()=>safe("real auto retry",async()=>{
     if(!real.auto){fakeKeep(rk);return}      // real betting was switched off by you: the fake bet keeps its own price
     if(winStart!==wS)return;
-    const left=wEnd-Date.now()/1000;if(left<15||n>40){stop("no good price before the window closed");return}
+    const left=wEnd-Date.now()/1000;if(left<15||n>120){stop("no good price before the window closed");return}
     const r=res[x.sym];if(!r||r.pCal==null){stop("no signal");return}
     const sd=r.pCal>=0.5?"UP":"DOWN",conf=sd==="UP"?r.pCal:1-r.pCal;
     if(sd!==x.side||!autoAllow(conf,r.tau)){stop("the signal changed");return}
     const b=budOf("auto","*"),st=Math.min(stake,b?Math.floor(b.avail*100)/100:0);if(!(st>=1)){stop("not enough bankroll left",true);return}
     try{await refreshMarket(x.sym,wEnd,false)}catch(e){}
     const o=await realMirror("auto",x.sym,x.side,st,{w:wEnd,p:conf,retry:n,agree:x.agree,opp:x.opp});
-    if(o==="retry")autoRetry(x,stake,wS,wEnd,n+1)}),3000);
+    if(o==="retry")autoRetry(x,stake,wS,wEnd,n+1)}),RETRY_MS);
 }
 const mxc=c=>"×"+(100/Math.max(1,+c)).toFixed(2);      // a price in cents shown as the payout multiplier it gives
 function multTxt(t){      // Auto mode talks in payout multipliers, not prices
