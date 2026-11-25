@@ -40,7 +40,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-26g"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-26h"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -814,6 +814,142 @@ def cfb_check():
         time.sleep(0.3)                                    # Kalshi allows about 4 of these per second
     ok = [r for r in out if r.get("status") == 200 and r.get("value") is not None]
     return {"ok": len(ok) == len(out), "got": len(ok), "of": len(out), "env": env, "results": out}
+
+
+# ---- Kalshi's CF Benchmarks index feed: what the 15-minute crypto markets settle on. Each answer is the last hour of one-second values per coin.
+# While the dashboard is asking (every ~10 s), a background thread asks Kalshi for each coin in turn, keeps the last 10 minutes in memory for the page
+# (which uses them to correct its price) and appends every new value to data/cfb-YYYYMMDD.csv.gz for later research. Read-only: nothing is ever bought.
+CFB_KEEP_S = 600
+CFB_CYCLE = 10.0                                       # seconds for one pass over all coins (about 1 request per second in total; Kalshi allows about 4)
+CFB = {}                                               # coin -> {"pts": {second: value}, "logged": newest second written to the log, "ok_at": when it last worked, "err": last problem}
+CFB_STATE = {"thread": None, "want": 0.0, "backoff": 0.0, "base": None, "cycles": 0}
+cfb_lock = threading.Lock()
+
+
+def _all_points(o):
+    """Every (second, value) pair in a CF Benchmarks reply shaped like [{"value": "...", "time": ms}, ...]."""
+    if isinstance(o, dict):
+        for v in o.values():
+            r = _all_points(v)
+            if r:
+                return r
+    elif isinstance(o, list) and o and all(isinstance(x, dict) for x in o):
+        pts = []
+        for x in o:
+            t, v = _to_epoch(x.get("time")), _f(x.get("value"))
+            if t is not None and v is not None and v > 0:
+                pts.append((int(t), v))
+        return pts
+    return []
+
+
+def cfb_log(coin, rows):
+    if not rows:
+        return
+    by_day = {}
+    for t, v in rows:
+        by_day.setdefault(time.strftime("%Y%m%d", time.gmtime(t)), []).append("%d,%s,%s" % (t, coin, repr(v)))
+    with lock:
+        os.makedirs(DATA, exist_ok=True)
+        for day, rs in by_day.items():
+            path = os.path.join(DATA, "cfb-%s.csv.gz" % day)
+            text = ("" if os.path.exists(path) else "t,coin,value\n") + "\n".join(rs) + "\n"
+            with open(path, "ab") as f:
+                f.write(gzip.compress(text.encode("utf-8"), 6))
+        try:
+            cutoff = time.strftime("%Y%m%d", time.gmtime(time.time() - PRICE_KEEP_DAYS * 86400))
+            for fn in os.listdir(DATA):
+                if fn.startswith("cfb-") and fn.endswith(".csv.gz") and fn[4:12] < cutoff:
+                    os.remove(os.path.join(DATA, fn))
+        except Exception:
+            pass
+
+
+def cfb_fetch(coin, idx):
+    _kid, env = acct_config()
+    bases = [DEMO_BASE] if env == "demo" else ["https://external-api.kalshi.com/trade-api/v2", UPSTREAM]
+    if CFB_STATE["base"] in bases:
+        bases = [CFB_STATE["base"]] + [b for b in bases if b != CFB_STATE["base"]]
+    ent = CFB.setdefault(coin, {"pts": {}, "logged": 0, "ok_at": 0.0, "err": None})
+    for base in bases:
+        try:
+            st, body = signed_get(base, "/cfbenchmarks/values", "id=" + idx)
+        except Exception as e:
+            ent["err"] = "no connection (%s)" % str(e)[:80]
+            continue
+        if st == 200:
+            try:
+                pts = _all_points(json.loads(body.decode("utf-8", "ignore") or "{}"))
+            except ValueError:
+                pts = []
+            if not pts:
+                ent["err"] = "answer had no values"
+                return
+            CFB_STATE["base"] = base
+            with cfb_lock:
+                for t, v in pts:
+                    ent["pts"][t] = v
+                newest = max(ent["pts"])
+                for t in [t for t in ent["pts"] if t < newest - CFB_KEEP_S]:
+                    del ent["pts"][t]
+            new = sorted((t, v) for t, v in pts if t > ent["logged"])
+            if new:
+                try:
+                    cfb_log(coin, new)
+                    ent["logged"] = new[-1][0]
+                except Exception:
+                    pass
+            ent["ok_at"], ent["err"] = time.time(), None
+            return
+        if st in (429, 503):
+            CFB_STATE["backoff"] = time.time() + 30
+            ent["err"] = "Kalshi says slow down (HTTP %d)" % st
+            return
+        if st in (401, 403):
+            CFB_STATE["backoff"] = time.time() + 120
+            ent["err"] = "this account can't read the index values (HTTP %d)" % st
+            return
+        ent["err"] = "HTTP %d" % st
+    return
+
+
+def cfb_loop():
+    try:
+        while time.time() - CFB_STATE["want"] < 60:            # runs only while the page keeps asking
+            t0 = time.time()
+            for coin, idx in CFB_IDS:
+                if time.time() < CFB_STATE["backoff"]:
+                    break
+                try:
+                    cfb_fetch(coin, idx)
+                except Exception as e:
+                    CFB.setdefault(coin, {"pts": {}, "logged": 0, "ok_at": 0.0, "err": None})["err"] = str(e)[:100]
+                time.sleep(0.3)
+            CFB_STATE["cycles"] += 1
+            time.sleep(max(1.0, CFB_CYCLE - (time.time() - t0)))
+    finally:
+        CFB_STATE["thread"] = None
+
+
+def cfb_recent(sec):
+    """The last `sec` seconds of index values per coin, for the page. Asking also keeps the background poller running."""
+    CFB_STATE["want"] = time.time()
+    th = CFB_STATE["thread"]
+    if th is None or not th.is_alive():
+        th = threading.Thread(target=cfb_loop, daemon=True, name="cfb")
+        CFB_STATE["thread"] = th
+        th.start()
+    now = time.time()
+    out = {}
+    with cfb_lock:
+        for coin, _idx in CFB_IDS:
+            e = CFB.get(coin)
+            if not e or not e["pts"]:
+                out[coin] = {"pts": [], "age": None, "err": (e or {}).get("err")}
+                continue
+            newest = max(e["pts"])
+            out[coin] = {"pts": [[t, v] for t, v in sorted(e["pts"].items()) if t >= newest - sec], "age": round(now - newest, 1), "err": e["err"], "ok_age": round(now - e["ok_at"], 1) if e["ok_at"] else None}
+    return {"now": now, "cycles": CFB_STATE["cycles"], "backoff": max(0, round(CFB_STATE["backoff"] - now)), "coins": out}
 
 
 def _f(v):
@@ -1746,6 +1882,13 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, json.dumps(acct_info()))
                 if name == "summary":
                     return self._send(200, json.dumps(acct_summary("force=1" in path)))
+                if name == "cfb_recent":
+                    q = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
+                    try:
+                        sec = max(30, min(600, int((q.get("sec") or ["180"])[0])))
+                    except ValueError:
+                        sec = 180
+                    return self._send(200, json.dumps(cfb_recent(sec)))
                 if name == "cfb_check":
                     return self._send(200, json.dumps(cfb_check()))
                 if name == "orders":

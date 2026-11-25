@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26p</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26q</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -266,7 +266,8 @@ body{transition:margin-left .14s ease-out}
   <div class="card" style="max-width:980px;margin:0 auto">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:17px">Kalshi account</b><div style="display:flex;gap:8px"><button id="kaLog">Activity log</button><button id="kaRef">Refresh</button><button id="kaClose">Close</button></div></div>
     <div class="s" id="kaMsg" style="margin:6px 0"></div>
-    <div style="margin:6px 0"><button id="kaCfb" title="Read-only test, 3 rounds a minute apart (about 3 minutes): asks Kalshi for the CF Benchmarks index values its 15-minute markets settle on and checks how old they are. Nothing is bought or changed.">Check CF Benchmarks access</button> <span class="s" id="kaCfbMsg"></span></div><div id="kaCfbOut" style="overflow-x:auto"></div>
+    <div style="margin:6px 0"><button id="kaCfb" title="Read-only test, 3 rounds a minute apart (about 3 minutes): asks Kalshi for the CF Benchmarks index values its 15-minute markets settle on and checks how old they are. Nothing is bought or changed.">Check CF Benchmarks access</button> <span class="s" id="kaCfbMsg"></span></div>
+    <div style="margin:6px 0"><label style="cursor:pointer"><input type="checkbox" id="kaCfbOn"> Correct prices with Kalshi's index (live)</label> <span class="s dim">Off by default. The index feed always runs and saves its values to the data folder, but the page only uses it for pricing while this is ticked; if it fails it falls back to the learned gap.</span></div><div class="s" id="kaCfbLive" style="margin:4px 0;overflow-wrap:anywhere"></div><div id="kaCfbOut" style="overflow-x:auto"></div>
     <div id="kaSetup">
       <ol style="margin:6px 0 6px 18px;padding:0;line-height:1.55">
         <li>On kalshi.com open your profile, then <b>API Keys</b>, then <b>Create New API Key</b>.</li>
@@ -400,7 +401,31 @@ const mean=a=>a.reduce((x,y)=>x+y,0)/a.length;
 const RTI_SEED={BNB:6.6,BTC:0.4,DOGE:2.2,ETH:1.7,HYPE:2.2,NEAR:7,SOL:1.9,XRP:2.1,ZEC:2.0};      // starting guesses, measured on 22 hours of data; replaced by the coin's own gaps as they come in
 let rtiGap=ls.get("k15rti",{}); const rawRing={};
 const medArr=a=>{const b=a.slice().sort((x,y)=>x-y),n=b.length;return n%2?b[(n-1)/2]:(b[n/2-1]+b[n/2])/2};
-function rtiOff(sym){const g=(rtiGap[sym]||[]).slice(-20),seed=RTI_SEED[sym]!=null?RTI_SEED[sym]:2.0,pad=Math.max(0,8-g.length);return medArr(Array(pad).fill(seed).concat(g))}
+let cfbOn=!!ls.get("k15cfbOn",false);const cfbOff={},cfbSt={feed:null,t:0,err:""};      // Kalshi's index feed: a live per-coin offset measured against the real index (used only while switched on)
+function rtiOff(sym){      // basis points added to the Coinbase price to get Kalshi's reference
+  if(cfbOn&&curSrc[sym]==="cb"){const c=cfbOff[sym];if(c&&Date.now()-c.ts<45000)return c.v}      // the live one, while it is fresh and the price comes from Coinbase
+  return rtiLearned(sym)}
+function rtiLearned(sym){const g=(rtiGap[sym]||[]).slice(-20),seed=RTI_SEED[sym]!=null?RTI_SEED[sym]:2.0,pad=Math.max(0,8-g.length);return medArr(Array(pad).fill(seed).concat(g))}
+function cfbApply(d){      // the index values from Kalshi vs what Coinbase said at the same seconds: the median difference is the coin's live offset
+  const now=Date.now();cfbSt.feed=d;cfbSt.t=now;cfbSt.err="";
+  for(const s of syms){const c=d.coins&&d.coins[s];if(!c||!c.pts||!c.pts.length||c.age==null||c.age>45)continue;
+    const m=new Map(c.pts),ring=rawRing[s]||[],bps=[];
+    for(let i=ring.length-1;i>=0&&bps.length<120;i--){const e=ring[i];if(e[2]!=="cb")continue;const v=m.get(e[0]);if(v>0&&e[1]>0)bps.push((v/e[1]-1)*1e4)}
+    if(bps.length<30)continue;
+    const nw=medArr(bps);if(!(Math.abs(nw)<150))continue;      // not believable: leave the last good value to expire
+    const pv=cfbOff[s],v=pv&&now-pv.ts<90000?pv.v+Math.max(-3,Math.min(3,(nw-pv.v)*0.5)):nw;      // moves toward the new measurement, at most 3 bp per step
+    cfbOff[s]={v,ts:now,n:bps.length,raw:nw}}}
+async function cfbPoll(){
+  try{if(!hBase||!acct.info||!acct.info.ready)return;
+    const r=await fetch(hBase+"/account/cfb_recent?sec=180",{cache:"no-store",signal:AbortSignal.timeout(8000)});if(!r.ok)throw new Error("HTTP "+r.status);cfbApply(await r.json())}
+  catch(e){cfbSt.err=String(e.message||e)}
+  safe("index feed line",renderCfbLine)}
+function renderCfbLine(){const el=$("kaCfbLive");if(!el)return;const d=cfbSt.feed,now=Date.now();
+  if(!d){setT(el,cfbSt.err?"Index feed: not available ("+cfbSt.err+")":"Index feed: waiting for the first answer…");return}
+  const rows=syms.map(s=>{const c=cfbOff[s],e=d.coins&&d.coins[s],fresh=c&&now-c.ts<45000;return s+" "+(fresh?(c.v>=0?"+":"")+c.v.toFixed(1):"–")+" (learned "+(rtiLearned(s)>=0?"+":"")+rtiLearned(s).toFixed(1)+(e&&e.err&&!fresh?", "+e.err:"")+")"});
+  const ok=syms.filter(s=>cfbOff[s]&&now-cfbOff[s].ts<45000).length;
+  setT(el,"Index feed: "+ok+" of "+syms.length+" coins live · correction "+(cfbOn?"ON":"off")+(d.backoff?" · paused "+d.backoff+" s by Kalshi":"")+" · offsets in bp, live vs learned: "+rows.join(", "))}
+setInterval(()=>safe("index feed",cfbPoll),10000);
 function rtiRing(sym,now,raw,src){const a=rawRing[sym]=rawRing[sym]||[],sec=Math.floor(now);if(a.length&&a[a.length-1][0]===sec)return;a.push([sec,raw,src]);if(a.length>520)a.shift()}
 function rtiLearn(sym,end,k){      // a new window's target price is Kalshi's reference value at the window open
   const open=end-WINDOW,a=(rawRing[sym]||[]).filter(e=>e[0]>=open-60&&e[0]<open);
@@ -1690,7 +1715,7 @@ let acct={info:null,sum:null,orders:[],bud:{},err:"",busy:false}, lv={armed:null
 // real-money mirrors: in memory only, so they are always OFF after a restart and have to be switched on on purpose
 let real={sim:false,auto:false,autoView:true,simView:true,events:[],evT:[],autoLast:null,q:Promise.resolve()};
 let liveRes={};
-const HELPER_EXPECT="2026-11-26g";      // the helper build this page needs (changes only when the helper program itself changes)
+const HELPER_EXPECT="2026-11-26h";      // the helper build this page needs (changes only when the helper program itself changes)
 const staleMsg="The helper program that is running is older than this page. Fully close it (Ctrl+Shift+Esc, end pythonw.exe / python.exe) and reopen the dashboard from its icon, or some real-money controls won't work right.";
 const oldHelper="The helper that is running is an older version that doesn't know about Kalshi accounts. Fully close it and reopen the dashboard from its icon: press Ctrl+Shift+Esc, open the Details tab, end every pythonw.exe (or python.exe) entry, then double-click the Kalshi Dashboard icon.";
 const acctNeed="Open the dashboard from its icon (the address starts with http://127.0.0.1) to use your Kalshi account.";
@@ -1784,6 +1809,7 @@ $("kaLog").onclick=()=>{renderEv();$("evw").style.display="block"};$("evClose").
 $("evClear").onclick=()=>{real.events.length=0;real.evT.length=0;renderEv()};
 $("evw").addEventListener("click",e=>{if(e.target.id==="evw")$("evw").style.display="none"});
 setInterval(()=>{if($("evw").style.display==="block")renderEv()},2000);$("kaRef").onclick=()=>acctRefresh(true);
+{const cb=$("kaCfbOn");cb.checked=cfbOn;cb.onchange=()=>{cfbOn=cb.checked;ls.set("k15cfbOn",cfbOn);realEvent("Prices corrected with Kalshi's index: "+(cfbOn?"ON":"off"));renderCfbLine()}}
 $("kaCfb").onclick=async()=>{      // read-only test of Kalshi's CF Benchmarks values: 3 rounds a minute apart, each value checked for age and against the price this page had at that second
   const btn=$("kaCfb"),msg=$("kaCfbMsg"),out=$("kaCfbOut"),ROUNDS=3,GAP=60,rounds=[];btn.disabled=true;setH(out,"");
   const at=(s,T)=>{const h=hist[s];if(!h||!h.length)return null;const i=h.length-1-Math.round(Date.now()/1000-T);const v=i>=0&&i<h.length?h[i]:NaN;return isFinite(v)?Math.exp(v):null};      // the price this page had at second T
