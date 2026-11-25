@@ -179,3 +179,8 @@ BUILD 2026-11-26o / HELPER 2026-11-26f: THE CF BENCHMARKS CHECK NOW MEASURES HOW
 - A one-line verdict at the top says whether the values are fresh and match the page, fresh but a real distance from it, old (so unusable for live prices), or have no readable time stamp.
 - Still read-only: nothing is bought, saved or changed, and no bot uses these values.
 - The helper changed (it now reports the time stamps), so it restarts by itself when the file is replaced.
+
+BUILD 2026-11-26p / HELPER 2026-11-26g: FIX FOR THE CF BENCHMARKS CHECK (IT WAS READING THE OLDEST VALUE)
+- Kalshi's CF Benchmarks answer is a list of one-second values covering about the last hour, oldest first. The check took the first one, so the values it showed were an hour old (that is why the age read 3600 s, and why the first run's gaps of +12 to +47 bp meant nothing). It now takes the newest value in the list and its own time stamp.
+- Compared with the price the page had at the same second, the CF values from the second run were within a few basis points (typically about 2.5 bp) for most coins.
+- The helper changed, so it restarts by itself when the file is replaced.

@@ -40,7 +40,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-26f"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-26g"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -744,6 +744,23 @@ def _to_epoch(v):
     return None
 
 
+def _latest_point(o):
+    """Kalshi's /cfbenchmarks/values answers with a LIST of one-second values (about the last hour, oldest first). Returns (value, its time in seconds, how many
+    points) for the newest one, or None when the reply isn't shaped like that."""
+    if isinstance(o, dict):
+        for v in o.values():
+            r = _latest_point(v)
+            if r:
+                return r
+    elif isinstance(o, list) and o and all(isinstance(x, dict) for x in o):
+        pts = [(_to_epoch(x.get("time")), _f(x.get("value"))) for x in o]
+        pts = [(t, v) for t, v in pts if t is not None and v is not None]
+        if pts:
+            t, v = max(pts)
+            return v, t, len(pts)
+    return None
+
+
 def _find_stamps(o, under_server=False, out=None):
     """The time CF Benchmarks puts on the value itself (a key named time/timestamp) and the time its server answered (serverTime), wherever they sit in the reply."""
     if out is None:
@@ -786,7 +803,11 @@ def cfb_check():
             row = {"coin": coin, "id": idx, "status": st, "ms": int((time.perf_counter() - t0) * 1000), "base": urllib.parse.urlsplit(base).netloc,
                    "value": _find_value(data) if st == 200 else None, "raw": txt[:260], "t_end": time.time()}
             if st == 200:
-                row.update(_find_stamps(data))             # how old the value is: its own time stamp against the moment Kalshi's answer reached us
+                lp = _latest_point(data)
+                if lp:
+                    row.update(value=lp[0], cf_ts=lp[1], n=lp[2], server_ts=None)       # the newest one-second value in the list, with its own time stamp
+                else:
+                    row.update(_find_stamps(data))         # how old the value is: its own time stamp against the moment Kalshi's answer reached us
             if st in (200, 401, 403):
                 break                                      # an answer that says yes or no to this account: no need to try the other address
         out.append(row)

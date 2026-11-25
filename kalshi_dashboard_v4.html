@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26o</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26p</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1690,7 +1690,7 @@ let acct={info:null,sum:null,orders:[],bud:{},err:"",busy:false}, lv={armed:null
 // real-money mirrors: in memory only, so they are always OFF after a restart and have to be switched on on purpose
 let real={sim:false,auto:false,autoView:true,simView:true,events:[],evT:[],autoLast:null,q:Promise.resolve()};
 let liveRes={};
-const HELPER_EXPECT="2026-11-26f";      // the helper build this page needs (changes only when the helper program itself changes)
+const HELPER_EXPECT="2026-11-26g";      // the helper build this page needs (changes only when the helper program itself changes)
 const staleMsg="The helper program that is running is older than this page. Fully close it (Ctrl+Shift+Esc, end pythonw.exe / python.exe) and reopen the dashboard from its icon, or some real-money controls won't work right.";
 const oldHelper="The helper that is running is an older version that doesn't know about Kalshi accounts. Fully close it and reopen the dashboard from its icon: press Ctrl+Shift+Esc, open the Details tab, end every pythonw.exe (or python.exe) entry, then double-click the Kalshi Dashboard icon.";
 const acctNeed="Open the dashboard from its icon (the address starts with http://127.0.0.1) to use your Kalshi account.";
