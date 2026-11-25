@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26j</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26k</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -395,6 +395,17 @@ let kalshiStatus="–", kalshiBlockedUntil=0, kalshiSlowUntil=0;      // slow mo
 /* ============================ helpers ============================ */
 const bpv=x=>isFinite(x)?x*1e4:null;
 const mean=a=>a.reduce((x,y)=>x+y,0)/a.length;
+/* Kalshi settles on a blended reference price (CF Benchmarks), not on Coinbase alone. Each coin's reference sits a small, steady distance from Coinbase (about 0 to 8 basis points). The page measures that gap at every window open (Kalshi's target price against Coinbase's 60-second average just before it), keeps the last 20 gaps per coin, and adds their median to the price it uses everywhere. */
+const RTI_SEED={BNB:6.6,BTC:0.4,DOGE:2.2,ETH:1.7,HYPE:2.2,NEAR:7,SOL:1.9,XRP:2.1,ZEC:2.0};      // starting guesses, measured on 22 hours of data; replaced by the coin's own gaps as they come in
+let rtiGap=ls.get("k15rti",{}); const rawRing={};
+const medArr=a=>{const b=a.slice().sort((x,y)=>x-y),n=b.length;return n%2?b[(n-1)/2]:(b[n/2-1]+b[n/2])/2};
+function rtiOff(sym){const g=(rtiGap[sym]||[]).slice(-20),seed=RTI_SEED[sym]!=null?RTI_SEED[sym]:2.0,pad=Math.max(0,8-g.length);return medArr(Array(pad).fill(seed).concat(g))}
+function rtiRing(sym,now,raw,src){const a=rawRing[sym]=rawRing[sym]||[],sec=Math.floor(now);if(a.length&&a[a.length-1][0]===sec)return;a.push([sec,raw,src]);if(a.length>520)a.shift()}
+function rtiLearn(sym,end,k){      // a new window's target price is Kalshi's reference value at the window open
+  const open=end-WINDOW,a=(rawRing[sym]||[]).filter(e=>e[0]>=open-60&&e[0]<open);
+  if(a.length<45||a.some(e=>e[2]!=="cb"))return;      // only when the whole minute before the open was priced from Coinbase
+  const gap=(k/mean(a.map(e=>e[1]))-1)*1e4;if(!(Math.abs(gap)<80))return;
+  (rtiGap[sym]=rtiGap[sym]||[]).push(Math.round(gap*100)/100);if(rtiGap[sym].length>60)rtiGap[sym].shift();ls.set("k15rti",rtiGap)}
 const sg=x=>1/(1+Math.exp(-x));
 const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
 const logit=p=>{p=clamp(p,0.001,0.999);return Math.log(p/(1-p))};
@@ -428,7 +439,7 @@ function chooseAll(){
         if(!k){let bst=1e9;for(const x of ORDER)if(age(x)<bst){bst=age(x);k=x} if(bst>STALE)k=null}
       }
     }
-    if(k){curSrc[s]=k;latest[s]={px:o[k].px,ts:o[k].ts}}else{delete latest[s];delete curSrc[s]}
+    if(k){curSrc[s]=k;latest[s]={px:o[k].px*(1+rtiOff(s)/1e4),ts:o[k].ts,raw:o[k].px};rtiRing(s,now,o[k].px,k)}else{delete latest[s];delete curSrc[s]}
   }
 }
 async function jget(url,opt){const r=await fetch(url,Object.assign({signal:AbortSignal.timeout(12000)},opt));      // a request that never answers must not freeze a feed
@@ -579,7 +590,7 @@ function buildSeries(c,nowSec){
 async function backfillAll(){
   const nowSec=Math.floor(Date.now()/1000), res_={};
   await Promise.all(syms.map((s,i)=>new Promise(r=>setTimeout(r,i*150)).then(async()=>{
-    const c=await candlesFor(s,nowSec); if(c){const b=buildSeries(c,nowSec);if(b){res_[s]=b;minVol[s]=b.vol}}})));
+    const c=await candlesFor(s,nowSec); if(c){const b=buildSeries(c,nowSec);if(b){const o=rtiOff(s)/1e4;b.out=b.out.map(v=>v+o);res_[s]=b;minVol[s]=b.vol}}})));
   const t0s=Object.values(res_).map(x=>x.t0); if(!t0s.length)return false;
   const tStart=Math.min(...t0s),len=Math.min(nowSec-tStart,HIST_LEN);
   for(const s of syms){const b=res_[s];
@@ -633,7 +644,7 @@ async function refreshMarket(sym,end,isSel){
   if(!best||Math.abs(bct-end)>5)return;       // this window's market isn't listed yet; try again next second
   let fs=parseFloat(best.floor_strike);
   if(!isFinite(fs)){const txt=[best.yes_sub_title,best.subtitle,best.title,best.rules_primary].join(" ");const m=txt.match(/\$\s*([\d,]+(?:\.\d+)?)/);if(m)fs=parseFloat(m[1].replace(/,/g,""))}
-  if(isFinite(fs)&&fs>0){strike[sym]={end,v:fs};SRC.kalshi.strike=SRC.kalshi.strike||{};SRC.kalshi.strike[sym]=fs}
+  if(isFinite(fs)&&fs>0){if(!(strike[sym]&&strike[sym].end===end))safe("reference gap",()=>rtiLearn(sym,end,fs));strike[sym]={end,v:fs};SRC.kalshi.strike=SRC.kalshi.strike||{};SRC.kalshi.strike[sym]=fs}
   {
     const q=(b)=>{let v=best[b+"_dollars"]; if(v!=null&&v!=="")return parseFloat(v); v=best[b]; return v==null?null:parseFloat(v)/100};
     const qq={sym,tk:best.ticker,close:bct,ts:now,yes_bid:q("yes_bid"),yes_ask:q("yes_ask"),no_bid:q("no_bid"),no_ask:q("no_ask"),last:q("last_price")};
@@ -849,7 +860,7 @@ async function saveToHelper(){
   if(sim)return;
   if(!hBase&&!(await findHelper())){savState="off";return}
   const o=hOutbox;hOutbox={sig:[],cal:[],fin:[],sim:[]};
-  try{await hpost("/data/save",{sig:o.sig,cal:o.cal,fin:o.fin,sim:o.sim,simstate:{simSt,simDef,simMode,simGain,autoSt,pickHist:pickHist.slice(-1500)},summary:{platt,bins:calibBins(),samples_in_browser:calSamples.length}});savState="ok"}
+  try{await hpost("/data/save",{sig:o.sig,cal:o.cal,fin:o.fin,sim:o.sim,simstate:{simSt,simDef,simMode,simGain,rtiGap,autoSt,pickHist:pickHist.slice(-1500)},summary:{platt,bins:calibBins(),samples_in_browser:calSamples.length}});savState="ok"}
   catch(e){savErr=e.message||"save error";hBase=null;savState="err";hOutbox.sig.push(...o.sig);hOutbox.cal.push(...o.cal);hOutbox.fin.push(...o.fin);hOutbox.sim.push(...o.sim)}
 }
 setInterval(()=>{if(hBase)fetch(hBase+"/alive").catch(()=>{})},20000);
@@ -874,7 +885,7 @@ async function syncHelper(){      // at startup: upload anything only the browse
     if(st.sim&&st.sim.length)simLog=st.sim.slice(-300);
     if(st.simstate&&st.simstate.autoSt&&st.simstate.autoSt.learn){autoSt=st.simstate.autoSt;ls.set("k15auto",autoSt)}
     if(st.simstate&&Array.isArray(st.simstate.pickHist)&&st.simstate.pickHist.length>pickHist.length){pickHist=st.simstate.pickHist;ls.set("k15pickh",pickHist)}
-    if(st.simstate&&st.simstate.simSt){simSt=st.simstate.simSt;if(st.simstate.simDef!=null)simDef=st.simstate.simDef;if(st.simstate.simMode)simMode=st.simstate.simMode;if(st.simstate.simGain>0)simGain=st.simstate.simGain;ls.set("k15sim",simSt)}
+    if(st.simstate&&st.simstate.simSt){simSt=st.simstate.simSt;if(st.simstate.simDef!=null)simDef=st.simstate.simDef;if(st.simstate.simMode)simMode=st.simstate.simMode;if(st.simstate.simGain>0)simGain=st.simstate.simGain;if(st.simstate.rtiGap&&!Object.keys(rtiGap).length){rtiGap=st.simstate.rtiGap;ls.set("k15rti",rtiGap)}ls.set("k15sim",simSt)}
     purgeOldCoins(true);platt=fitPlatt(calSamples);savState="ok";autoSeed();saveToHelper();
   }catch(e){savErr=e.message||"sync error";hBase=null;savState="err"}
 }
@@ -1023,7 +1034,8 @@ function step(tick,light){
   const okS=last.map((x,i)=>valid[i]&&isFinite(anchor[i])), notSel=syms.map((s,i)=>i!==selI);
   const avgAll5=avg(mv5,ok5);
   const rows=syms.map((s,i)=>{const r=res[s],fresh=r&&tick-r.tick<=8&&r.pCal!=null;
-    return {sym:s,price:valid[i]?Math.exp(last[i]):null,target:isFinite(anchor[i])?Math.exp(anchor[i]):null,tsrc:asrc[i]||null,move_start_bps:valid[i]?bpv(mvS[i]):null,
+    const a60=(()=>{const h=hist[s],v=[];for(let t=Math.max(0,N-60);t<N;t++)if(isFinite(h[t]))v.push(h[t]);return v.length>=40?Math.exp(mean(v)):null})();
+    return {sym:s,avg60:a60,price:valid[i]?Math.exp(last[i]):null,target:isFinite(anchor[i])?Math.exp(anchor[i]):null,tsrc:asrc[i]||null,move_start_bps:valid[i]?bpv(mvS[i]):null,
       move_mark_bps:ok5[i]?bpv(mv5[i]):null,vs_avg_bps:ok5[i]?bpv(mv5[i]-avgAll5):null,anchor:asrc[i]||null,
       p_up:fresh?r.pCal:null}});
   const summary={avg_all_start_bps:bpv(avg(mvS,okS)),avg_others_start_bps:bpv(avg(mvS,okS.map((x,i)=>x&&notSel[i]))),
@@ -1117,13 +1129,14 @@ function step(tick,light){
     const ff=arr=>{for(let i=s0;i<N;i++)if(isFinite(arr[i]))return arr[i];return NaN};
     const baseC=ff(hist[selected]),bases=syms.map(s=>ff(hist[s])),baseP=Math.exp(baseC);
     const idxs=[];for(let i=s0;i<N;i+=stride)idxs.push(i);if(idxs[idxs.length-1]!==N-1)idxs.push(N-1);
-    const xs=[],coin=[],avgL=[],pc=[],pa=[];
+    const xs=[],coin=[],c60=[],avgL=[],pc=[],pa=[];
     for(const i of idxs){
       xs.push(i-(N-1));
       const v=hist[selected][i],c=isFinite(v)?Math.exp(v):null;
       let sum=0,cnt=0;syms.forEach((s,j)=>{if(j===selI||!isFinite(bases[j]))return;const x=hist[s][i];if(isFinite(x)){sum+=x-bases[j];cnt++}});
       const a=(cnt&&isFinite(baseP))?baseP*Math.exp(sum/cnt):null;
       coin.push(c);avgL.push(a);
+      {const h=hist[selected];let t60=0,n60=0;for(let j=Math.max(0,i-59);j<=i;j++)if(isFinite(h[j])){t60+=h[j];n60++}c60.push(n60>=40?Math.exp(t60/n60):null)}
       pc.push(c!=null&&predC[i]!=null?c*Math.exp(predC[i]):null);
       pa.push(a!=null&&predA[i]!=null?a*Math.exp(predA[i]):null);
     }
@@ -1135,7 +1148,7 @@ function step(tick,light){
       if(la!=null&&selAn){const e=la*Math.exp(selAn.driftA*Math.min(1,tau/HZ));avgF=[[0,la],[Math.min(HZ,tau),e],[tau,e]]}
       fin={tau,c:rS.q[2],lo:rS.q[1],hi:rS.q[3],a:avgF?avgF[2][1]:null};
     }
-    chart={xs,coin,avg:avgL,pcoin:pc,pavg:pa,span:chartSpan,fut,have:N-1,tick,wStart,wEnd,src:asrc[selI],
+    chart={xs,coin,c60,avg:avgL,pcoin:pc,pavg:pa,span:chartSpan,fut,have:N-1,tick,wStart,wEnd,src:asrc[selI],
       tY:isFinite(anchor[selI])?Math.exp(anchor[selI]):null,fan,avgF,fin,sel:selected};
   }
 
@@ -1165,7 +1178,7 @@ const c=v=>v==null?"":v>=0?"up":"dn";
 const mmss=s=>String(Math.floor(s/60)).padStart(2,"0")+":"+String(Math.floor(s%60)).padStart(2,"0");
 const pc=v=>v==null?"–":(v*100).toFixed(1)+"%";
 const card=(k,v,s,cl)=>`<div class="card"><div class="k">${k}</div><div class="v ${cl||""}">${v}</div><div class="s">${s||""}</div></div>`;
-const COL={coin:"#4c8dff",avg:"#f5a524",pcoin:"#ec4899",pavg:"#2dd4bf"};
+const COL={coin:"#4c8dff",avg:"#f5a524",pcoin:"#ec4899",pavg:"#2dd4bf",c60:"#22c55e"};
 let actx=null;
 let volMul=ls.get("k15vol",1);
 function tone(freq,at,dur,type,vol){vol=Math.max(0.0001,vol*volMul);try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();
@@ -1188,7 +1201,7 @@ function draw(ch){
   if(!ch){setH($("lg"),"");setT($("cvnote"),"Waiting for prices…");return}
   const fg=getComputedStyle(document.body).color, mut="#8e9099", span=ch.span, fut=ch.fut, tick=ch.tick, tot=span+fut;
   const padL=84,padR=100,padT=14,padB=24,W=cw-padL-padR,H=chh-padT-padB;
-  const vals=[].concat(ch.coin,showAvg?ch.avg:[],ch.pcoin,showPavg?ch.pavg:[]).filter(v=>v!=null);
+  const vals=[].concat(ch.coin,ch.c60||[],showAvg?ch.avg:[],ch.pcoin,showPavg?ch.pavg:[]).filter(v=>v!=null);
   if(ch.tY!=null)vals.push(ch.tY);
   if(ch.fan)ch.fan.t.forEach((t,k)=>{if(t<=fut)vals.push(ch.fan.q[k][0],ch.fan.q[k][4])});
   if(ch.avgF&&showPavg)ch.avgF.forEach(([t,v])=>{if(t<=fut)vals.push(v)});
@@ -1234,7 +1247,7 @@ function draw(ch){
   const line=(arr,col,dash,w)=>{x.setLineDash(dash);x.strokeStyle=col;x.lineWidth=w;x.lineJoin="round";x.beginPath();let st=false;
     arr.forEach((v,i)=>{if(v==null){st=false;return}const X=px(ch.xs[i]),Y=py(v);st?x.lineTo(X,Y):x.moveTo(X,Y);st=true});x.stroke();x.setLineDash([])};
   if(showPavg)line(ch.pavg,COL.pavg,[7,4],1.6); line(ch.pcoin,COL.pcoin,[7,4],1.8);
-  if(showAvg)line(ch.avg,COL.avg,[],2); line(ch.coin,COL.coin,[],2.2);
+  if(showAvg)line(ch.avg,COL.avg,[],2); line(ch.coin,COL.coin,[],2.2); line(ch.c60,COL.c60,[2,3],1.6);
   x.restore();
   // target price label on the right edge
   if(ch.tY!=null){
@@ -1247,7 +1260,7 @@ function draw(ch){
   // predicted finish markers (only when the window end is inside the view)
   if(ch.fin&&ch.fin.tau<=fut){[[ch.fin.c,COL.pcoin],[showPavg?ch.fin.a:null,COL.pavg]].forEach(([v,cl])=>{if(v==null)return;
     x.fillStyle=cl;x.beginPath();x.arc(px(ch.fin.tau),py(v),4.5,0,7);x.fill();x.textAlign="right";x.fillText("$"+f(v),px(ch.fin.tau)-8,py(v)-9)})}
-  setH($("lg"),`<span><b style="color:${COL.coin}">━</b> ${ch.sel} actual</span>${showAvg?`<span><b style="color:${COL.avg}">━</b> average of other coins</span>`:""}<span><b style="color:${COL.pcoin}">╍</b> ${ch.sel} predicted</span>${showPavg?`<span><b style="color:${COL.pavg}">╍</b> average, predicted</span>`:""}`);
+  setH($("lg"),`<span><b style="color:${COL.coin}">━</b> ${ch.sel} actual</span><span title="The average of the last 60 seconds. Kalshi settles on a 60-second average, so this is the line that matters at the close."><b style="color:${COL.c60}">┅</b> ${ch.sel} 60-second average</span>${showAvg?`<span><b style="color:${COL.avg}">━</b> average of other coins</span>`:""}<span><b style="color:${COL.pcoin}">╍</b> ${ch.sel} predicted</span>${showPavg?`<span><b style="color:${COL.pavg}">╍</b> average, predicted</span>`:""}`);
   const note=[];
   if(ch.have<span)note.push("Only "+mmss(Math.floor(ch.have))+" of history so far.");
   if(ch.fan&&ch.fin&&ch.fin.tau>fut)note.push("Window ends in "+mmss(ch.fin.tau)+" (beyond this view).");
@@ -1331,10 +1344,10 @@ function render(s){
   }
   setH($("cards"),h); lastCh=s.chart; draw(s.chart);
 
-  let t="<tr><th>Coin</th><th>Price</th><th>Target</th><th>Since start (bps)</th><th>"+(s.phase==="active"?"Since 10:00 mark (bps)":"Last 5 min, rolling (bps)")+"</th><th>Vs avg of all (bps)</th><th>P(Up)</th></tr>";
+  let t="<tr><th>Coin</th><th>Price</th><th>Target</th><th title='The 60-second average price against the target. Kalshi settles on a 60-second average'>60s avg vs target (bps)</th><th>Since start (bps)</th><th>"+(s.phase==="active"?"Since 10:00 mark (bps)":"Last 5 min, rolling (bps)")+"</th><th>Vs avg of all (bps)</th><th>P(Up)</th></tr>";
   t+=s.coins.map(r=>{const hot=r.p_up!=null&&(r.p_up>=s.thr||r.p_up<=1-s.thr);
-    return `<tr class="${r.sym===s.selected?"sel":""}"${r.price==null?` style="opacity:.45" title="no price from any exchange"`:""}><td>${r.sym}</td><td>${f(r.price)}</td><td title="${r.tsrc==="manual"?"manually entered":r.tsrc==="kalshi"?"Kalshi strike":r.tsrc==="feed"?"price at window open":r.tsrc==="page"?"price when page opened":""}">${f(r.target)}${r.tsrc==="page"?"*":""}</td><td class="${c(r.move_start_bps)}">${b(r.move_start_bps)}</td><td class="${c(r.move_mark_bps)}">${b(r.move_mark_bps)}</td><td class="${c(r.vs_avg_bps)}">${b(r.vs_avg_bps)}</td><td class="${hot?"hot "+(r.p_up>=0.5?"up":"dn"):""}">${r.p_up==null?"–":pc(r.p_up)}</td></tr>`}).join("");
-  t+=`<tr><td><b>Average (all)</b></td><td></td><td></td><td>${b(s.summary.avg_all_start_bps)}</td><td>${b(s.summary.avg_all_mark_bps)}</td><td></td><td></td></tr>`;
+    return `<tr class="${r.sym===s.selected?"sel":""}"${r.price==null?` style="opacity:.45" title="no price from any exchange"`:""}><td>${r.sym}</td><td>${f(r.price)}</td><td title="${r.tsrc==="manual"?"manually entered":r.tsrc==="kalshi"?"Kalshi strike":r.tsrc==="feed"?"price at window open":r.tsrc==="page"?"price when page opened":""}">${f(r.target)}${r.tsrc==="page"?"*":""}</td><td class="${r.avg60&&r.target?c((r.avg60/r.target-1)*1e4):""}">${r.avg60&&r.target?b((r.avg60/r.target-1)*1e4):"–"}</td><td class="${c(r.move_start_bps)}">${b(r.move_start_bps)}</td><td class="${c(r.move_mark_bps)}">${b(r.move_mark_bps)}</td><td class="${c(r.vs_avg_bps)}">${b(r.vs_avg_bps)}</td><td class="${hot?"hot "+(r.p_up>=0.5?"up":"dn"):""}">${r.p_up==null?"–":pc(r.p_up)}</td></tr>`}).join("");
+  t+=`<tr><td><b>Average (all)</b></td><td></td><td></td><td></td><td>${b(s.summary.avg_all_start_bps)}</td><td>${b(s.summary.avg_all_mark_bps)}</td><td></td><td></td></tr>`;
   t+=`<tr><td><b>Average (ex-selected)</b></td><td></td><td></td><td>${b(s.summary.avg_others_start_bps)}</td><td>${b(s.summary.avg_others_mark_bps)}</td><td></td><td></td></tr>`;
   setH($("tbl"),t);
 
@@ -1359,11 +1372,12 @@ function renderTop(s){
   if(sr){
     const srcTxt={kalshi:"Kalshi's exact strike",feed:"estimate, not Kalshi's strike",page:"price when page opened, not Kalshi's strike"}[sr.tsrc]||"";
     const d=(sr.target&&sr.price)?(sr.price>=sr.target?"above":"below")+" target by "+Math.abs((sr.price/sr.target-1)*1e4).toFixed(1)+" bps ($"+f(Math.abs(sr.price-sr.target))+")":"";
+    const d60=(sr.target&&sr.avg60)?(sr.avg60>=sr.target?"above":"below")+" target by "+Math.abs((sr.avg60/sr.target-1)*1e4).toFixed(1)+" bps":"";
     setT($("tgtK"),"Target price · "+s.selected);
     setT($("tgtV"),sr.target!=null?"$"+f(sr.target):"–");
     setC($("tgtV"),"v "+(sr.target&&sr.price?(sr.price>=sr.target?"up":"dn"):""));
     const kh=(sr.tsrc!=="kalshi"&&sr.tsrc!=="manual"&&SRC.kalshi.err)?"<br><span style=\"color:var(--dn)\">Couldn't reach Kalshi ("+SRC.kalshi.err+"), so this is an estimate.</span>":"";
-    setH($("tgtS"),[srcTxt,d?"Now $"+f(sr.price)+" · "+d:""].filter(Boolean).join("<br>")+kh);
+    setH($("tgtS"),[srcTxt,d?"Now $"+f(sr.price)+" · "+d:"",d60?"60-second average $"+f(sr.avg60)+" · "+d60+" (Kalshi settles on this kind of average)":""].filter(Boolean).join("<br>")+kh);
 
   }
   const fc=$("finCard");
