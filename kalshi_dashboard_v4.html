@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26x</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26y</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -200,6 +200,7 @@ body{transition:margin-left .14s ease-out}
     </div>
   </div>
   <div><div class="s" id="arNote" style="margin:6px 0"></div><div class="autostats" id="arStats"></div></div>
+  <div class="s" id="arSell" style="margin:6px 0;display:flex;gap:10px;flex-wrap:wrap;align-items:center"><button id="sellOnBtn" class="onbtn" title="Early selling: when a rule below fires on an open real Auto bet, sell it back to Kalshi instead of holding it to the end. Off until you switch it on.">Early selling: OFF</button><span id="sellRuleBox"></span><span id="sellNote" style="flex-basis:100%"></span></div>
   <details class="fakebox" id="autoFakeD"><summary><span class="modetag fake">Fake money</span> practice version <span class="s">(always running, shown for comparison)</span>
     <span class="simctl" id="autoFakeCtl" style="margin-left:auto">
       <label>Start $ <input type="number" id="autoStart" min="1" step="10"></label>
@@ -1402,6 +1403,57 @@ function autoCashWatch(tick,tau){
     const ps=b.side==="UP"?r.pCal:1-r.pCal,nb=bid-0.07*bid*(1-bid);      // nb = what one contract nets after the selling fee
     b.co=b.co||{};
     for(const k in CASH_RULES)if(!b.co[k]&&CASH_RULES[k][1](ps,nb))b.co[k]={tau,bid:Math.round(bid*1000)/1000,nb:Math.round(nb*10000)/10000,ps:Math.round(ps*1000)/1000}}}
+/* Early selling of REAL Auto bets. Off until you switch it on (the helper refuses any sale while it is off). Every second, for each open real Auto bet, the ticked rules
+   below are checked against Kalshi's live bid; the first one that fires sells whatever the bet still holds at the bid (or up to 2 cents under it) with a reduce-only,
+   immediate-or-cancel order, so it can only close that bet and never open a position. Nothing is sold in the last 10 seconds, when the bid is under 5 cents after
+   the selling fee, or when the price is not fresh. A sale that does not fill is tried again every 2 seconds, up to 4 times; an answer that is unclear is never repeated.
+   The fake Auto cash-out test above keeps recording all six rules and never sells. */
+const SELL_LAB={f55:"Flip 55%+",f65:"Flip 65%+",f75:"Flip 75%+",f85:"Flip 85%+",m05:"Market +5 pts",m10:"Market +10 pts"};
+let sellRules=ls.get("k15sellrules",{f65:true,m10:true});
+const sellSt={};      // per market: {tries,last,busy,done}
+function realSellWatch(tick){
+  if(sim||!acct.info||!acct.info.selling||acct.stale||!realReady())return;
+  const on=Object.keys(sellRules).filter(k=>sellRules[k]&&CASH_RULES[k]);if(!on.length)return;
+  const now=Date.now()/1000,env=acct.info.env;
+  for(const o of acct.orders||[]){
+    if(!o.filled||o.src!=="auto"||o.env!==env||o.closed||o.res||!o.order_id||!(o.w>now+10&&o.w-now<=930))continue;      // o.w is the window end
+    const st=sellSt[o.ticker]=sellSt[o.ticker]||{tries:0,last:0,busy:false,done:false};
+    if(st.busy||st.done||st.tries>=4||now-st.last<2)continue;
+    const sym=o.sym||symOf(o),r=res[sym],q=quoteBy[sym];
+    if(!r||r.pCal==null||r.tick<tick-8||!q||q.tk!==o.ticker||now-q.ts>3)continue;
+    const yes=o.side==="yes",bid=yes?q.yes_bid:(q.no_bid!=null?q.no_bid:(q.yes_ask!=null?1-q.yes_ask:null));
+    if(!(bid>0&&bid<1))continue;
+    const ps=yes?r.pCal:1-r.pCal,nb=bid-0.07*bid*(1-bid);
+    if(nb<0.05)continue;
+    const hit=on.find(k=>CASH_RULES[k][1](ps,nb));if(!hit)continue;
+    sellGo(o,st,hit,ps,bid);
+  }
+}
+async function sellGo(o,st,rule,ps,bid){
+  st.busy=true;st.last=Date.now()/1000;st.tries++;
+  const tag=(o.sym||symOf(o))+" "+(o.side==="yes"?"UP":"DOWN"),min=Math.max(1,Math.floor(bid*100+1e-9)-2);
+  try{
+    const d=await apost("/account/sell",{ticker:o.ticker,side:o.side,min_price:min,rule,ps:Math.round(ps*1000)/1000,w:o.w});
+    if(d.ok&&d.filled){realEvent("Auto "+tag+": SOLD EARLY ("+SELL_LAB[rule]+"): "+ctr(d.fill_count)+" contracts for "+money(d.net)+" after fees. The model gave it "+Math.round(ps*100)+"% and the bid was "+Math.round(bid*100)+"¢"+(d.left>0.01?"; "+ctr(d.left)+" contracts still held":""));if(!(d.left>0.01))st.done=true}
+    else if(d.ok)realEvent("Auto "+tag+": sale not filled ("+SELL_LAB[rule]+"), the bet is still held; trying again");
+    else{const e=d.error||"failed";realEvent("Auto "+tag+": sale refused ("+e.replace(/\.$/,"")+")");if(/already been sold|already settled|switched off|no filled Auto bet|isn't set up|about to close/i.test(e))st.done=true}
+  }catch(e){realEvent("Auto "+tag+": sale not sent ("+(e.message||"failed")+")");st.done=true}      // the answer is unknown, so it is never repeated
+  st.busy=false;acctRefresh(true);
+}
+let sellBuilt=false;
+function renderSell(){
+  const i=acct.info,ready=!!(i&&i.ready&&i.selling!==undefined),box=$("arSell");if(!box)return;
+  box.style.display=ready?"flex":"none";if(!ready)return;
+  if(!sellBuilt){sellBuilt=true;
+    setH($("sellRuleBox"),Object.keys(SELL_LAB).map(k=>`<label title="${escH(CASH_RULES[k][0])}" style="white-space:nowrap"><input type="checkbox" data-r="${k}"> ${SELL_LAB[k]}</label>`).join(" "));
+    for(const c of $("sellRuleBox").querySelectorAll("input"))c.onchange=()=>{sellRules[c.dataset.r]=c.checked;ls.set("k15sellrules",sellRules);renderSell()};
+    $("sellOnBtn").onclick=async()=>{try{const d=await apost("/account/config",{selling:!(acct.info&&acct.info.selling)});if(d&&d.ok===false)realEvent("Early selling: "+(d.error||"not changed"))}catch(e){realEvent("Early selling: not changed ("+(e.message||"failed")+")")}await acctRefresh(true);renderSell()}}
+  const on=!!i.selling;setT($("sellOnBtn"),"Early selling: "+(on?"ON":"OFF"));$("sellOnBtn").classList.toggle("realm",on);
+  for(const c of $("sellRuleBox").querySelectorAll("input"))if(c.checked!==!!sellRules[c.dataset.r])c.checked=!!sellRules[c.dataset.r];
+  const act=Object.keys(sellRules).filter(k=>sellRules[k]&&CASH_RULES[k]).map(k=>SELL_LAB[k]),sold=(acct.orders||[]).filter(o=>o.src==="auto"&&o.sold_count>0&&o.env===i.env);
+  setT($("sellNote"),!on?"Off: real bets are held to the end. Turning it on sells an open real Auto bet when a ticked rule fires (flip = the model now gives the other side that much; market +N pts = the bid, after the selling fee, is N points above the model's win chance). Fake Auto keeps testing all six rules.":
+    (act.length?"On: sells when any of these fires: "+act.join(", ")+".":"On, but no rule is ticked, so nothing is sold.")+(sold.length?" Sold early so far: "+sold.length+" bet"+(sold.length===1?"":"s")+", "+(g=>(g>=0?"+":"-")+"$"+Math.abs(g).toFixed(2))(sold.reduce((t,o)=>t+(o.sold_net||0)-(o.closed?o.cost_total:o.cost_total*(o.sold_count/o.fill_count)),0))+" on the part sold, after fees.":""));
+}
 /* Shrink-and-edge test (shadow only, nothing is skipped): the predicted chances ran about 5 points too high on settled bets, so each fake Auto bet is
    stamped with a shrunk chance (rp) and the shrunk chance minus the price paid (re). At settlement the page books what a rule "only bet when re >= X points"
    would have kept and dropped, for all fake Auto bets and for the ones that followed a real fill. The shrink (0.78 x logit - 0.08) was fitted on 76 fake bets and
@@ -1435,6 +1487,7 @@ function autoStep(tick,tau,wStart,wEnd){
     for(const cp of A_CP){const k=wStart+"|"+sym+"|"+cp;if(tau>cp||autoSnap.has(k))continue;autoSnap.add(k);
       pendASnap.push({sym,side,conf,anchorLn:r.anchorLn,tb:atb(r.tau),bi:abin(conf)})}}
   autoCashWatch(tick,tau);
+  safe("early selling watch",()=>realSellWatch(tick));
   if(!autoSt.on||autoDone||tau>240)return;
   if(tau<25){autoDone=true;autoNote="No good bet this window";return}
   const now=Date.now()/1000,cands=[];let refr=0,waiting=0;
@@ -1618,7 +1671,7 @@ let acct={info:null,sum:null,orders:[],bud:{},err:"",busy:false};
 // real-money mirrors: in memory only, so they are always OFF after a restart and have to be switched on on purpose
 let real={auto:false,autoView:true,events:[],evT:[],autoLast:null,q:Promise.resolve()};
 let liveRes={};
-const HELPER_EXPECT="2026-11-26k";      // the helper build this page needs (changes only when the helper program itself changes)
+const HELPER_EXPECT="2026-11-26l";      // the helper build this page needs (changes only when the helper program itself changes)
 const staleMsg="The helper program that is running is older than this page. Fully close it (Ctrl+Shift+Esc, end pythonw.exe / python.exe) and reopen the dashboard from its icon, or some real-money controls won't work right.";
 const oldHelper="The helper that is running is an older version that doesn't know about Kalshi accounts. Fully close it and reopen the dashboard from its icon: press Ctrl+Shift+Esc, open the Details tab, end every pythonw.exe (or python.exe) entry, then double-click the Kalshi Dashboard icon.";
 const acctNeed="Open the dashboard from its icon (the address starts with http://127.0.0.1) to use your Kalshi account.";
@@ -1661,8 +1714,8 @@ function renderKa(){
   const tb=(h,rows)=>'<tr>'+h.map(x=>`<th>${x}</th>`).join("")+'</tr>'+(rows.length?rows.join(""):`<tr><td colspan="${h.length}" class="dim">None</td></tr>`);
   setH($("kaPos"),tb(["Market","Side","Contracts","Cost","Realized P&L"],((sm&&sm.positions)||[]).map(r=>`<tr><td>${escH(r.ticker)}</td><td>${r.side}</td><td>${r.contracts}</td><td>${money(r.cost)}</td><td>${money(r.pnl)}</td></tr>`)));
   setH($("kaFills"),tb(["Time","Market","Side","Contracts","Price","Fee"],((sm&&sm.fills)||[]).slice(0,40).map(r=>`<tr><td>${escH(String(r.time||"").replace("T"," ").replace("Z",""))}</td><td>${escH(r.ticker)}</td><td>${escH(r.action)} ${escH(r.side)}</td><td>${r.contracts==null?"–":r.contracts}</td><td>${r.price==null?"–":Math.round(r.price*100)+"¢"}</td><td>${money(r.fee)}</td></tr>`)));
-  setH($("kaOrd"),tb(["Time","Mode","Env","Market","Side","Contracts","Limit","Avg paid","Multiplier","Result","Cost","Payout","Net"],(acct.orders||[]).slice(0,60).map(r=>{const res=liveRes[r.ticker],won=r.filled&&res?res===r.side:null,net=won==null?null:pay(r,won)-r.cost_total;
-    return `<tr><td>${escH(r.time)}</td><td>${escH({sim:"timed",auto:"auto"}[r.src]||r.src||"manual")}</td><td>${escH(r.env)}</td><td>${escH(r.ticker)}</td><td>${escH(String(r.side).toUpperCase())}</td><td>${ctr(r.filled&&r.fill_count!=null?r.fill_count:r.count)}</td><td>${r.price_cents}¢</td><td>${r.filled&&r.avg_cents!=null?r.avg_cents+"¢":"–"}</td><td>${r.filled&&r.mult?"×"+r.mult.toFixed(2):"–"}</td><td class="${r.filled?(won===false?"miss":"hit"):"miss"}">${r.filled?(won==null?"Filled, waiting":won?"Won":"Lost"):escH(r.refused||r.error||"Not filled")}</td><td>${r.filled?money(r.cost_total):"–"}</td><td>${r.filled&&won!=null?money(pay(r,won)):"–"}</td><td class="${net>0?"hit":net<0?"miss":""}">${net==null?"–":(net>=0?"+":"-")+"$"+Math.abs(net).toFixed(2)}</td></tr>`})));
+  setH($("kaOrd"),tb(["Time","Mode","Env","Market","Side","Contracts","Limit","Avg paid","Multiplier","Result","Cost","Payout","Net"],(acct.orders||[]).slice(0,60).map(r=>{const oc=outcome(r),won=r.filled?oc.won:null,net=r.filled?oc.net:null;
+    return `<tr><td>${escH(r.time)}</td><td>${escH({sim:"timed",auto:"auto"}[r.src]||r.src||"manual")}</td><td>${escH(r.env)}</td><td>${escH(r.ticker)}</td><td>${escH(String(r.side).toUpperCase())}</td><td>${ctr(r.filled&&r.fill_count!=null?r.fill_count:r.count)}</td><td>${r.price_cents}¢</td><td>${r.filled&&r.avg_cents!=null?r.avg_cents+"¢":"–"}</td><td>${r.filled&&r.mult?"×"+r.mult.toFixed(2):"–"}</td><td class="${r.filled?(won===false?"miss":"hit"):"miss"}">${r.filled?resTxt(r,won):escH(r.refused||r.error||"Not filled")}</td><td>${r.filled?money(r.cost_total):"–"}</td><td>${r.filled&&oc.pay!=null?money(oc.pay):"–"}</td><td class="${net>0?"hit":net<0?"miss":""}">${net==null?"–":(net>=0?"+":"-")+"$"+Math.abs(net).toFixed(2)}</td></tr>`})));
 }
 let rhSrc=null;
 function renderRHGoal(){      // Auto's daily / weekly minimum returns, in its bet history
@@ -1677,9 +1730,9 @@ function renderRHGoal(){      // Auto's daily / weekly minimum returns, in its b
 function renderRH(){      // real bets of one mode, using Kalshi's own price, multiplier and payout once they are in
   if(!rhSrc)return;const rows=(acct.orders||[]).filter(r=>r.src===rhSrc&&r.env===((acct.info&&acct.info.env)||r.env));
   let w=0,l=0,net=0,open=0,fail=0;
-  const tr=rows.map(r=>{const res=liveRes[r.ticker],won=r.filled&&res?res===r.side:null,n=won==null?null:pay(r,won)-r.cost_total;
+  const tr=rows.map(r=>{const oc=outcome(r),won=r.filled?oc.won:null,n=r.filled?oc.net:null;
     if(r.filled){if(won==null)open++;else{won?w++:l++;net+=n}}else fail++;
-    return `<tr><td>${escH(r.time)}</td><td>${escH(symOf(r)||"")}</td><td>${escH(String(r.side).toUpperCase())}</td><td>${ctr(r.filled&&r.fill_count!=null?r.fill_count:r.count)}</td><td>${r.price_cents}¢</td><td>${r.filled&&r.avg_cents!=null?r.avg_cents+"¢":"–"}</td><td>${r.filled&&r.mult?"×"+r.mult.toFixed(2):"–"}</td><td class="${r.filled?(won===false?"miss":"hit"):"miss"}">${r.filled?(won==null?"Filled, waiting":won?"Won":"Lost"):escH(r.refused||r.error||"Not filled")}</td><td>${r.filled?money(r.cost_total):"–"}</td><td>${r.filled&&won!=null?money(pay(r,won)):"–"}</td><td class="${n>0?"hit":n<0?"miss":""}">${n==null?"–":(n>=0?"+":"-")+"$"+Math.abs(n).toFixed(2)}</td></tr>`});
+    return `<tr><td>${escH(r.time)}</td><td>${escH(symOf(r)||"")}</td><td>${escH(String(r.side).toUpperCase())}</td><td>${ctr(r.filled&&r.fill_count!=null?r.fill_count:r.count)}</td><td>${r.price_cents}¢</td><td>${r.filled&&r.avg_cents!=null?r.avg_cents+"¢":"–"}</td><td>${r.filled&&r.mult?"×"+r.mult.toFixed(2):"–"}</td><td class="${r.filled?(won===false?"miss":"hit"):"miss"}">${r.filled?resTxt(r,won):escH(r.refused||r.error||"Not filled")}</td><td>${r.filled?money(r.cost_total):"–"}</td><td>${r.filled&&oc.pay!=null?money(oc.pay):"–"}</td><td class="${n>0?"hit":n<0?"miss":""}">${n==null?"–":(n>=0?"+":"-")+"$"+Math.abs(n).toFixed(2)}</td></tr>`});
   const h=["Time","Coin","Side","Contracts","Limit","Avg paid","Multiplier","Result","Cost","Payout","Net"];
   setH($("rhTbl"),'<tr>'+h.map(x=>`<th>${x}</th>`).join("")+'</tr>'+(tr.length?tr.join(""):`<tr><td colspan="${h.length}" class="dim">No real bets yet</td></tr>`));
   renderRHGoal();
@@ -1973,12 +2026,17 @@ $("acStop").onclick=async()=>{      // one switch for all real betting: ON stops
 
 const symOf=r=>r.sym||((/^KX([A-Z0-9]+?)15M/.exec(r.ticker||"")||[])[1]||"?");
 const cls=v=>v>0?"hit":v<0?"miss":"";
-const pay=(r,won)=>won?(r.fill_count||0):0;      // what Kalshi paid out when it has told us, otherwise contracts x $1 for a win
+const pay=(r,won)=>(won?Math.max((r.fill_count||0)-(r.sold_count||0),0):0)+(r.sold_net||0);      // contracts x $1 for a win (only those not sold early), plus the cash any early sale brought back
+function outcome(r){      // a real bet's result: Kalshi's settlement, or, once all of it was sold early, the money the sale brought back (judged by the money)
+  if(r.closed){const net=(r.sold_net||0)-(r.cost_total||0);return{won:net>0,net,pay:r.sold_net||0}}
+  const res=r.filled?liveRes[r.ticker]:null,won=res?res===r.side:null;
+  return{won,net:won==null?null:pay(r,won)-r.cost_total,pay:won==null?null:pay(r,won)}}
+const resTxt=(r,won)=>won==null?(r.sold_count?"Part sold, waiting":"Filled, waiting"):(r.closed?"Sold early: ":r.sold_count?"Part sold: ":"")+(won?"Won":"Lost");
 function realOf(src){      // this mode's filled real bets on the account being shown, with each one's Kalshi result
   const env=acct.info&&acct.info.env,now=Date.now()/1000;
   return (acct.orders||[]).filter(r=>r.filled&&r.src===src&&r.env===env).map(r=>{
-    const res=liveRes[r.ticker],won=res?res===r.side:null;
-    return{r,sym:symOf(r),won,open:won==null&&now<(r.w||r.t+900),net:won==null?null:pay(r,won)-r.cost_total}});
+    const oc=outcome(r),won=oc.won;
+    return{r,sym:symOf(r),won,open:won==null&&now<(r.w||r.t+900),net:oc.net}});
 }
 function renderRealAuto(){
   const b=budOf("auto","*"),inp=$("autoRealStart");
@@ -1990,7 +2048,7 @@ function renderRealAuto(){
   setH($("arStats"),cell("Allocated",b?$$(b.bank):"–")+cell("Free to bet",b?$$(b.avail):"–")+cell("Net",b?$$(b.net):"–",b?cls(b.net):"")+cell("Wins / losses",b?b.w+" / "+b.l:"–")+
     cell("Hit rate",tot?Math.round(b.w/tot*1000)/10+"%":"–")+cell("Windows skipped",b?realSkip().n:"–")+cell("Currently bet",b?$$(b.open):"–")+cell("Peak",b?$$(b.peak):"–")+
     cell("Min confidence now",(g=>g==null?"none":Math.round(g*1000)/10+"%")(autoGate(1)))+cell("Learned from",samples+" samples")+cell("Status",st));
-  balSeedOnce();setH($("arNote"),balWarn()+(acct.stale?'<b class="miss">'+escH(staleMsg)+"</b><br>":"")+escH(flashFor("· Auto")));
+  safe("early selling card",renderSell);balSeedOnce();setH($("arNote"),balWarn()+(acct.stale?'<b class="miss">'+escH(staleMsg)+"</b><br>":"")+escH(flashFor("· Auto")));
 }
 $("autoRealHist").onclick=()=>openRH("auto");
 
@@ -1998,7 +2056,7 @@ function realStats(){
   const env=acct.info&&acct.info.env,day=new Date().toLocaleDateString("en-CA"),out={};
   for(const k of ["auto","manual","all"])out[k]={n:0,w:0,l:0,wait:0,netT:0,netA:0};
   for(const r of (acct.orders||[])){if(!r.filled||r.env!==env)continue;
-    const res=liveRes[r.ticker],won=res?res===r.side:null,net=won==null?null:pay(r,won)-r.cost_total;
+    const oc=outcome(r),won=oc.won,net=oc.net;
     for(const k of [r.src||"manual","all"]){const o=out[k];if(!o)continue;o.n++;if(won==null)o.wait++;else{if(won)o.w++;else o.l++;o.netA+=net;if(r.day===day)o.netT+=net}}}
   return out}
 function renderAcctCard(){

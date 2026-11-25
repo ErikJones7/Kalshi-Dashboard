@@ -117,6 +117,57 @@ with sync_playwright() as p:
     ok(bn["d"]["calls"] == "list" and bn["d"]["got"], "after 45 s into the window only the list is used: %s" % bn["d"])
     ok(bn["e"]["err"] and "429" in bn["e"]["err"], "'too many requests' still reaches the slow-down handling: %s" % bn["e"])
     ok(bn["ex"] == "KXBTC15M-26NOV251830-30 KXETH15M-26NOV260000-00 KXSOL15M-26MAR080315-15", "market names are built in New York time, midnight and the March clock change included: %s" % bn["ex"])
+    # ---- early selling of real Auto bets (rules, guards, accounting); every Kalshi call is faked, nothing real is sent
+    SELLJS = """async()=>{
+  sim=false;const out={},TK="KXBTC15M-26NOV251830-30",now=()=>Date.now()/1000;let posts=[];
+  apost=async(p,o)=>{posts.push([p,o]);return window.__ans||{ok:true,filled:true,fill_count:10,net:4.9,left:0}};
+  const ord=(o)=>Object.assign({filled:true,src:"auto",env:"prod",order_id:"o1",ticker:TK,sym:"BTC",side:"yes",fill_count:10,cost_total:6.2,w:now()+300,t:now()-100},o||{});
+  const setup=(o)=>{acct.info={env:"prod",ready:true,trading:true,selling:true,build:HELPER_EXPECT};acct.stale=false;acct.sum={ok:true,balance:100};acct.orders=[ord(o)];
+    for(const k in sellSt)delete sellSt[k];sellRules={f65:true,m10:true};posts=[];window.__ans=null};
+  const go=async(label,o,pCal,q,mod)=>{setup(o);if(mod)mod();const tick=Math.floor(now());res.BTC={pCal,tick};quoteBy.BTC=Object.assign({tk:TK,ts:now(),yes_bid:0.55,yes_ask:0.57,no_bid:0.43,no_ask:0.45},q||{});
+    realSellWatch(tick);await new Promise(r=>setTimeout(r,60));out[label]=posts.map(p=>({url:p[0],side:p[1].side,min:p[1].min_price,rule:p[1].rule,ps:p[1].ps}))};
+  await go("flip_yes",null,0.30);
+  await go("market10_yes",null,0.80,{yes_bid:0.93,yes_ask:0.95});
+  await go("no_rule_just_below_m10",null,0.84,{yes_bid:0.93,yes_ask:0.95});
+  await go("model_agrees_no_sale",null,0.90,{yes_bid:0.93,yes_ask:0.95});
+  await go("selling_off",null,0.30,null,()=>{acct.info.selling=false});
+  await go("stale_quote",null,0.30,{ts:now()-5});
+  await go("last_10_seconds",{w:now()+8},0.30);
+  await go("dust_bid",null,0.30,{yes_bid:0.04,yes_ask:0.06});
+  await go("no_rules_ticked",null,0.30,null,()=>{sellRules={}});
+  await go("already_sold_row",{closed:true,sold_count:10,sold_net:4.9},0.30);
+  await go("settled_row",{res:"no"},0.30);
+  await go("not_auto_row",{src:"manual"},0.30);
+  await go("stale_helper",null,0.30,null,()=>{acct.stale=true});
+  await go("flip_no",{side:"no"},0.70,{no_bid:0.50,no_ask:0.52,yes_bid:0.48,yes_ask:0.50});
+  // throttle: the same market is not hit twice within 2 s, and an unclear answer is never repeated
+  setup();res.BTC={pCal:0.3,tick:Math.floor(now())};quoteBy.BTC={tk:TK,ts:now(),yes_bid:0.55,yes_ask:0.57,no_bid:0.43,no_ask:0.45};
+  window.__ans={ok:true,filled:false};let t=Math.floor(now());realSellWatch(t);await new Promise(r=>setTimeout(r,40));realSellWatch(t);await new Promise(r=>setTimeout(r,40));out.throttle_posts=posts.length;
+  sellSt[TK].last-=3;window.__ans={ok:true,filled:false};realSellWatch(t);await new Promise(r=>setTimeout(r,40));out.after_2s_posts=posts.length;
+  setup();apost=async()=>{throw new Error("timeout")};res.BTC={pCal:0.3,tick:t};quoteBy.BTC={tk:TK,ts:now(),yes_bid:0.55,yes_ask:0.57,no_bid:0.43,no_ask:0.45};
+  realSellWatch(t);await new Promise(r=>setTimeout(r,40));sellSt[TK].last-=3;realSellWatch(t);await new Promise(r=>setTimeout(r,40));out.unclear_answer_done=sellSt[TK].done;
+  // accounting
+  liveRes[TK]="no";
+  const full=ord({closed:true,sold_count:10,sold_net:4.9,res:"no"}),part=ord({sold_count:4,sold_net:2.0}),plain=ord({}),win=ord({res:"yes"});
+  const oc=r=>{const x=outcome(r);return {won:x.won,net:x.net==null?null:Math.round(x.net*100)/100,pay:x.pay==null?null:Math.round(x.pay*100)/100}};
+  out.sold_all_loss=oc(full);out.part_sold_lost_rest=oc(Object.assign({},part,{}));liveRes[TK]="yes";out.part_sold_won_rest=oc(part);out.unsold_won=oc(win);
+  delete liveRes[TK];out.part_sold_waiting=oc(part);out.unsold_waiting=oc(plain);out.sold_all_profit=oc(ord({closed:true,sold_count:10,sold_net:7}));
+  out.label_full=resTxt(full,false);out.label_part=resTxt(part,true);out.label_plain=resTxt(plain,true);
+  return out}"""
+    sv = pg.evaluate(SELLJS)
+    one = lambda k: len(sv[k]) == 1 and sv[k][0]["url"] == "/account/sell"
+    ok(one("flip_yes") and sv["flip_yes"][0]["side"] == "yes" and sv["flip_yes"][0]["rule"] == "f65" and sv["flip_yes"][0]["min"] == 53, "the model flipping to 70%% the other way sells a YES bet at the bid minus 2c: %s" % sv["flip_yes"])
+    ok(one("market10_yes") and sv["market10_yes"][0]["rule"] == "m10", "a bid 10 points above the model's win chance sells it: %s" % sv["market10_yes"])
+    ok(one("flip_no") and sv["flip_no"][0]["side"] == "no" and sv["flip_no"][0]["min"] == 48, "a NO bet is sold the same way, from the NO bid: %s" % sv["flip_no"])
+    ok(all(sv[k] == [] for k in ("no_rule_just_below_m10", "model_agrees_no_sale")), "no rule firing means no sale")
+    ok(all(sv[k] == [] for k in ("selling_off", "stale_quote", "last_10_seconds", "dust_bid", "no_rules_ticked", "already_sold_row", "settled_row", "not_auto_row", "stale_helper")),
+       "nothing is sold when selling is off, the price is stale, under 10 s are left, the bid is dust, no rule is ticked, the bet is sold/settled/not Auto, or the helper is old")
+    ok(sv["throttle_posts"] == 1 and sv["after_2s_posts"] == 2, "the same bet is not hit twice within 2 s, and is tried again after 2 s: %s then %s" % (sv["throttle_posts"], sv["after_2s_posts"]))
+    ok(sv["unclear_answer_done"] is True, "when the answer to a sale is unclear it is never repeated")
+    ok(sv["sold_all_loss"] == {"won": False, "net": -1.3, "pay": 4.9} and sv["sold_all_profit"]["won"] is True and sv["sold_all_profit"]["net"] == 0.8, "a bet sold in full is judged by the money it brought back: %s" % sv["sold_all_loss"])
+    ok(sv["part_sold_won_rest"] == {"won": True, "net": 1.8, "pay": 8} and sv["part_sold_lost_rest"]["net"] == -4.2 and sv["part_sold_waiting"]["won"] is None, "a part-sold bet pays the sale plus only the contracts still held: %s" % sv["part_sold_won_rest"])
+    ok(sv["unsold_won"] == {"won": True, "net": 3.8, "pay": 10} and sv["unsold_waiting"]["won"] is None, "a bet that was never sold is accounted exactly as before")
+    ok((sv["label_full"], sv["label_part"], sv["label_plain"]) == ("Sold early: Lost", "Part sold: Won", "Won"), "the bet history says which bets were sold early: %s" % [sv["label_full"], sv["label_part"], sv["label_plain"]])
     ok(not errs, "no script errors during the checks: %s" % errs[:1])
     b.close()
 

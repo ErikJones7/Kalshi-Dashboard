@@ -1,5 +1,5 @@
 {
- "version": "2026-11-26x",
+ "version": "2026-11-26y",
  "notes": "",
  "files": [
   "kalshi_helper.py",
@@ -7,8 +7,8 @@
   "README.txt"
  ],
  "sha256": {
-  "kalshi_helper.py": "2e504af7780e642aec7bdf593c444978bf052f95511e56193dc907482bd397b8",
-  "kalshi_dashboard_v4.html": "fb97601dd4dcfa3106a40e9848047c835a3f443be485161ba2efa6713396949b",
-  "README.txt": "fff688fac2be0746c235226dd983fc0e337c642ce9d30abb8302fc1037fa9077"
+  "kalshi_helper.py": "2c62a9321a273d0ad72bfec6e78f1460ce9c894fa140e5dcd9991bf2ffb508e8",
+  "kalshi_dashboard_v4.html": "11a200fca651d9e982948512ba059729d0a44f4e8cea48a62f08baf92152e464",
+  "README.txt": "07986989731735148e1f33782cfcd208224000253b49929dae82d106cd5106d6"
  }
 }

@@ -40,7 +40,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-26k"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-26l"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -1094,7 +1094,9 @@ def cash_balance(max_age=15.0):
 # ---- placing bets (guarded)
 # Every rule below is enforced here, in the helper, not just in the page: the page cannot talk it out of them.
 #   * trading is OFF until you switch it on in the Kalshi account panel (and it switches itself off again if you change environment)
-#   * only 15-minute crypto markets (KX...15M) can be bought; only "buy", never sell
+#   * only 15-minute crypto markets (KX...15M) can be bought. Selling exists only to close contracts an Auto bet of this app bought: it is
+#     OFF until you switch Early selling on, it can only sell what that bet holds (reduce-only, immediate-or-cancel, with a price floor), and
+#     it can never open a position
 #   * a mode can only bet its own allocated money; a hand-placed bet can only use cash no mode has allocated
 #   * every order is a fill-or-kill limit order: it fills completely at your price or better, or not at all
 #   * every attempt, accepted or refused, is written to data/live_orders.jsonl
@@ -1117,7 +1119,8 @@ def trade_cfg():
             return v if v > 0 else d
         except (TypeError, ValueError):
             return d
-    return {"trading": bool(cfg.get("kalshi_trading")), "max_bet": num("kalshi_max_bet", DEF_MAX_BET), "daily": num("kalshi_daily", DEF_DAILY)}
+    return {"trading": bool(cfg.get("kalshi_trading")), "selling": bool(cfg.get("kalshi_trading")) and bool(cfg.get("kalshi_selling")),
+            "max_bet": num("kalshi_max_bet", DEF_MAX_BET), "daily": num("kalshi_daily", DEF_DAILY)}
 
 
 def live_rows():
@@ -1138,6 +1141,29 @@ def live_rows():
 def live_append(row):
     os.makedirs(DATA, exist_ok=True)
     with open(os.path.join(DATA, LIVE_LOG), "a", encoding="utf-8") as f:
+        f.write(json.dumps(row) + "\n")
+
+
+SELL_LOG = "live_sells.jsonl"      # early sales are kept apart from the bets, so nothing that counts bets can mistake a sale for one
+
+
+def sell_rows():
+    out = []
+    try:
+        with open(os.path.join(DATA, SELL_LOG), "r", encoding="utf-8") as f:
+            for ln in f:
+                try:
+                    out.append(json.loads(ln))
+                except ValueError:
+                    pass
+    except OSError:
+        pass
+    return out
+
+
+def sell_append(row):
+    os.makedirs(DATA, exist_ok=True)
+    with open(os.path.join(DATA, SELL_LOG), "a", encoding="utf-8") as f:
         f.write(json.dumps(row) + "\n")
 
 
@@ -1271,6 +1297,18 @@ def annotate(rows):
     """Adds Kalshi's result ("yes"/"no") to each filled row once its market has settled, then replaces our estimates with Kalshi's own
     numbers (price and fees actually paid, payout) as they become available. Missing ones are fetched in the background."""
     d, a, now, todo, tf, ts = _res_cache(), _act_cache(), time.time(), [], [], []
+    sold = {}                                   # early sales (filled ones), grouped by the buy order they closed
+    for sr in sell_rows():
+        if not sr.get("filled") or not sr.get("buy_oid"):
+            continue
+        sf = a.get("f|" + str(sr.get("order_id"))) if sr.get("order_id") else None
+        if sf:                                   # Kalshi's own record of what the sale really filled and cost
+            sr["fill_count"], sr["gross"], sr["fees"] = sf["count"], sf["cost"], sf["fees"]
+            sr["net"] = round(sf["cost"] - sf["fees"], 4)
+            sr["actual"] = True
+        elif sr.get("order_id") and now - (sr.get("t") or now) > 2 and _act["tries"].get(("f", sr["order_id"]), 0) < 6:
+            tf.append((sr["order_id"], sr.get("ticker"), sr.get("side")))
+        sold.setdefault((sr.get("env"), sr["buy_oid"]), []).append(sr)
     for r in rows:
         r["res"] = d.get("%s|%s" % (r.get("env"), r.get("ticker"))) if r.get("filled") else None
         if r.get("filled") and not r["res"] and now > (r.get("w") or (r.get("t") or now) + 900) + 15:
@@ -1293,11 +1331,20 @@ def annotate(rows):
         if fc and ct:
             r["avg_cents"] = round((r.get("cost") or ct) / fc * 100, 1)
             r["mult"] = round(fc / ct, 3)               # what each $1 paid (fees included) pays back if it wins
+        ss = sold.get((r.get("env"), oid)) if oid else None
+        sc = sn = 0.0
+        if ss:                                  # contracts sold early, and the cash that came back (after the selling fee)
+            sc, sn = min(sum(x.get("fill_count") or 0 for x in ss), fc), sum(x.get("net") or 0 for x in ss)
+            r["sold_count"], r["sold_net"], r["sold_t"] = round(sc, 2), round(sn, 4), max(x.get("t") or 0 for x in ss)
+            r["closed"] = bool(fc and sc >= fc - 0.0101)
+            if r["closed"]:
+                r["payout"], r["payout_actual"] = round(sn, 4), False
         if r["res"]:
             # Kalshi pays $1 per winning contract. Only this order's own contracts count: the settlement Kalshi reports covers the
             # whole position in the market, which also holds any contracts bought by hand or by another order.
+            # Contracts sold early are paid by the sale instead, so only the rest is paid at settlement.
             won = r["res"] == r.get("side")
-            r["payout"] = fc if won else 0.0
+            r["payout"] = (max(fc - sc, 0.0) if won else 0.0) + sn
             r["payout_actual"] = False
     if todo and not _res["busy"] and now - _res["last"] > 6:
         _res["busy"], _res["last"] = True, now
@@ -1328,13 +1375,13 @@ def budget_stats(env, rows=None):
             mine = [r for r in rows if r.get("filled") and r.get("env") == env and r.get("src") == src and (r.get("t") or 0) >= since - 0.001
                     and (src != "sim" or sym_of(r.get("ticker")) == key)]
             net, peak, w, l = 0.0, max(start, 0.0), 0, 0
-            for r in sorted([r for r in mine if r.get("res")], key=lambda r: (r.get("w") or r.get("t") or 0)):
-                won = r["res"] == r.get("side")
+            for r in sorted([r for r in mine if r.get("res") or r.get("closed")], key=lambda r: (r.get("w") or r.get("t") or 0)):
+                won = ((r.get("payout") or 0) > (r.get("cost_total") or 0)) if r.get("closed") else r["res"] == r.get("side")      # sold early: judged by the money
                 net += (r.get("payout") or 0) - (r.get("cost_total") or 0)
                 w, l = w + (1 if won else 0), l + (0 if won else 1)
                 peak = max(peak, start + net)
-            opn = [r for r in mine if not r.get("res")]
-            oc = sum(r.get("cost_total") or 0 for r in opn)
+            opn = [r for r in mine if not (r.get("res") or r.get("closed"))]
+            oc = sum(max((r.get("cost_total") or 0) - (r.get("sold_net") or 0), 0.0) for r in opn)      # cash already back from a partial sale is free again
             out[src][key] = {"start": start, "since": since, "n": len(mine), "w": w, "l": l, "net": round(net, 4), "peak": round(peak, 4),
                              "bank": round(start + net, 4), "open": round(oc, 4), "open_n": len(opn), "avail": round(start + net - oc, 4)}
     return out
@@ -1796,12 +1843,133 @@ def _place_order(body):
             pass
 
 
+_sell_lock = threading.Lock()
+_last_sell = {}
+
+
+def place_sell(body):
+    with _sell_lock:                       # one sale at a time, so each one sees every earlier sale
+        return _place_sell(body)
+
+
+def _place_sell(body):
+    """Early sale of contracts that one of this app's Auto bets holds. Immediate-or-cancel and reduce-only: it sells at the live bid or
+    better (never below the floor the page sends) and can only close what is held, so it can't open a position. Whatever Kalshi didn't
+    fill stays held, and the bet settles as usual."""
+    t = trade_cfg()
+    key_id, env = acct_config()
+    ticker = str(body.get("ticker") or "")
+    side = str(body.get("side") or "").lower()
+    row = {"t": time.time(), "day": time.strftime("%Y-%m-%d"), "time": time.strftime("%Y-%m-%d %H:%M:%S"), "env": env, "ticker": ticker, "side": side,
+           "src": "auto", "kind": "sell", "rule": str(body.get("rule") or "")[:60], "ps": _f(body.get("ps")), "w": _f(body.get("w")),
+           "sym": sym_of(ticker), "filled": False, "fill_count": 0.0, "net": 0.0}
+    try:
+        if not t["trading"]:
+            raise TradeError("Betting is switched off. Turn it on in Menu > Kalshi account.")
+        if not t["selling"]:
+            raise TradeError("Early selling is switched off.")
+        if not acct_status()["ready"]:
+            raise TradeError("Your Kalshi key isn't set up yet.")
+        if not TICKER_RE.match(ticker):
+            raise TradeError("Only 15-minute crypto markets can be sold from here.")
+        if side not in ("yes", "no"):
+            raise TradeError("The side must be YES or NO.")
+        try:
+            floor = int(body.get("min_price"))
+        except (TypeError, ValueError):
+            raise TradeError("The sale details were incomplete.")
+        if not (1 <= floor <= 99):
+            raise TradeError("That minimum price is out of range.")
+        row["min_price_cents"] = floor
+        buys = [r for r in live_rows() if r.get("filled") and r.get("env") == env and r.get("src") == "auto" and r.get("ticker") == ticker
+                and r.get("side") == side and r.get("order_id")]
+        if not buys:
+            raise TradeError("This app has no filled Auto bet on that market to sell.")
+        buy = annotate(buys[-1:])[0]
+        row["buy_oid"] = buy["order_id"]
+        if buy.get("res"):
+            raise TradeError("That market has already settled.")
+        remaining = math.floor(((buy.get("fill_count") or 0) - (buy.get("sold_count") or 0)) * 100 + 1e-6) / 100.0      # rounded down to a hundredth of a contract
+        if remaining < 0.01:
+            raise TradeError("This bet has already been sold.")
+        if time.time() - _last_sell.get(buy["order_id"], 0) < 1.0:
+            raise TradeError("Slow down: a sale of this bet was just tried.")
+        _last_sell[buy["order_id"]] = time.time()
+        m, close = market_check(ticker, env)
+        if close is not None and close - time.time() < 4:
+            raise TradeError("That market is about to close.")
+        opp = "no" if side == "yes" else "yes"
+        bids = book_levels(ticker, opp, env)                 # the bids on `side`: what a sale of it matches against
+        if bids is not None:
+            live = [(p, q) for p, q in bids if q > 0]
+            best = max((p for p, q in live), default=None)
+            depth = sum(q for p, q in live if p >= floor - 1e-9)
+        else:
+            best, depth = _quote_cents(m, side + "_bid"), None
+        row["bid_seen"] = None if best is None else round(best, 2)
+        if best is None or best <= 0:
+            raise TradeError("Nobody is bidding for this side right now, so nothing was sold.")
+        if best < floor - 1e-9:
+            raise TradeError("The bid is now %d¢, below the %d¢ minimum for this sale, so nothing was sold." % (round(best), floor))
+        if depth is not None and depth < 0.01:
+            raise TradeError("Nothing is bid at %d¢ or better right now, so nothing was sold." % floor)
+        count = remaining
+        row["count"] = count
+        yes_px = floor if side == "yes" else 100 - floor
+        order = {"ticker": ticker, "side": "ask" if side == "yes" else "bid", "count": "%.2f" % count, "price": "%.2f" % (yes_px / 100.0),
+                 "time_in_force": "immediate_or_cancel", "reduce_only": True, "self_trade_prevention_type": "taker_at_cross",
+                 "client_order_id": "kds-%d-%s" % (int(time.time() * 1000), os.urandom(3).hex())}
+        row["client_order_id"] = order["client_order_id"]
+        st, rb = signed_post(_bases(env)[0], "/portfolio/events/orders", order)
+        data = json.loads(rb.decode("utf-8", "ignore") or "{}")
+        if st >= 400:
+            row["error"] = acct_error_text(st, data)
+            raise TradeError(row["error"])
+        o = data.get("order") if isinstance(data.get("order"), dict) else data
+        fc = _f(o.get("fill_count"))
+        if fc is None:
+            fc = _f(o.get("fill_count_fp"))
+        fc = min(fc or 0, count)
+        gross = fees = 0.0
+        if fc > 0:
+            avg = _f(o.get("average_fill_price"))             # per contract, quoted on the YES side
+            per_fee = _f(o.get("average_fee_paid"))
+            lim = floor / 100.0
+            per = None
+            if avg is not None and 0 < avg < 1:
+                per = avg if side == "yes" else 1.0 - avg
+                if side == "no" and per < lim - 0.005 and avg >= lim - 0.005:
+                    per = avg                                   # reported in NO terms instead
+            gross = fc * max(per if per is not None else lim, lim)      # an immediate-or-cancel order can never sell below its floor
+            fees = fc * per_fee if per_fee is not None else est_fee(fc, round(gross / fc * 100))
+        row.update(order_id=o.get("order_id"), status="executed" if fc > 0 else "not filled", filled=bool(fc > 0), fill_count=round(fc, 2),
+                   gross=round(gross, 4), fees=round(fees, 4), net=round(gross - fees, 4))
+        if row["filled"]:
+            threading.Timer(3.0, lambda: annotate(live_rows())).start()      # pick up Kalshi's own record of the sale
+        acct_cache["data"] = None
+        left = round(remaining - fc, 2)
+        return {"ok": True, "filled": row["filled"], "fill_count": row["fill_count"], "net": row["net"], "left": left, "status": row["status"],
+                "message": ("Sold %g contracts for $%.2f after fees." % (fc, row["net"])) if row["filled"] else "Not sold: the bid moved before it could fill. Still held."}
+    except TradeError as e:
+        row["refused"] = str(e)
+        return {"ok": False, "error": str(e)}
+    except Exception as e:
+        log("sale failed:\n" + traceback.format_exc())
+        row["refused"] = "error: %s" % e
+        return {"ok": False, "error": "The sale couldn't be sent (%s). It may or may not have gone through; check the Kalshi site before trying again." % e}
+    finally:
+        try:
+            sell_append(row)
+        except Exception:
+            pass
+
+
 def acct_info():
     t = trade_cfg()
     s = acct_status()
     rs = load_settings().get("kalshi_resume") or {}
     resume = {"auto": bool(rs.get("auto")) and t["trading"], "sim": bool(rs.get("sim")) and t["trading"]}      # which Start real betting buttons were on when the app last ran; nothing resumes while betting is switched off
-    s.update(trading=t["trading"], max_bet=t["max_bet"], daily=t["daily"], spent_today=round(spent_today(s["env"]), 2), build=HELPER_BUILD, resume=resume)
+    s.update(trading=t["trading"], selling=t["selling"], max_bet=t["max_bet"], daily=t["daily"], spent_today=round(spent_today(s["env"]), 2), build=HELPER_BUILD, resume=resume)
     return s
 
 
@@ -1825,9 +1993,12 @@ def acct_set(body):
             cfg[name] = v
     if "trading" in body:
         cfg["kalshi_trading"] = bool(body["trading"])
+    if "selling" in body:
+        cfg["kalshi_selling"] = bool(body["selling"])
     if isinstance(body.get("resume"), dict):
         cfg["kalshi_resume"] = {"auto": bool(body["resume"].get("auto")), "sim": bool(body["resume"].get("sim"))}
     if not cfg.get("kalshi_trading"):
+        cfg["kalshi_selling"] = False                                    # early selling goes off with betting and has to be switched on again
         cfg["kalshi_resume"] = {"auto": False, "sim": False}            # betting switched off (by you, a new environment, or a removed key): nothing may restart by itself
     save_settings(cfg)
     acct_cache["data"] = None
@@ -1906,6 +2077,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, json.dumps(cfb_check()))
                 if name == "orders":
                     return self._send(200, json.dumps(annotate(live_rows()[-400:])[::-1]))
+                if name == "sells":
+                    return self._send(200, json.dumps(sell_rows()[-400:][::-1]))
                 if name == "budget":
                     return self._send(200, json.dumps({"env": acct_config()[1], "budget": budget_stats(acct_config()[1])}))
                 if name == "ask":
@@ -1987,6 +2160,8 @@ class Handler(BaseHTTPRequestHandler):
                 name = self.path.split("?")[0][len("/account/"):]
                 if name == "order":
                     return self._send(200, json.dumps(place_order(body)))
+                if name == "sell":
+                    return self._send(200, json.dumps(place_sell(body)))
                 if name == "config":
                     if "budgets" in body:
                         return self._send(200, json.dumps({"ok": True, "budget": budget_set_many(body["budgets"])}))

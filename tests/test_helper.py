@@ -15,7 +15,7 @@ H = importlib.util.module_from_spec(spec); sys.modules["H"] = H; spec.loader.exe
 KEYID = "11111111-2222-3333-4444-555555555555"
 KEY = ed25519.Ed25519PrivateKey.generate()
 PEM = KEY.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()).decode()
-STATE = {"bal": 9000, "orders": [], "mode": "fill", "bal_err": False}     # bal is in cents
+STATE = {"bal": 9000, "orders": [], "mode": "fill", "bal_err": False, "book": None}     # bal is in cents
 
 
 class Mock(http.server.BaseHTTPRequestHandler):
@@ -30,6 +30,8 @@ class Mock(http.server.BaseHTTPRequestHandler):
         b = json.dumps(obj).encode(); s.send_response(code); s.send_header("Content-Length", str(len(b))); s.end_headers(); s.wfile.write(b)
     def do_GET(s):
         p = s.path.split("?")[0]
+        if p.startswith("/trade-api/v2/markets/") and p.endswith("/orderbook") and STATE["book"]:
+            return s.out(200, {"orderbook_fp": STATE["book"]})
         if p.startswith("/trade-api/v2/markets/"):
             close = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + 300))
             return s.out(200, {"market": {"ticker": p.split("/")[-1], "status": "active", "close_time": close, "result": "", "yes_ask_dollars": "0.6100", "no_ask_dollars": "0.4000"}})
@@ -52,7 +54,11 @@ class Mock(http.server.BaseHTTPRequestHandler):
         if STATE["mode"] == "closed": return s.out(409, {"code": "conflict", "message": "market is closed"})
         if STATE["mode"] == "kill": return s.out(201, {"order_id": "o1", "fill_count": "0.00", "remaining_count": body["count"]})
         px = float(body["price"])
-        return s.out(201, {"order_id": "o2", "client_order_id": body.get("client_order_id"), "fill_count": body["count"], "remaining_count": "0.00",
+        if STATE["mode"] == "partial":
+            fc = "%.2f" % (float(body["count"]) / 2)
+            return s.out(201, {"order_id": "o%d" % len(STATE["orders"]), "client_order_id": body.get("client_order_id"), "fill_count": fc, "remaining_count": fc,
+                               "average_fill_price": "%.4f" % px, "average_fee_paid": "0.0100"})
+        return s.out(201, {"order_id": "o%d" % len(STATE["orders"]), "client_order_id": body.get("client_order_id"), "fill_count": body["count"], "remaining_count": "0.00",
                            "average_fill_price": "%.4f" % px, "average_fee_paid": "0.0100"})
 
 
@@ -134,6 +140,51 @@ for n in ("2026-11-23a_20261122-204602", "2026-11-23h_20261122-210729", "2026-11
 open(os.path.join(bk, "keepme.txt"), "w").write("x")
 H.prune_backups()
 left = sorted(os.listdir(bk)); ok(left == ["2026-11-26b_20261124-135944", "2026-11-26k_20261125-173500", "keepme.txt", "notes"], "only the newest two backups are kept; other files and folders are left alone: %s" % left)
+
+# ---- early selling (only of contracts an Auto bet here holds; off until switched on; reduce-only, immediate-or-cancel, with a price floor)
+def sell(ticker, side, floor, **k):
+    time.sleep(1.1); b = {"ticker": ticker, "side": side, "min_price": floor, "rule": "f65", "ps": 0.3, "w": time.time() + 60}; b.update(k); return call("/account/sell", b)[1]
+set_mode("fill"); H.save_settings(dict(H.load_settings(), kalshi_budget=H.load_settings().get("kalshi_budget")))
+S1, S2, S3, S4 = tk(), tk(), tk(), tk()
+order("auto", S1, "yes", 10, 61); order("auto", S2, "no", 10, 40); order("auto", S3, "yes", 10, 61)
+order("manual", S4, "yes", 2, 61)
+n0 = len(STATE["orders"])
+d = sell(S1, "yes", 50); ok(not d["ok"] and "switched off" in d["error"] and len(STATE["orders"]) == n0, "selling is refused while Early selling is off: " + d.get("error", "")[:60])
+st, d = call("/account/status"); ok(d["selling"] is False, "Early selling starts off")
+st, d = call("/account/config", {"selling": True}); ok(d["ok"] and d["status"]["selling"] is True, "Early selling can be switched on")
+d = sell(S4, "yes", 50); ok(not d["ok"] and "no filled Auto bet" in d["error"] and len(STATE["orders"]) == n0, "a hand-placed bet can't be sold from here: " + d.get("error", "")[:60])
+d = sell(tk(), "yes", 50); ok(not d["ok"] and "no filled Auto bet" in d["error"], "a market with no Auto bet can't be sold")
+bad = sell(S1, "yes", 0); ok(not bad["ok"], "a price floor of 0 is refused")
+STATE["book"] = {"yes_dollars": [["0.4000", "100.00"]], "no_dollars": [["0.5500", "100.00"]]}
+d = sell(S1, "yes", 50); ok(not d["ok"] and "below the 50" in d["error"] and len(STATE["orders"]) == n0, "a bid under the floor means nothing is sent: " + d.get("error", "")[:70])
+STATE["book"] = {"yes_dollars": [["0.5500", "100.00"]], "no_dollars": [["0.4000", "100.00"]]}
+st, bd = call("/account/budget"); av0 = bd["budget"]["auto"]["*"]; 
+d = sell(S1, "yes", 50); b = STATE["orders"][-1]
+ok(d["ok"] and d["filled"] and b["side"] == "ask" and b["price"] == "0.50" and b["count"] == "10.00" and b["time_in_force"] == "immediate_or_cancel" and b["reduce_only"] is True,
+   "a YES sale goes out as a reduce-only immediate-or-cancel ask at the floor for the held contracts: %s" % {k: b[k] for k in ("side", "price", "count", "time_in_force")})
+ok(abs(d["net"] - (10 * 0.50 - 10 * 0.01)) < 0.001 and d["left"] == 0, "the cash back is contracts x price minus the selling fee: $%.2f" % d["net"])
+st, bd = call("/account/budget"); av1 = bd["budget"]["auto"]["*"]
+ok(av1["open"] < av0["open"] - 6 and av1["avail"] > av0["avail"] + 4.5, "the sold bet's money is free again at once: open %.2f -> %.2f, free %.2f -> %.2f" % (av0["open"], av1["open"], av0["avail"], av1["avail"]))
+ok(av1["l"] == av0["l"] + 1 and abs(av1["net"] - av0["net"] - (4.90 - 6.20)) < 0.01, "it counts as a settled loss of what it really lost: net %.2f -> %.2f, losses %d -> %d" % (av0["net"], av1["net"], av0["l"], av1["l"]))
+d = sell(S1, "yes", 50); ok(not d["ok"] and "already been sold" in d["error"], "a bet that was sold can't be sold again: " + d.get("error", "")[:60])
+rows = {r["ticker"]: r for r in call("/account/orders")[1]}
+ok(rows[S1]["closed"] and abs(rows[S1]["sold_net"] - 4.90) < 0.001 and abs(rows[S1]["payout"] - 4.90) < 0.001, "the order list shows the sale: closed, sold_net %.2f, payout %.2f" % (rows[S1]["sold_net"], rows[S1]["payout"]))
+STATE["book"] = {"yes_dollars": [["0.3000", "100.00"]], "no_dollars": [["0.3800", "50.00"]]}
+d = sell(S2, "no", 35); b = STATE["orders"][-1]
+ok(d["ok"] and d["filled"] and b["side"] == "bid" and b["price"] == "0.65" and b["reduce_only"] is True, "a NO sale at a 35c floor goes out as a reduce-only bid at 0.65 (the YES price): %s" % {k: b[k] for k in ("side", "price")})
+ok(abs(d["net"] - (10 * 0.35 - 10 * 0.01)) < 0.001, "a NO sale returns the NO price (1 - 0.65) x contracts minus the fee: $%.2f" % d["net"])
+set_mode("partial"); STATE["book"] = {"yes_dollars": [["0.5500", "100.00"]], "no_dollars": [["0.4000", "100.00"]]}
+d = sell(S3, "yes", 50); ok(d["ok"] and d["filled"] and abs(d["fill_count"] - 5) < 0.001 and abs(d["left"] - 5) < 0.001, "a half-filled sale reports what is still held: sold %s, left %s" % (d["fill_count"], d["left"]))
+rows = {r["ticker"]: r for r in call("/account/orders")[1]}; ok(not rows[S3]["closed"] and abs(rows[S3]["sold_count"] - 5) < 0.001, "a partly sold bet stays open with its sold part recorded")
+set_mode("fill"); d = sell(S3, "yes", 50); b = STATE["orders"][-1]
+ok(d["ok"] and d["filled"] and b["count"] == "5.00" and d["left"] == 0, "the second sale only sells the contracts still held (5.00)")
+set_mode("kill"); S5 = tk(); set_mode("fill"); order("auto", S5, "yes", 10, 61); set_mode("kill")
+d = sell(S5, "yes", 50); ok(d["ok"] and not d["filled"] and "Still held" in d["message"], "a sale that doesn't fill leaves the bet held"); set_mode("fill")
+rows = {r["ticker"]: r for r in call("/account/orders")[1]}; ok(not rows[S5].get("closed") and not rows[S5].get("sold_count"), "an unfilled sale changes nothing on the bet")
+sl = [json.loads(l) for l in open(os.path.join(H.DATA, "live_sells.jsonl"))]
+ok(any(r.get("refused") for r in sl) and any(r.get("filled") for r in sl) and not any(r["ticker"] in (S4,) and r.get("filled") for r in sl), "every try, refused or not, is in live_sells.jsonl, kept apart from the bets")
+ok(all(r.get("kind") != "sell" for r in [json.loads(l) for l in open(os.path.join(H.DATA, "live_orders.jsonl"))]), "sales never appear in the bet log")
+st, d = call("/account/config", {"trading": False}); st, d2 = call("/account/status"); ok(d2["selling"] is False and H.load_settings().get("kalshi_selling") is False, "switching betting off also switches Early selling off")
 
 shutil.rmtree(TMP, ignore_errors=True)
 print("\n%d failed" % len(FAILS) if FAILS else "\nall passed")
