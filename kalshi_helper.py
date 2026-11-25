@@ -40,7 +40,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-26e"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-26f"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -727,6 +727,42 @@ def _find_value(o):
     return None
 
 
+def _to_epoch(v):
+    """A time as seconds since 1970 from a number (seconds or milliseconds) or an ISO text, else None."""
+    f = _f(v)
+    if f is not None:
+        return f / 1000.0 if f > 1e11 else (f if f > 1e8 else None)
+    if isinstance(v, str) and len(v) >= 10:
+        try:
+            import datetime
+            d = datetime.datetime.fromisoformat(v.replace("Z", "+00:00"))
+            if d.tzinfo is None:
+                d = d.replace(tzinfo=datetime.timezone.utc)
+            return d.timestamp()
+        except ValueError:
+            return None
+    return None
+
+
+def _find_stamps(o, under_server=False, out=None):
+    """The time CF Benchmarks puts on the value itself (a key named time/timestamp) and the time its server answered (serverTime), wherever they sit in the reply."""
+    if out is None:
+        out = {"cf_ts": None, "server_ts": None}
+    if isinstance(o, dict):
+        for k, v in o.items():
+            kl = str(k).lower()
+            if isinstance(v, (dict, list)):
+                _find_stamps(v, under_server, out)
+            elif kl == "servertime" and out["server_ts"] is None:
+                out["server_ts"] = _to_epoch(v)
+            elif kl in ("time", "timestamp", "ts", "date", "valuetime") and out["cf_ts"] is None:
+                out["cf_ts"] = _to_epoch(v)
+    elif isinstance(o, list):
+        for v in o:
+            _find_stamps(v, under_server, out)
+    return out
+
+
 def cfb_check():
     """One read-only test of Kalshi's CF Benchmarks passthrough, the index values its 15-minute markets settle on. Nothing is stored and nothing
     is bought. Reports, per coin, the HTTP status, how long Kalshi took, the value, and the raw reply (or the exact error)."""
@@ -748,7 +784,9 @@ def cfb_check():
             except ValueError:
                 data = {}
             row = {"coin": coin, "id": idx, "status": st, "ms": int((time.perf_counter() - t0) * 1000), "base": urllib.parse.urlsplit(base).netloc,
-                   "value": _find_value(data) if st == 200 else None, "raw": txt[:260]}
+                   "value": _find_value(data) if st == 200 else None, "raw": txt[:260], "t_end": time.time()}
+            if st == 200:
+                row.update(_find_stamps(data))             # how old the value is: its own time stamp against the moment Kalshi's answer reached us
             if st in (200, 401, 403):
                 break                                      # an answer that says yes or no to this account: no need to try the other address
         out.append(row)

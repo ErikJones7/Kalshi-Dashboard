@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26n</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26o</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -266,7 +266,7 @@ body{transition:margin-left .14s ease-out}
   <div class="card" style="max-width:980px;margin:0 auto">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:17px">Kalshi account</b><div style="display:flex;gap:8px"><button id="kaLog">Activity log</button><button id="kaRef">Refresh</button><button id="kaClose">Close</button></div></div>
     <div class="s" id="kaMsg" style="margin:6px 0"></div>
-    <div style="margin:6px 0"><button id="kaCfb" title="One read-only test: asks Kalshi for the CF Benchmarks index values its 15-minute markets settle on. Nothing is bought or changed.">Check CF Benchmarks access</button> <span class="s" id="kaCfbMsg"></span></div><div id="kaCfbOut" style="overflow-x:auto"></div>
+    <div style="margin:6px 0"><button id="kaCfb" title="Read-only test, 3 rounds a minute apart (about 3 minutes): asks Kalshi for the CF Benchmarks index values its 15-minute markets settle on and checks how old they are. Nothing is bought or changed.">Check CF Benchmarks access</button> <span class="s" id="kaCfbMsg"></span></div><div id="kaCfbOut" style="overflow-x:auto"></div>
     <div id="kaSetup">
       <ol style="margin:6px 0 6px 18px;padding:0;line-height:1.55">
         <li>On kalshi.com open your profile, then <b>API Keys</b>, then <b>Create New API Key</b>.</li>
@@ -1690,7 +1690,7 @@ let acct={info:null,sum:null,orders:[],bud:{},err:"",busy:false}, lv={armed:null
 // real-money mirrors: in memory only, so they are always OFF after a restart and have to be switched on on purpose
 let real={sim:false,auto:false,autoView:true,simView:true,events:[],evT:[],autoLast:null,q:Promise.resolve()};
 let liveRes={};
-const HELPER_EXPECT="2026-11-26e";      // the helper build this page needs (changes only when the helper program itself changes)
+const HELPER_EXPECT="2026-11-26f";      // the helper build this page needs (changes only when the helper program itself changes)
 const staleMsg="The helper program that is running is older than this page. Fully close it (Ctrl+Shift+Esc, end pythonw.exe / python.exe) and reopen the dashboard from its icon, or some real-money controls won't work right.";
 const oldHelper="The helper that is running is an older version that doesn't know about Kalshi accounts. Fully close it and reopen the dashboard from its icon: press Ctrl+Shift+Esc, open the Details tab, end every pythonw.exe (or python.exe) entry, then double-click the Kalshi Dashboard icon.";
 const acctNeed="Open the dashboard from its icon (the address starts with http://127.0.0.1) to use your Kalshi account.";
@@ -1784,16 +1784,32 @@ $("kaLog").onclick=()=>{renderEv();$("evw").style.display="block"};$("evClose").
 $("evClear").onclick=()=>{real.events.length=0;real.evT.length=0;renderEv()};
 $("evw").addEventListener("click",e=>{if(e.target.id==="evw")$("evw").style.display="none"});
 setInterval(()=>{if($("evw").style.display==="block")renderEv()},2000);$("kaRef").onclick=()=>acctRefresh(true);
-$("kaCfb").onclick=async()=>{      // one read-only test of Kalshi's CF Benchmarks values (what its markets settle on), compared with the price this page is using
-  const btn=$("kaCfb"),msg=$("kaCfbMsg"),out=$("kaCfbOut");btn.disabled=true;setT(msg,"Asking Kalshi (about 5 seconds)…");setH(out,"");
+$("kaCfb").onclick=async()=>{      // read-only test of Kalshi's CF Benchmarks values: 3 rounds a minute apart, each value checked for age and against the price this page had at that second
+  const btn=$("kaCfb"),msg=$("kaCfbMsg"),out=$("kaCfbOut"),ROUNDS=3,GAP=60,rounds=[];btn.disabled=true;setH(out,"");
+  const at=(s,T)=>{const h=hist[s];if(!h||!h.length)return null;const i=h.length-1-Math.round(Date.now()/1000-T);const v=i>=0&&i<h.length?h[i]:NaN;return isFinite(v)?Math.exp(v):null};      // the price this page had at second T
+  const bp=(a,b)=>a>0&&b>0?(a/b-1)*1e4:null,sg=x=>x==null?"–":(x>=0?"+":"")+x.toFixed(1),med=a=>{a=a.filter(x=>x!=null).sort((x,y)=>x-y);return a.length?a[Math.floor(a.length/2)]:null};
+  const render=()=>{
+    const coins=(rounds[0]||[]).map(x=>x.coin);
+    const head='<tr><th>Coin</th>'+rounds.map((_,k)=>`<th>Round ${k+1}: age of value · vs price when it arrived · vs price at its own time stamp</th>`).join("")+"</tr>";
+    const rows=coins.map((c,i)=>"<tr><td>"+c+"</td>"+rounds.map(r=>{const x=r[i];if(!x)return"<td>–</td>";
+      return x.value!=null?`<td>${x.age!=null?x.age.toFixed(1)+" s":"no stamp"} · ${sg(x.gapNow)} bp · ${x.cf_ts?sg(x.gapStamp)+" bp":"–"} <span class="dim">(${x.ms} ms)</span></td>`:`<td class="dim" style="max-width:300px;overflow-wrap:anywhere">${x.status||"no answer"}: ${escH(x.error||x.raw||"")}</td>`}).join("")+"</tr>").join("");
+    const raw=rounds[0]&&rounds[0][0]&&rounds[0][0].raw?'<div class="s dim" style="margin-top:6px;overflow-wrap:anywhere">What Kalshi sent back for BTC (first '+rounds[0][0].raw.length+' characters): '+escH(rounds[0][0].raw)+"</div>":"";
+    setH(out,"<table>"+head+rows+"</table>"+raw)};
   try{
     if(!hBase&&!(await findHelper()))throw new Error("The helper isn't connected. Open the dashboard from its icon.");
-    const r=await fetch(hBase+"/account/cfb_check",{cache:"no-store",signal:AbortSignal.timeout(90000)});if(r.status===404)throw new Error(oldHelper);if(!r.ok)throw new Error("HTTP "+r.status);const d=await r.json();
-    setT(msg,d.got===d.of?"Works: Kalshi returned all "+d.of+" index values.":d.got>0?"Partly works: "+d.got+" of "+d.of+" coins returned a value.":"Didn't work: no value came back. The reply from Kalshi is below.");
-    const rows=(d.results||[]).map(x=>{const L=latest[x.coin],app=L&&L.px>0?L.px:null,gap=x.value&&app?(x.value/app-1)*1e4:null;
-      return`<tr><td>${x.coin}</td><td>${x.status||"no answer"}</td><td>${x.ms!=null?x.ms+" ms":"–"}</td><td>${x.value!=null?x.value:"–"}</td><td>${app!=null?app:"–"}</td><td>${gap!=null?(gap>=0?"+":"")+gap.toFixed(1)+" bp":"–"}</td><td class="dim" style="max-width:420px;overflow-wrap:anywhere">${x.value!=null?"":escH(x.error||x.raw||"")}</td></tr>`}).join("");
-    setH(out,'<table><tr><th>Coin</th><th>Kalshi status</th><th>Time</th><th>CF index value</th><th>Price this page uses</th><th>Difference</th><th>Kalshi\'s reply if it failed</th></tr>'+rows+"</table>");
-  }catch(e){setT(msg,"Couldn't run the test: "+(e.message||e))}
+    for(let k=0;k<ROUNDS;k++){
+      setT(msg,"Round "+(k+1)+" of "+ROUNDS+": asking Kalshi (about 5 seconds)…");
+      const r=await fetch(hBase+"/account/cfb_check",{cache:"no-store",signal:AbortSignal.timeout(90000)});if(r.status===404)throw new Error(oldHelper);if(!r.ok)throw new Error("HTTP "+r.status);const d=await r.json();
+      rounds.push((d.results||[]).map(x=>{const age=x.cf_ts&&x.t_end?x.t_end-x.cf_ts:null,pNow=x.t_end?at(x.coin,x.t_end):null,pSt=x.cf_ts?at(x.coin,x.cf_ts):null;
+        return Object.assign({},x,{age,gapNow:x.value!=null?bp(x.value,pNow):null,gapStamp:x.value!=null?bp(x.value,pSt):null})}));
+      render();
+      if(k<ROUNDS-1)for(let s=GAP;s>0;s--){setT(msg,"Round "+(k+1)+" of "+ROUNDS+" done. Next round in "+s+" s (leave this page open)…");await new Promise(r=>setTimeout(r,1000))}
+    }
+    const all=rounds.flat().filter(x=>x.value!=null),ok=all.length,tot=rounds.flat().length;
+    if(!ok)setT(msg,"Didn't work: no value came back. Kalshi's reply is in the table.");
+    else{const mA=med(all.map(x=>x.age)),mG=med(all.map(x=>x.gapNow)),mAbs=med(all.map(x=>x.gapNow==null?null:Math.abs(x.gapNow))),mS=med(all.map(x=>x.gapStamp==null?null:Math.abs(x.gapStamp)));
+      setT(msg,(ok<tot?"Partly works ("+ok+" of "+tot+" answers). ":"All "+tot+" answers came back. ")+(mA==null?"Kalshi's reply has no time stamp I could read, so the age of the values is unknown (see the raw reply below).":mA>20?"The values are OLD: median "+mA.toFixed(0)+" s, so this route can't give a live price.":mAbs!=null&&mAbs<=8?"The values are fresh (median "+mA.toFixed(1)+" s old) and within "+mAbs.toFixed(1)+" bp of this page's price.":"The values are fresh (median "+mA.toFixed(1)+" s old) but sit a typical "+(mAbs!=null?mAbs.toFixed(0):"?")+" bp from this page's price"+(mS!=null?" ("+mS.toFixed(0)+" bp when compared at the value's own time stamp)":"")+"."))}
+  }catch(e){setT(msg,"Couldn't finish the test: "+(e.message||e));if(rounds.length)render()}
   btn.disabled=false};
 $("kaw").addEventListener("click",e=>{if(e.target.id==="kaw")$("kaw").style.display="none"});
 const kaErr=e=>{acct.err=e.message||"Something went wrong";renderKa()};

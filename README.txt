@@ -173,3 +173,9 @@ BUILD 2026-11-26n / HELPER 2026-11-26e: CHECK WHETHER YOUR ACCOUNT CAN USE KALSH
 - Menu > Kalshi account now has a "Check CF Benchmarks access" button. It makes one read-only call per coin (BTC, ETH, SOL, XRP, DOGE, BNB, HYPE, NEAR, ZEC), takes about 5 seconds, and shows for each coin Kalshi's answer (status), how long it took, the index value, the price the page is using, the difference in basis points, and Kalshi's exact reply if it failed. Nothing is bought, saved or changed, and no bot uses these values yet.
 - The helper's list of allowed read-only paths gained /cfbenchmarks/values. Everything else (the only allowed POST, the other GET paths) is unchanged.
 - The helper changed, so it restarts by itself when the file is replaced; the page says it is out of date until it has.
+
+BUILD 2026-11-26o / HELPER 2026-11-26f: THE CF BENCHMARKS CHECK NOW MEASURES HOW OLD THE VALUES ARE
+- "Check CF Benchmarks access" (Menu > Kalshi account) now runs 3 rounds, a minute apart (about 3 minutes; leave the page open). For every coin and round it shows how old the value is (the time stamp CF puts on it against the moment Kalshi's answer arrived), how far it is from the price this page had at the second it arrived, and how far it is from the price the page had at the value's own time stamp. It also shows the first part of Kalshi's raw reply for BTC, so the layout can be checked.
+- A one-line verdict at the top says whether the values are fresh and match the page, fresh but a real distance from it, old (so unusable for live prices), or have no readable time stamp.
+- Still read-only: nothing is bought, saved or changed, and no bot uses these values.
+- The helper changed (it now reports the time stamps), so it restarts by itself when the file is replaced.
