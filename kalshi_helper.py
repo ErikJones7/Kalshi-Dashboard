@@ -40,7 +40,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-26d"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-26e"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -446,7 +446,7 @@ def fetch_upstream(url):
 # never sent to the dashboard page or anywhere else. The only requests that are ever signed are the three GET calls in
 # ACCT_PATHS (balance, positions, fills): nothing in this file can place, change or cancel an order.
 KEYS_DIR = os.path.join(HERE, "keys")
-ACCT_PATHS = ("/portfolio/balance", "/portfolio/positions", "/portfolio/fills", "/portfolio/settlements")
+ACCT_PATHS = ("/portfolio/balance", "/portfolio/positions", "/portfolio/fills", "/portfolio/settlements", "/cfbenchmarks/values")      # the last one is read-only too: Kalshi forwards CF Benchmarks index values (see cfb_check)
 DEMO_BASE = "https://external-api.demo.kalshi.co/trade-api/v2"
 PROD_BASES = [UPSTREAM, "https://external-api.kalshi.com/trade-api/v2"]
 KEY_EXT = (".pem", ".key", ".txt", ".p8")
@@ -703,6 +703,58 @@ def acct_get(path, query=""):
             data = {}
         return st, data
     raise ConnectionError(str(last) if last else "no connection")
+
+
+CFB_IDS = [("BTC", "BRTI"), ("ETH", "ETHUSD_RTI"), ("SOL", "SOLUSD_RTI"), ("XRP", "XRPUSD_RTI"), ("DOGE", "DOGEUSD_RTI"),
+           ("BNB", "BNBUSD_RTI"), ("HYPE", "HYPEUSD_RTI"), ("NEAR", "NEARUSD_RTI"), ("ZEC", "ZECUSD_RTI")]
+
+
+def _find_value(o):
+    """The first number stored under a 'value' key anywhere in a CF Benchmarks reply (their exact layout isn't known in advance)."""
+    if isinstance(o, dict):
+        for k, v in o.items():
+            if str(k).lower() == "value" and _f(v) is not None:
+                return _f(v)
+        for v in o.values():
+            r = _find_value(v)
+            if r is not None:
+                return r
+    elif isinstance(o, list):
+        for v in o:
+            r = _find_value(v)
+            if r is not None:
+                return r
+    return None
+
+
+def cfb_check():
+    """One read-only test of Kalshi's CF Benchmarks passthrough, the index values its 15-minute markets settle on. Nothing is stored and nothing
+    is bought. Reports, per coin, the HTTP status, how long Kalshi took, the value, and the raw reply (or the exact error)."""
+    key_id, env = acct_config()
+    bases = [DEMO_BASE] if env == "demo" else ["https://external-api.kalshi.com/trade-api/v2", UPSTREAM]
+    out = []
+    for coin, idx in CFB_IDS:
+        row = {"coin": coin, "id": idx}
+        for base in bases:
+            t0 = time.perf_counter()
+            try:
+                st, body = signed_get(base, "/cfbenchmarks/values", "id=" + idx)
+            except Exception as e:
+                row.update(status=0, base=urllib.parse.urlsplit(base).netloc, error=str(e)[:200], ms=int((time.perf_counter() - t0) * 1000))
+                continue                                   # can't reach this address: try the next one
+            txt = body.decode("utf-8", "ignore")
+            try:
+                data = json.loads(txt or "{}")
+            except ValueError:
+                data = {}
+            row = {"coin": coin, "id": idx, "status": st, "ms": int((time.perf_counter() - t0) * 1000), "base": urllib.parse.urlsplit(base).netloc,
+                   "value": _find_value(data) if st == 200 else None, "raw": txt[:260]}
+            if st in (200, 401, 403):
+                break                                      # an answer that says yes or no to this account: no need to try the other address
+        out.append(row)
+        time.sleep(0.3)                                    # Kalshi allows about 4 of these per second
+    ok = [r for r in out if r.get("status") == 200 and r.get("value") is not None]
+    return {"ok": len(ok) == len(out), "got": len(ok), "of": len(out), "env": env, "results": out}
 
 
 def _f(v):
@@ -1635,6 +1687,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, json.dumps(acct_info()))
                 if name == "summary":
                     return self._send(200, json.dumps(acct_summary("force=1" in path)))
+                if name == "cfb_check":
+                    return self._send(200, json.dumps(cfb_check()))
                 if name == "orders":
                     return self._send(200, json.dumps(annotate(live_rows()[-400:])[::-1]))
                 if name == "budget":
