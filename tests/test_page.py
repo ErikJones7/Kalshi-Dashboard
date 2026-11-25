@@ -65,6 +65,20 @@ with sync_playwright() as p:
     pg.evaluate("balClear()")
     sizes = pg.evaluate("()=>{__s.length=0;realAuto({f:0.2},false,[{sym:'ETH',side:'yes',conf:0.95,agree:0,opp:0}],Date.now()/1000+300);return __s}")
     ok(len(sizes) == 1 and sizes[0] > 20, "with no cap it sizes from the bankroll again: %s" % sizes)
+    # ---- Timed bets were removed from the page; the data they left is still carried along unchanged
+    gone = pg.evaluate("['simCard','simOnBtn','simTbl','trTbl','simAt','simMin','simRealAll'].filter(i=>document.getElementById(i))")
+    ok(gone == [], "the Timed bets card is gone from the page: %s" % gone)
+    pg.evaluate("""()=>{const day=new Date().toLocaleDateString('en-CA'),o=(src,t,c,f)=>({filled:true,src,env:'prod',ticker:t,side:'yes',cost_total:c,fill_count:f,day});
+      acct.info={env:'prod',ready:true,trading:true};acct.sum={ok:true,balance:225,positions:[]};sim=false;
+      acct.orders=[o('auto','KXBTC15M-A',5,8),o('sim','KXSOL15M-C',4,6)];liveRes['KXBTC15M-A']='yes';liveRes['KXSOL15M-C']='yes';
+      acct.bud={auto:{'*':{bank:227.89,avail:222,open:0,net:0,w:0,l:0,peak:230,since:1}}};real.auto=false;renderAcctCard()}""")
+    rows = pg.evaluate("[...document.querySelectorAll('#acRes tr')].slice(1).map(r=>r.cells[0].innerText)")
+    ok(rows == ["Auto mode", "All"], "the Kalshi account card has no Timed bets row: %s" % rows)
+    ok(pg.evaluate("realStats().all.n") == 2, "an old Timed fill still counts in the account totals")
+    sent = pg.evaluate("""async()=>{simSt={start:{BTC:5},tr:{},ref:9};simDef=22.22;simMode='zero';simGain=10;hBase='http://x';let body=null;
+      hpost=async(p,o)=>{body=o;return {}};await saveToHelper();const s=body&&body.simstate;return s&&{simSt:s.simSt,simDef:s.simDef,simMode:s.simMode,simGain:s.simGain}}""")
+    ok(sent == {"simSt": {"start": {"BTC": 5}, "tr": {}, "ref": 9}, "simDef": 22.22, "simMode": "zero", "simGain": 10},
+       "saving to the data folder still sends Timed's saved state unchanged: %s" % sent)
     ok(not errs, "no script errors during the checks: %s" % errs[:1])
     b.close()
 
