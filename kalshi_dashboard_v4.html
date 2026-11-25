@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26l</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26m</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1853,15 +1853,17 @@ function autoGoals(){      // today's and this week's settled real Auto profit, 
   const catching=gw>0&&el>=5&&mult>1&&W.pct<need-1e-9;
   return{D,W,gd,gw,days,el,need,mult,catching};      // minimum daily and weekly returns to aim for: tracked in the bet history only, they never stop or change a bet
 }
+function autoStat(sym,side,text){(real.autoSet=real.autoSet||{})[sym+"|"+side]={t:Date.now(),win:winStart,text:sym+" "+side+": "+text}}      // a status line on the real Auto card without writing to the event list (so the card never says "waiting" when the real bet was skipped)
 function realAuto(best,two,picks,wEnd){          // the same sizing rule as fake-money auto mode, applied to its real bankroll
   const keepAll=()=>picks.forEach(x=>fakeKeep(wEnd+"|"+x.sym+"|"+x.side));
-  if(!realReady()){realEvent("Auto: not placed (account not ready)");keepAll();return}
-  const b=budOf("auto","*");if(!b||!(b.avail>=1)){realEvent("Auto: not placed (its real bankroll is "+money(b?Math.max(b.avail,0):0)+")");keepAll();return}
+  const skipAll=t=>picks.forEach(x=>autoStat(x.sym,x.side,t));
+  if(!realReady()){realEvent("Auto: not placed (account not ready)");skipAll("not placed (account not ready)");keepAll();return}
+  const b=budOf("auto","*");if(!b||!(b.avail>=1)){const t="not placed (its real bankroll is "+money(b?Math.max(b.avail,0):0)+")";realEvent("Auto: "+t);skipAll(t);keepAll();return}
   const dd=b.peak>0?Math.max(0,1-b.avail/b.peak):0,sc=Math.max(0.25,Math.min(1,1-dd/0.4)),GO=autoGoals(),cu=GO&&GO.catching?GO.mult:1;
   const tot=Math.min((autoSt.cap||0.2)*(cu>1?1.25:1),best.f*sc*(two?1.3:1)*cu);      // behind the weekly pace (after day 5): somewhat bigger bets until it is back on pace
   if(cu>1)realEvent("Auto: behind the weekly pace (+"+GO.W.pct.toFixed(1)+"% so far, +"+GO.need.toFixed(1)+"% needed by now), so bets are ×"+cu+" the normal size");
   const wS=winStart;
-  for(const x of picks){const st=Math.floor(b.avail*tot/picks.length*100)/100;if(!(st>=1))fakeKeep(wEnd+"|"+x.sym+"|"+x.side);if(st>=1)realMirror("auto",x.sym,x.side,st,{w:wEnd,p:x.conf,agree:x.agree,opp:x.opp}).then(o=>{if(o==="retry")autoRetry(x,st,wS,wEnd,1)})}
+  for(const x of picks){const st=Math.floor(b.avail*tot/picks.length*100)/100;if(!(st>=1)){fakeKeep(wEnd+"|"+x.sym+"|"+x.side);autoStat(x.sym,x.side,"not placed (the share of the real bankroll for this bet is under $1)")}if(st>=1)realMirror("auto",x.sym,x.side,st,{w:wEnd,p:x.conf,agree:x.agree,opp:x.opp}).then(o=>{if(o==="retry")autoRetry(x,st,wS,wEnd,1)})}
 }
 const RETRY_MS=1000;      // a refused bet looks again after this long (it was 3 s: in your logs the price moved by 6¢ on average in that time)
 function simRetry(sym,side,wS,wEnd,n){      // a Timed bet refused only on price keeps looking every few seconds while the signal holds and the price is worth it
@@ -1921,6 +1923,8 @@ function realMirror(src,sym,side,stake,meta){
   const note=(t,x)=>{if(au)t=multTxt(t);realEvent(tag+": "+t);if(au){real.autoLast=Object.assign({t:Date.now(),win:winStart,sym,side,text:sym+" "+side+": "+t},x||{});
     (real.autoSet=real.autoSet||{})[sym+"|"+side]={t:Date.now(),win:winStart,text:sym+" "+side+": "+t}}};      // one status line per coin, so a split bet shows both
   if(!realReady()){note("not placed (account not ready)");fakeKeep(rk);return Promise.resolve("stop")}
+  if(au&&!meta.retry)autoStat(sym,side,"checking Kalshi's price"+(real.qn>0?" (another order is being placed first)":""));      // shown until the order itself reports
+  real.qn=(real.qn||0)+1;
   const job=real.q.then(async()=>{       // one at a time, each with the freshest quote
     const maxPx=meta.p>0?Math.min(99,Math.floor(meta.p*100-1)+overpay(src)):null,pl=lvPlan(sym,side,stake,{cushion:3,max:maxPx});      // pay up to 3¢ over the live ask, but never more than its estimated chance minus 1¢
     if(pl.err){const rt=/stale|is above the|No price available/.test(pl.err);note("not placed ("+pl.err+")"+(au&&rt&&!meta.retry?", will keep looking":""));if(!rt)fakeDrop(rk,pl.err);return rt?"retry":"stop"}
@@ -1941,6 +1945,7 @@ function realMirror(src,sym,side,stake,meta){
     }catch(e){note("NOT placed. "+killTxt(e.message||"failed"));fakeKeep(rk);acctRefresh(true);return "stop"}      // (the answer is unknown here, so the fake bet keeps its own price)
   });
   real.q=job.catch(()=>{});
+  job.then(()=>{real.qn--},()=>{real.qn--});
   return job.catch(()=>"stop");
 }
 /* The two Start real betting buttons are remembered by the helper (settings.json), so an update or restart puts them back as they were.

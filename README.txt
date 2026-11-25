@@ -162,3 +162,8 @@ BUILD 2026-11-26l / HELPER 2026-11-26d: FASTER RETRIES AND ORDER TIMING
 - A real Auto or Timed bet that Kalshi refuses only because of the price (not enough for sale, price moved) now looks again after 1 second instead of 3 (RETRY_MS in the page). It still stops when the signal changes, the price isn't worth it, the bankroll is gone, or under 15 seconds are left. The retry cap was raised from 40 to 120 tries so it keeps looking for about as long as before (up to two minutes).
 - The helper now records how long each step of every order took, in milliseconds, in the "ms" field of each row in data/live_orders.jsonl: checks, gap (the 0.25 s pause between automatic orders), market (the market lookup), book (the order book lookup), sizing, post (Kalshi's answer to the order) and total.
 - The helper changed, so restart it (the page will say so until you do).
+
+BUILD 2026-11-26m: THE REAL AUTO CARD NO LONGER SAYS "WAITING FOR THE REAL BET" WHEN NOTHING IS HAPPENING
+- That text was shown whenever the fake Auto bet had been decided but the real order hadn't written a status line yet. Three cases never wrote one: the real account not being ready, the real Auto bankroll having under $1 free, and a bet whose share of the real bankroll came to under $1. In those cases the card sat on "Waiting for the real bet" until the window ended, even though the real bet had already been skipped. Each now says what happened (for example "not placed (its real bankroll is $0.50)").
+- The moment a real order is handed over it now shows "checking Kalshi's price", and "(another order is being placed first)" when it is queued behind another real order, instead of staying blank until it reaches Kalshi.
+- The helper did not change.
