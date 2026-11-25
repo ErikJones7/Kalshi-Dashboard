@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26s</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26t</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1930,13 +1930,15 @@ function autoGoals(){      // today's and this week's settled real Auto profit, 
 function autoStat(sym,side,text){(real.autoSet=real.autoSet||{})[sym+"|"+side]={t:Date.now(),win:winStart,text:sym+" "+side+": "+text}}      // a status line on the real Auto card without writing to the event list (so the card never says "waiting" when the real bet was skipped)
 /* Kalshi cash guard. When Kalshi refuses a real bet with "insufficient balance" although the app's own bankroll says there is room, the two disagree about how much
    cash can be used. Keep real Auto bets under the size Kalshi last accepted instead of sending bets that all get refused, and say so on the card. */
-const balG={cap:null,n:0,minRef:null,t:0,seeded:false,k:""};
+const balG={cap:null,n:0,minRef:null,t:0,seeded:false,k:""},BAL_RESET=1795641000;      // refusals and saved limits from before this moment (Nov 25 4:10 pm, when the money was moved to the pool Kalshi orders use) are ignored
+
 const balEnv=()=>(acct.info&&acct.info.env)||"";
 function balSave(){ls.set("k15balg",{cap:balG.cap,n:balG.n,minRef:balG.minRef,t:balG.t,k:balG.k})}
 function balSeedOnce(){      // once per page load: restore the saved limit, or work it out from the helper's order log (refusals since the last bet that was bigger)
   if(balG.seeded||!Array.isArray(acct.orders)||!acct.info)return;balG.seeded=true;balG.k=balEnv();
-  const o=ls.get("k15balg",null);if(o&&o.k===balG.k&&(o.cap!=null||o.n>0)){Object.assign(balG,{cap:o.cap,n:o.n,minRef:o.minRef,t:o.t});return}
-  const since=Date.now()/1000-6*3600,rows=acct.orders.filter(r=>r.src==="auto"&&r.env===balG.k&&r.t>since).sort((x,y)=>y.t-x.t);      // newest first
+  const o=ls.get("k15balg",null);if(o&&o.t/1000<BAL_RESET){balClear()}
+  else if(o&&o.k===balG.k&&(o.cap!=null||o.n>0)){Object.assign(balG,{cap:o.cap,n:o.n,minRef:o.minRef,t:o.t});return}
+  const since=Date.now()/1000-6*3600,rows=acct.orders.filter(r=>r.src==="auto"&&r.env===balG.k&&r.t>Math.max(since,BAL_RESET)).sort((x,y)=>y.t-x.t);      // newest first
   const isRef=r=>!r.filled&&/insufficient balance/i.test((r.refused||"")+" "+(r.error||""))&&r.est_cost>0,fills=rows.filter(r=>r.filled&&r.cost_total>0);
   const refs=rows.filter(r=>isRef(r)&&!fills.some(f=>f.t>r.t&&f.cost_total>=r.est_cost));      // a later bet at least that big shows the cash was there again
   if(!refs.length)return;
