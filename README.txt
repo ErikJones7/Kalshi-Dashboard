@@ -203,3 +203,8 @@ BUILD 2026-11-26s (helper 2026-11-26i): KALSHI CASH GUARD AND RAW ACCOUNT READOU
 
 BUILD 2026-11-26t: CASH LIMIT LIFTED
 - The money was moved to the pool Kalshi orders draw on (Kalshi's own balance now shows $222.13 in pool 2 and $0 in pool 0). The $3.13 limit on real Auto bets, and every Kalshi "insufficient balance" refusal from before that moment, are now ignored when the page opens, so real Auto bets size from the allocation again. The safeguard itself stays: if Kalshi refuses a real bet for insufficient balance again, the limit and the red warning come back.
+
+BUILD 2026-11-26u (helper 2026-11-26j): CLEAN-UP, NO CHANGE IN BEHAVIOUR
+- Found with ESLint (page) and pyflakes/vulture (helper), then removed: 17 variables the page computed and never used (lastSigHtml, targetOv, fx, bw, bh, sg_, two copies of dd, cp, lv, mG, i, sgn, ev x2, updReady, one unused rows), and from the helper the unused functions book_depth and already_running plus three unused local variables. About 900 characters in total.
+- Checked by running 89 older test scripts against the old and new files, each side in its own folder, one test at a time: 123 checks pass and 33 fail on both, and the 33 are old scripts that test behaviour that was changed on purpose. The few differences between runs also appeared between two runs of the old build (clock timing in the tests).
+- Looked at and left alone: no two functions in the page have the same body, and in 40 seconds of simulated running the page used about 4% of one CPU core (the busiest function, mc, took about 1% of the time), so nothing was rewritten for speed.

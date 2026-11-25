@@ -40,7 +40,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-26i"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-26j"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -1551,10 +1551,6 @@ def depth_at(levels, price):
     return sum(q for p, q in levels if p >= need - 1e-9)
 
 
-def book_depth(ticker, side, price, env):
-    return depth_at(book_levels(ticker, side, env), price)
-
-
 def _quote_cents(m, k):
     v = _f(m.get(k + "_dollars"))
     if v is not None:
@@ -2348,10 +2344,6 @@ def running_info(port):
         return None
 
 
-def already_running(port):
-    return running_info(port) is not None
-
-
 def serve(port, open_browser):
     try:
         return _serve(port, open_browser)
@@ -2482,14 +2474,11 @@ def plan(system, py, script, port):
     """Return (files, post). files = [(path, content, executable)]; nothing is written here."""
     home = os.path.expanduser("~")
     desk = desktop_dir(system)
-    url = "http://127.0.0.1:%d/" % port
     files, post = [], []
     def q(x): return '"%s"' % x
-    run = [py] if FROZEN else [py, script]
     if system == "Windows":
         pyw = os.path.join(os.path.dirname(py), "pythonw.exe")
         pyw = pyw if os.path.exists(pyw) else py
-        startup = os.path.join(os.environ.get("APPDATA", home), "Microsoft", "Windows", "Start Menu", "Programs", "Startup")
         wrun = [py] if FROZEN else [pyw, script]
         files.append((os.path.join(desk, "Kalshi Dashboard.bat"),
                       '@echo off\r\nstart "" %s --port %d\r\n' % (" ".join(q(x) for x in wrun), port), False))
