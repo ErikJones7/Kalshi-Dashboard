@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26r</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26s</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1735,7 +1735,7 @@ let acct={info:null,sum:null,orders:[],bud:{},err:"",busy:false}, lv={armed:null
 // real-money mirrors: in memory only, so they are always OFF after a restart and have to be switched on on purpose
 let real={sim:false,auto:false,autoView:true,simView:true,events:[],evT:[],autoLast:null,q:Promise.resolve()};
 let liveRes={};
-const HELPER_EXPECT="2026-11-26h";      // the helper build this page needs (changes only when the helper program itself changes)
+const HELPER_EXPECT="2026-11-26i";      // the helper build this page needs (changes only when the helper program itself changes)
 const staleMsg="The helper program that is running is older than this page. Fully close it (Ctrl+Shift+Esc, end pythonw.exe / python.exe) and reopen the dashboard from its icon, or some real-money controls won't work right.";
 const oldHelper="The helper that is running is an older version that doesn't know about Kalshi accounts. Fully close it and reopen the dashboard from its icon: press Ctrl+Shift+Esc, open the Details tab, end every pythonw.exe (or python.exe) entry, then double-click the Kalshi Dashboard icon.";
 const acctNeed="Open the dashboard from its icon (the address starts with http://127.0.0.1) to use your Kalshi account.";
@@ -1928,6 +1928,34 @@ function autoGoals(){      // today's and this week's settled real Auto profit, 
   return{D,W,gd,gw,days,el,need,mult,catching};      // minimum daily and weekly returns to aim for: tracked in the bet history only, they never stop or change a bet
 }
 function autoStat(sym,side,text){(real.autoSet=real.autoSet||{})[sym+"|"+side]={t:Date.now(),win:winStart,text:sym+" "+side+": "+text}}      // a status line on the real Auto card without writing to the event list (so the card never says "waiting" when the real bet was skipped)
+/* Kalshi cash guard. When Kalshi refuses a real bet with "insufficient balance" although the app's own bankroll says there is room, the two disagree about how much
+   cash can be used. Keep real Auto bets under the size Kalshi last accepted instead of sending bets that all get refused, and say so on the card. */
+const balG={cap:null,n:0,minRef:null,t:0,seeded:false,k:""};
+const balEnv=()=>(acct.info&&acct.info.env)||"";
+function balSave(){ls.set("k15balg",{cap:balG.cap,n:balG.n,minRef:balG.minRef,t:balG.t,k:balG.k})}
+function balSeedOnce(){      // once per page load: restore the saved limit, or work it out from the helper's order log (refusals since the last bet that was bigger)
+  if(balG.seeded||!Array.isArray(acct.orders)||!acct.info)return;balG.seeded=true;balG.k=balEnv();
+  const o=ls.get("k15balg",null);if(o&&o.k===balG.k&&(o.cap!=null||o.n>0)){Object.assign(balG,{cap:o.cap,n:o.n,minRef:o.minRef,t:o.t});return}
+  const since=Date.now()/1000-6*3600,rows=acct.orders.filter(r=>r.src==="auto"&&r.env===balG.k&&r.t>since).sort((x,y)=>y.t-x.t);      // newest first
+  const isRef=r=>!r.filled&&/insufficient balance/i.test((r.refused||"")+" "+(r.error||""))&&r.est_cost>0,fills=rows.filter(r=>r.filled&&r.cost_total>0);
+  const refs=rows.filter(r=>isRef(r)&&!fills.some(f=>f.t>r.t&&f.cost_total>=r.est_cost));      // a later bet at least that big shows the cash was there again
+  if(!refs.length)return;
+  let run=0;for(const r of rows){if(isRef(r))run++;else if(r.filled)break}      // refusals in a row, newest first, since the last bet that went through
+  const minRef=Math.min(...refs.map(r=>r.est_cost)),okMax=Math.max(0,...fills.filter(f=>f.cost_total<minRef).map(f=>f.cost_total));
+  Object.assign(balG,{minRef,n:run,t:Math.max(...refs.map(r=>r.t))*1000,cap:Math.max(1,Math.floor(Math.max(okMax,0.6*minRef)*100)/100)});balSave()}
+function balRefused(cost){
+  balG.n++;balG.t=Date.now();balG.minRef=balG.minRef==null?cost:Math.min(balG.minRef,cost);
+  balG.cap=Math.max(1,Math.floor(Math.min(balG.cap==null?Infinity:balG.cap,0.6*cost)*100)/100);balSave()}
+function balAccepted(cost){      // Kalshi took a bet: a bigger one than anything it refused clears the limit, a bet near the limit raises it 50%
+  balG.n=0;if(balG.cap==null){balSave();return}
+  if(balG.minRef!=null&&cost>=balG.minRef){balG.cap=null;balG.minRef=null}
+  else if(cost>=balG.cap*0.9)balG.cap=Math.floor(balG.cap*1.5*100)/100;
+  balSave()}
+const balClear=()=>{Object.assign(balG,{cap:null,n:0,minRef:null,t:0});balSave()};
+function balWarn(){      // the warning shown on the real Auto card
+  if(balG.cap==null&&!(balG.n>0))return"";const b=budOf("auto","*");
+  return '<b class="miss">Kalshi is refusing bets for "insufficient balance" ('+(balG.n>0?balG.n+" refused in a row, ":"")+"smallest refused: "+money(balG.minRef)+"). Your allocation shows "+money(b?b.avail:0)+" free, but Kalshi is not letting that cash be used. "+
+    "Real Auto bets are capped at "+money(balG.cap)+" until Kalshi accepts a bigger one. Check Kalshi for pending deposits, held funds or resting orders. "+'<button id="balClear" style="margin-left:6px">Clear this limit</button></b><br>'}
 function realAuto(best,two,picks,wEnd){          // the same sizing rule as fake-money auto mode, applied to its real bankroll
   const keepAll=()=>picks.forEach(x=>fakeKeep(wEnd+"|"+x.sym+"|"+x.side));
   const skipAll=t=>picks.forEach(x=>autoStat(x.sym,x.side,t));
@@ -1937,7 +1965,8 @@ function realAuto(best,two,picks,wEnd){          // the same sizing rule as fake
   const tot=Math.min((autoSt.cap||0.2)*(cu>1?1.25:1),best.f*sc*(two?1.3:1)*cu);      // behind the weekly pace (after day 5): somewhat bigger bets until it is back on pace
   if(cu>1)realEvent("Auto: behind the weekly pace (+"+GO.W.pct.toFixed(1)+"% so far, +"+GO.need.toFixed(1)+"% needed by now), so bets are ×"+cu+" the normal size");
   const wS=winStart;
-  for(const x of picks){const st=Math.floor(b.avail*tot/picks.length*100)/100;if(!(st>=1)){fakeKeep(wEnd+"|"+x.sym+"|"+x.side);autoStat(x.sym,x.side,"not placed (the share of the real bankroll for this bet is under $1)")}if(st>=1)realMirror("auto",x.sym,x.side,st,{w:wEnd,p:x.conf,agree:x.agree,opp:x.opp}).then(o=>{if(o==="retry")autoRetry(x,st,wS,wEnd,1)})}
+  balSeedOnce();const gc=balG.cap;
+  for(const x of picks){let st=Math.floor(b.avail*tot/picks.length*100)/100;if(gc!=null&&st>gc/picks.length)st=Math.max(1,Math.floor(gc/picks.length*100)/100);if(!(st>=1)){fakeKeep(wEnd+"|"+x.sym+"|"+x.side);autoStat(x.sym,x.side,"not placed (the share of the real bankroll for this bet is under $1)")}if(st>=1)realMirror("auto",x.sym,x.side,st,{w:wEnd,p:x.conf,agree:x.agree,opp:x.opp}).then(o=>{if(o==="retry")autoRetry(x,st,wS,wEnd,1)})}
 }
 const RETRY_MS=1000;      // a refused bet looks again after this long (it was 3 s: in your logs the price moved by 6¢ on average in that time)
 function simRetry(sym,side,wS,wEnd,n){      // a Timed bet refused only on price keeps looking every few seconds while the signal holds and the price is worth it
@@ -2005,7 +2034,7 @@ function realMirror(src,sym,side,stake,meta){
     note("placing "+pl.count+" contracts"+(au?", paying out at least "+mxc(pl.price)+" each":", paying up to "+pl.price+"¢ each")+" (about "+money(pl.cost)+")",{tk:pl.ticker,price:pl.price,pending:true});
     try{
       const d=await apost("/account/order",{ticker:pl.ticker,side:pl.side,count:pl.count,price:pl.price,max_price:maxPx,slack:3,budget:pl.cap,src,w:meta.w,sym,conf:meta.p,agree:meta.agree,opp:meta.opp});
-      if(d.ok&&d.filled){note("bought "+d.fill_count+" contracts for "+money(d.cost)+(au?" ("+(d.fill_count>0&&d.cost>0?"×"+(d.fill_count/d.cost).toFixed(2)+" payout":"")+")":" (limit "+pl.price+"¢)"),{tk:pl.ticker,price:pl.price,bought:true,cost:d.cost,fc:d.fill_count});if(au){real.autoBet=true;
+      if(d.ok&&d.filled){note("bought "+d.fill_count+" contracts for "+money(d.cost)+(au?" ("+(d.fill_count>0&&d.cost>0?"×"+(d.fill_count/d.cost).toFixed(2)+" payout":"")+")":" (limit "+pl.price+"¢)"),{tk:pl.ticker,price:pl.price,bought:true,cost:d.cost,fc:d.fill_count});if(au){real.autoBet=true;balAccepted(d.cost);
           const bet={sym,side,stake:d.cost,mult:d.fill_count>0&&d.cost>0?d.fill_count/d.cost:null,conf:meta.p,real:true,fc:d.fill_count,avg:d.avg_cents!=null?d.avg_cents:null},key=meta.w;
           if(curAutoAlert&&curAutoAlert.real&&curAutoAlert.w===key)curAutoAlert.bets.push(bet);else curAutoAlert={w:key,end:meta.w,tau:Math.max(0,meta.w-Date.now()/1000),real:true,bets:[bet]};
           autoNewFlag=true}
@@ -2013,7 +2042,8 @@ function realMirror(src,sym,side,stake,meta){
         const bk=budOf(src,au?"*":sym);if(bk){bk.avail-=d.cost;bk.open+=d.cost}
         if(au&&d.cost>0&&d.fill_count>0)fakeLink(rk,d.fill_count/d.cost,d.cost,bk&&bk.bank>0?bk.bank:(bk?bk.avail+bk.open:0));else fakeKeep(rk);
         acctRefresh(true);return "placed"}
-      else{const why=d.ok?"NOT filled (the price moved), nothing was bought":"NOT placed. "+killTxt(d.error);note(why+(au?", will keep looking":""));acctRefresh(true);
+      else{const bal=au&&!d.ok&&/insufficient balance/i.test(d.error||"");if(bal)balRefused(pl.cost);
+        const why=d.ok?"NOT filled (the price moved), nothing was bought":bal?"NOT placed. Kalshi refused it for insufficient balance (the app thinks "+money((budOf("auto","*")||{}).avail)+" is free). Real Auto bets are now capped at "+money(balG.cap):"NOT placed. "+killTxt(d.error);note(why+(au&&!bal?", will keep looking":""));acctRefresh(true);
         const rt=/price is now|Nothing is for sale|insufficient resting|not enough contracts|no longer fits|NOT filled/i.test(why+" "+(d.error||""));
         if(!rt)fakeDrop(rk,why);return rt?"retry":"stop"}
     }catch(e){note("NOT placed. "+killTxt(e.message||"failed"));fakeKeep(rk);acctRefresh(true);return "stop"}      // (the answer is unknown here, so the fake bet keeps its own price)
@@ -2080,6 +2110,7 @@ for(const [id,k] of [["autoGoalD","k15goalD2"],["autoGoalW","k15goalW"]]){const 
   el.onchange=()=>{const v=parseFloat(el.value);if(v>=0&&v<=500){ls.set(k,v)}else el.value=goalPct(w)}}
 for(const [id,k] of [["autoOver","k15overA"],["simOver","k15overT"]]){const el=$(id);el.value=overpay(k==="k15overA"?"auto":"sim");el.onchange=()=>{const v=Math.max(0,Math.min(10,Math.round(parseFloat(el.value))));if(Number.isFinite(v)){ls.set(k,v);el.value=v}else el.value=overpay(k==="k15overA"?"auto":"sim")}}
 $("autoRealStart").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();$("autoRealSet").click()}};
+$("arNote").addEventListener("click",e=>{if(e.target&&e.target.id==="balClear"){balClear();renderRealAuto()}});
 $("autoRealSet").onclick=()=>{const el=$("autoRealStart"),b=budOf("auto","*");realAlloc("auto","*",parseFloat(el.value),el,b?money2(b.bank):0)};
 $("simRealAll").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();$("simRealAllB").click()}};
 $("simRealAllB").onclick=async()=>{      // the box is the TOTAL for all coins, split evenly across them (leftover cents go to the first coins)
@@ -2119,7 +2150,7 @@ function renderRealAuto(){
   setH($("arStats"),cell("Allocated",b?$$(b.bank):"–")+cell("Free to bet",b?$$(b.avail):"–")+cell("Net",b?$$(b.net):"–",b?cls(b.net):"")+cell("Wins / losses",b?b.w+" / "+b.l:"–")+
     cell("Hit rate",tot?Math.round(b.w/tot*1000)/10+"%":"–")+cell("Windows skipped",b?realSkip().n:"–")+cell("Currently bet",b?$$(b.open):"–")+cell("Peak",b?$$(b.peak):"–")+
     cell("Min confidence now",(g=>g==null?"none":Math.round(g*1000)/10+"%")(autoGate(1)))+cell("Learned from",samples+" samples")+cell("Status",st));
-  setH($("arNote"),(acct.stale?'<b class="miss">'+escH(staleMsg)+"</b><br>":"")+escH(flashFor("· Auto")));
+  balSeedOnce();setH($("arNote"),balWarn()+(acct.stale?'<b class="miss">'+escH(staleMsg)+"</b><br>":"")+escH(flashFor("· Auto")));
 }
 let trKey="";
 function renderRealTimed(){

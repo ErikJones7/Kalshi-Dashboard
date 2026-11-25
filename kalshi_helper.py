@@ -40,7 +40,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-26h"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-26i"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -446,7 +446,7 @@ def fetch_upstream(url):
 # never sent to the dashboard page or anywhere else. The only requests that are ever signed are the three GET calls in
 # ACCT_PATHS (balance, positions, fills): nothing in this file can place, change or cancel an order.
 KEYS_DIR = os.path.join(HERE, "keys")
-ACCT_PATHS = ("/portfolio/balance", "/portfolio/positions", "/portfolio/fills", "/portfolio/settlements", "/cfbenchmarks/values")      # the last one is read-only too: Kalshi forwards CF Benchmarks index values (see cfb_check)
+ACCT_PATHS = ("/portfolio/balance", "/portfolio/positions", "/portfolio/fills", "/portfolio/settlements", "/cfbenchmarks/values", "/portfolio/orders", "/portfolio/subaccounts/balances")      # the last one is read-only too: Kalshi forwards CF Benchmarks index values (see cfb_check)
 DEMO_BASE = "https://external-api.demo.kalshi.co/trade-api/v2"
 PROD_BASES = [UPSTREAM, "https://external-api.kalshi.com/trade-api/v2"]
 KEY_EXT = (".pem", ".key", ".txt", ".p8")
@@ -703,6 +703,20 @@ def acct_get(path, query=""):
             data = {}
         return st, data
     raise ConnectionError(str(last) if last else "no connection")
+
+
+def acct_raw():
+    """Read-only: Kalshi's own raw replies for the balance, the orders still resting (they can lock up cash) and any sub-account balances,
+    so a mismatch between 'my balance' and 'Kalshi refuses for insufficient balance' can be seen at its source. Nothing here can place or cancel."""
+    out = {"ok": True, "t": time.time()}
+    for name, path, q in (("balance", "/portfolio/balance", ""), ("resting_orders", "/portfolio/orders", "status=resting&limit=100"),
+                          ("subaccounts", "/portfolio/subaccounts/balances", "")):
+        try:
+            st, data = acct_get(path, q)
+            out[name] = {"http": st, "reply": data}
+        except Exception as e:
+            out[name] = {"error": str(e)}
+    return out
 
 
 CFB_IDS = [("BTC", "BRTI"), ("ETH", "ETHUSD_RTI"), ("SOL", "SOLUSD_RTI"), ("XRP", "XRPUSD_RTI"), ("DOGE", "DOGEUSD_RTI"),
@@ -1889,6 +1903,8 @@ class Handler(BaseHTTPRequestHandler):
                     except ValueError:
                         sec = 180
                     return self._send(200, json.dumps(cfb_recent(sec)))
+                if name == "raw":
+                    return self._send(200, json.dumps(acct_raw()))
                 if name == "cfb_check":
                     return self._send(200, json.dumps(cfb_check()))
                 if name == "orders":
