@@ -266,3 +266,8 @@ BUILD 2026-11-26ae: SOLD-EARLY RESULT SHOWS HOW IT WOULD HAVE ENDED
 
 BUILD 2026-11-26af: CLOSING THE BEST PICK NOTIFICATION NO LONGER BRINGS THE OLD ONE BACK
 - Clicking "Switch to <coin>" or the X on a best-pick notification closed it, but the page then showed the pick before it again. Now only the newest pick can ever be on screen: once you close it, nothing shows until a newer pick arrives. Every pick still stays in the best pick record.
+
+BUILD 2026-11-26ag: MINIMUM BID FOR EARLY SELLING
+- New box next to the early-selling rule ticks: "Do not sell below [ ] c bid". While a bet's live bid is under that many cents, early selling leaves it alone and it is held to the end. 0 (the starting value) means no minimum, so nothing changes until you set it. The number is remembered in this browser.
+- Why: of the 18 real bets sold early so far, 3 were sold at a bid of 49-65 cents and all 3 would have won if held (about $31.80 given up), while both losers that were saved were sold at 84 cents or more. Three sales is a thin sample, so treat 75-80 as a thing to try, not a proven number.
+- What it costs: a held bet that loses is a full loss instead of the partial money a sale would have brought back, so a minimum can only make some losses bigger. The fake-money cash-out test keeps recording every rule with no minimum, so it still shows the unfiltered picture.

@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26af</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26ag</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -200,7 +200,7 @@ body{transition:margin-left .14s ease-out}
     </div>
   </div>
   <div><div class="s" id="arNote" style="margin:6px 0"></div><div class="autostats" id="arStats"></div></div>
-  <div class="s" id="arSell" style="margin:6px 0;display:flex;gap:10px;flex-wrap:wrap;align-items:center"><button id="sellOnBtn" class="onbtn" title="Early selling: when a rule below fires on an open real Auto bet, sell it back to Kalshi instead of holding it to the end. Off until you switch it on.">Early selling: OFF</button><span id="sellRuleBox"></span><span id="sellNote" style="flex-basis:100%"></span></div>
+  <div class="s" id="arSell" style="margin:6px 0;display:flex;gap:10px;flex-wrap:wrap;align-items:center"><button id="sellOnBtn" class="onbtn" title="Early selling: when a rule below fires on an open real Auto bet, sell it back to Kalshi instead of holding it to the end. Off until you switch it on.">Early selling: OFF</button><span id="sellRuleBox"></span><label id="sellMinLab" style="white-space:nowrap" title="Early selling will not sell a bet while the bid for it is below this many cents. 0 = no minimum. A bet that is held instead is settled by the market: it pays $1 a contract if it wins and nothing if it loses.">Do not sell below <input id="sellMin" type="number" min="0" max="99" step="1" style="width:56px"> ¢ bid</label><span id="sellNote" style="flex-basis:100%"></span></div>
   <details class="fakebox" id="autoFakeD"><summary><span class="modetag fake">Fake money</span> practice version <span class="s">(always running, shown for comparison)</span>
     <span class="simctl" id="autoFakeCtl" style="margin-left:auto">
       <label>Start $ <input type="number" id="autoStart" min="1" step="10"></label>
@@ -1416,6 +1416,7 @@ function autoCashWatch(tick,tau){
    The fake Auto cash-out test above keeps recording all six rules and never sells. */
 const SELL_LAB={f55:"Flip 55%+",f65:"Flip 65%+",f75:"Flip 75%+",f85:"Flip 85%+",m05:"Market +5 pts",m10:"Market +10 pts"};
 let sellRules=ls.get("k15sellrules",{f65:true,m10:true});
+let sellMin=Math.max(0,Math.min(99,+ls.get("k15sellmin",0)||0));      // cents; early selling skips a bet while its live bid is below this (0 = no minimum)
 const sellSt={};      // per market: {tries,last,busy,done}
 function realSellWatch(tick){
   if(sim||!acct.info||!acct.info.selling||acct.stale||!realReady())return;
@@ -1429,6 +1430,7 @@ function realSellWatch(tick){
     if(!r||r.pCal==null||r.tick<tick-8)continue;
     refreshBook(sym,o.ticker);const yes=o.side==="yes",bid=bookBid(sym,o.ticker,o.side);      // the live order book, not the listed quote (which lags by many seconds)
     if(!(bid>0&&bid<1))continue;
+    if(sellMin>0&&bid*100<sellMin-1e-9)continue;      // your minimum bid: below it the bet is held
     const ps=yes?r.pCal:1-r.pCal,nb=bid-0.07*bid*(1-bid);
     if(nb<0.05)continue;
     const hit=on.find(k=>CASH_RULES[k][1](ps,nb));if(!hit)continue;
@@ -1456,12 +1458,14 @@ function renderSell(){
   if(!sellBuilt){sellBuilt=true;
     setH($("sellRuleBox"),Object.keys(SELL_LAB).map(k=>`<label title="${escH(CASH_RULES[k][0])}" style="white-space:nowrap"><input type="checkbox" data-r="${k}"> ${SELL_LAB[k]}</label>`).join(" "));
     for(const c of $("sellRuleBox").querySelectorAll("input"))c.onchange=()=>{sellRules[c.dataset.r]=c.checked;ls.set("k15sellrules",sellRules);renderSell()};
+    $("sellMin").onchange=e=>{const v=Math.max(0,Math.min(99,Math.round(+e.target.value||0)));sellMin=v;e.target.value=v;ls.set("k15sellmin",v);renderSell()};
     $("sellOnBtn").onclick=async()=>{try{const d=await apost("/account/config",{selling:!(acct.info&&acct.info.selling)});if(d&&d.ok===false)realEvent("Early selling: "+(d.error||"not changed"))}catch(e){realEvent("Early selling: not changed ("+(e.message||"failed")+")")}await acctRefresh(true);renderSell()}}
   const on=!!i.selling;setT($("sellOnBtn"),"Early selling: "+(on?"ON":"OFF"));$("sellOnBtn").classList.toggle("realm",on);
   for(const c of $("sellRuleBox").querySelectorAll("input"))if(c.checked!==!!sellRules[c.dataset.r])c.checked=!!sellRules[c.dataset.r];
+  if(document.activeElement!==$("sellMin")&&+$("sellMin").value!==sellMin)$("sellMin").value=sellMin;
   const act=Object.keys(sellRules).filter(k=>sellRules[k]&&CASH_RULES[k]).map(k=>SELL_LAB[k]),sold=(acct.orders||[]).filter(o=>o.src==="auto"&&o.sold_count>0&&o.env===i.env);
   setT($("sellNote"),!on?"Off: real bets are held to the end. Turning it on sells an open real Auto bet when a ticked rule fires (flip = the model now gives the other side that much; market +N pts = the bid, after the selling fee, is N points above the model's win chance). Fake Auto keeps testing all six rules.":
-    (act.length?"On: sells when any of these fires: "+act.join(", ")+".":"On, but no rule is ticked, so nothing is sold.")+(sold.length?" Sold early so far: "+sold.length+" bet"+(sold.length===1?"":"s")+", "+(g=>(g>=0?"+":"-")+"$"+Math.abs(g).toFixed(2))(sold.reduce((t,o)=>t+(o.sold_net||0)-(o.closed?o.cost_total:o.cost_total*(o.sold_count/o.fill_count)),0))+" on the part sold, after fees.":""));
+    (act.length?"On: sells when any of these fires: "+act.join(", ")+(sellMin>0?", but never while the bid is under "+sellMin+"¢":"")+".":"On, but no rule is ticked, so nothing is sold.")+(sold.length?" Sold early so far: "+sold.length+" bet"+(sold.length===1?"":"s")+", "+(g=>(g>=0?"+":"-")+"$"+Math.abs(g).toFixed(2))(sold.reduce((t,o)=>t+(o.sold_net||0)-(o.closed?o.cost_total:o.cost_total*(o.sold_count/o.fill_count)),0))+" on the part sold, after fees.":""));
 }
 /* Shrink-and-edge test (shadow only, nothing is skipped): the predicted chances ran about 5 points too high on settled bets, so each fake Auto bet is
    stamped with a shrunk chance (rp) and the shrunk chance minus the price paid (re). At settlement the page books what a rule "only bet when re >= X points"

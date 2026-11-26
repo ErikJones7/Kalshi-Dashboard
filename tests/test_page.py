@@ -125,7 +125,7 @@ with sync_playwright() as p:
   apost=async(p,o)=>{posts.push([p,o]);return window.__ans||{ok:true,filled:true,fill_count:10,net:4.9,left:0}};
   const ord=(o)=>Object.assign({filled:true,src:"auto",env:"prod",order_id:"o1",ticker:TK,sym:"BTC",side:"yes",fill_count:10,cost_total:6.2,w:now()+300,t:now()-100},o||{});
   const setup=(o)=>{acct.info={env:"prod",ready:true,trading:true,selling:true,build:HELPER_EXPECT};acct.stale=false;acct.sum={ok:true,balance:100};acct.orders=[ord(o)];
-    for(const k in sellSt)delete sellSt[k];sellRules={f65:true,m10:true};posts=[];window.__ans=null};
+    for(const k in sellSt)delete sellSt[k];sellRules={f65:true,m10:true};sellMin=0;posts=[];window.__ans=null};
   const book=(side,bid,age)=>bid==null?null:(side==="no"?{tk:TK,ts:now()-(age||0),ok:true,no:bid*100+2,yes:(1-bid)*100}:{tk:TK,ts:now()-(age||0),ok:true,yes:bid*100+2,no:(1-bid)*100});
   const go=async(label,o,pCal,bid,mod,age,lag)=>{setup(o);if(mod)mod();const tick=Math.floor(now()),side=(o&&o.side)||"yes";res.BTC={pCal,tick};delete bookBy.BTC;const bk=book(side,bid,age);if(bk)bookBy.BTC=bk;
     quoteBy.BTC=lag||{tk:TK,ts:now(),yes_bid:0.55,yes_ask:0.57,no_bid:0.43,no_ask:0.45};
@@ -147,6 +147,9 @@ with sync_playwright() as p:
   await go("stale_helper",null,0.30,0.55,()=>{acct.stale=true});
   await go("live_book_high_listed_quote_low",null,0.30,0.55,null,0,{tk:TK,ts:now(),yes_bid:0.05,yes_ask:0.07,no_bid:0.93,no_ask:0.95});
   await go("flip_no",{side:"no"},0.70,0.50);
+  await go("min_bid_holds_low_sale",null,0.30,0.55,()=>{sellMin=75});
+  await go("min_bid_allows_high_sale",null,0.80,0.93,()=>{sellMin=75});
+  await go("min_bid_equal_allows",null,0.80,0.93,()=>{sellMin=93});
   // throttle: the same market is not hit twice within 2 s, and an unclear answer is never repeated
   // the page recalculates res.BTC every second, so the faked price and book are put back right before each call
   const fix=()=>{res.BTC={pCal:0.3,tick:Math.floor(now())};bookBy.BTC={tk:TK,ts:now(),ok:true,yes:57,no:45}};
@@ -173,6 +176,10 @@ with sync_playwright() as p:
     ok(one("flip_yes") and sv["flip_yes"][0]["side"] == "yes" and sv["flip_yes"][0]["rule"] == "f65" and sv["flip_yes"][0]["min"] == 45, "the model flipping to 70%% the other way sells a YES bet at the bid minus 10c: %s" % sv["flip_yes"])
     ok(one("market10_yes") and sv["market10_yes"][0]["rule"] == "m10", "a bid 10 points above the model's win chance sells it: %s" % sv["market10_yes"])
     ok(one("flip_no") and sv["flip_no"][0]["side"] == "no" and sv["flip_no"][0]["min"] == 40, "a NO bet is sold the same way, from the NO bid: %s" % sv["flip_no"])
+    ok(sv["min_bid_holds_low_sale"] == [] and one("min_bid_allows_high_sale") and one("min_bid_equal_allows"), "with a minimum bid of 75c a sale at a 55c bid is held, and one at 93c still goes (also when the minimum equals the bid): %s %s" % (sv["min_bid_holds_low_sale"], sv["min_bid_allows_high_sale"]))
+    mb = pg.evaluate("""()=>{const el=$("sellMin"),o={};const set=v=>{el.value=v;el.dispatchEvent(new Event("change"))};
+      set("80");o.a=[sellMin,el.value,ls.get("k15sellmin",null)];set("150");o.b=[sellMin,el.value];set("abc");o.c=[sellMin,el.value];set("-5");o.d=sellMin;set("0");o.e=sellMin;return o}""")
+    ok(mb["a"] == [80, "80", 80] and mb["b"] == [99, "99"] and mb["c"] == [0, "0"] and mb["d"] == 0 and mb["e"] == 0, "the minimum-bid box keeps what is typed (0-99 cents, anything else becomes 0 or 99) and remembers it: %s" % mb)
     ok(all(sv[k] == [] for k in ("no_rule_just_below_m10", "model_agrees_no_sale")), "no rule firing means no sale")
     ok(all(sv[k] == [] for k in ("selling_off", "stale_book", "no_book_yet", "last_10_seconds", "dust_bid", "no_rules_ticked", "already_sold_row", "settled_row", "not_auto_row", "stale_helper")),
        "nothing is sold when selling is off, the order-book price is stale or missing, under 10 s are left, the bid is dust, no rule is ticked, the bet is sold/settled/not Auto, or the helper is old")
