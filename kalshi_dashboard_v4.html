@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26z</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26aa</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1390,15 +1390,21 @@ function refreshBook(sym,tk){      // Kalshi's real best asking prices for this 
   if(bookBusy[sym])return;bookBusy[sym]=1;
   aget("/account/ask?ticker="+encodeURIComponent(tk)).then(d=>{bookBy[sym]={tk,ts:Date.now()/1000,ok:!!(d&&d.ok),yes:d&&d.yes_ask,no:d&&d.no_ask,yq:d&&d.yes_qty,nq:d&&d.no_qty,yl:d&&d.yes_lv,nl:d&&d.no_lv}})
     .catch(()=>{bookBy[sym]={tk,ts:Date.now()/1000,ok:false}}).finally(()=>{bookBusy[sym]=0})}
+function bookBid(sym,tk,side){      // what a sale of `side` would get right now: the best bid on that side, from Kalshi's live order book (null if unknown or older than 3 s).
+  // The market quote Kalshi lists (yes_bid, no_bid ...) can stay frozen for 10 to 25 seconds while the order book moves every second, so sales are never judged from it.
+  const b=bookBy[sym];if(!b||!b.ok||b.tk!==tk||Date.now()/1000-b.ts>3)return null;
+  const o=side==="yes"?b.no:b.yes;      // the best bid on one side is 100 minus the other side's asking price
+  return o!=null&&o>0&&o<100?(100-o)/100:null}
 /* Cash-out test (shadow only, nothing is sold): for every open fake Auto bet the page checks each second what selling at Kalshi's bid would give, under several rules. At settlement it books what each rule would have changed. Used to learn, from real prices, whether and when cashing out pays. */
 const CASH_RULES={f55:["Model flips to the other side, 55%+",(ps,nb)=>1-ps>=0.55],f65:["Model flips to the other side, 65%+",(ps,nb)=>1-ps>=0.65],f75:["Model flips to the other side, 75%+",(ps,nb)=>1-ps>=0.75],f85:["Model flips to the other side, 85%+",(ps,nb)=>1-ps>=0.85],
   m05:["Sell when the market pays 5 points above the model's win chance",(ps,nb)=>nb>=ps+0.05],m10:["Sell when the market pays 10 points above the model's win chance",(ps,nb)=>nb>=ps+0.10]};
 function autoCashWatch(tick,tau){
-  if(!pendAuto.length||tau<8)return;const now=Date.now()/1000;
+  if(autoSt.csV!==2){if(autoSt.cs)autoSt.cs0=autoSt.cs;autoSt.cs=null;autoSt.csV=2;autoSave()}      // the table before build 2026-11-26aa judged sales from a lagging quote: kept aside as cs0, and a fresh table starts
+  if(!pendAuto.length||tau<8)return;
   for(const b of pendAuto){
-    const r=res[b.sym],q=quoteBy[b.sym];
-    if(!r||r.pCal==null||r.tick<tick-8||!q||q.tk!==b.tk||now-q.ts>3)continue;
-    const bid=b.side==="UP"?q.yes_bid:(q.no_bid!=null?q.no_bid:(q.yes_ask!=null?1-q.yes_ask:null));
+    const r=res[b.sym];
+    if(!r||r.pCal==null||r.tick<tick-8)continue;
+    refreshBook(b.sym,b.tk);const bid=bookBid(b.sym,b.tk,b.side==="UP"?"yes":"no");      // from the live order book (the listed quote lags by many seconds)
     if(!(bid>0&&bid<1))continue;
     const ps=b.side==="UP"?r.pCal:1-r.pCal,nb=bid-0.07*bid*(1-bid);      // nb = what one contract nets after the selling fee
     b.co=b.co||{};
@@ -1419,9 +1425,9 @@ function realSellWatch(tick){
     if(!o.filled||o.src!=="auto"||o.env!==env||o.closed||o.res||!o.order_id||!(o.w>now+10&&o.w-now<=930))continue;      // o.w is the window end
     const st=sellSt[o.ticker]=sellSt[o.ticker]||{tries:0,last:0,busy:false,done:false};
     if(st.busy||st.done||st.tries>=4||now-st.last<2)continue;
-    const sym=o.sym||symOf(o),r=res[sym],q=quoteBy[sym];
-    if(!r||r.pCal==null||r.tick<tick-8||!q||q.tk!==o.ticker||now-q.ts>3)continue;
-    const yes=o.side==="yes",bid=yes?q.yes_bid:(q.no_bid!=null?q.no_bid:(q.yes_ask!=null?1-q.yes_ask:null));
+    const sym=o.sym||symOf(o),r=res[sym];
+    if(!r||r.pCal==null||r.tick<tick-8)continue;
+    refreshBook(sym,o.ticker);const yes=o.side==="yes",bid=bookBid(sym,o.ticker,o.side);      // the live order book, not the listed quote (which lags by many seconds)
     if(!(bid>0&&bid<1))continue;
     const ps=yes?r.pCal:1-r.pCal,nb=bid-0.07*bid*(1-bid);
     if(nb<0.05)continue;
