@@ -263,3 +263,6 @@ BUILD 2026-11-26ad: ONLY THE NEWEST BEST PICK NOTIFICATION STAYS ON SCREEN
 
 BUILD 2026-11-26ae: SOLD-EARLY RESULT SHOWS HOW IT WOULD HAVE ENDED
 - A bet sold in full used to read "Sold early: Won" or "Sold early: Lost", judged by the money the sale brought back, which could read "Lost" for a bet that would have won if held (and "Won" for one that would have lost). It now reads "Sold early: profit" or "Sold early: loss", followed by "would have won if held" or "would have lost if held" once Kalshi's result is in (before that, "market not settled yet"). The money, the net and the win/loss counts are unchanged (a bet sold in full still counts as a win when the sale brought back more than it cost).
+
+BUILD 2026-11-26af: CLOSING THE BEST PICK NOTIFICATION NO LONGER BRINGS THE OLD ONE BACK
+- Clicking "Switch to <coin>" or the X on a best-pick notification closed it, but the page then showed the pick before it again. Now only the newest pick can ever be on screen: once you close it, nothing shows until a newer pick arrives. Every pick still stays in the best pick record.

@@ -121,7 +121,7 @@ with sync_playwright() as p:
     SELLJS = """async()=>{
   sim=false;refreshBook=()=>{};const out={},TK="KXBTC15M-26NOV251830-30",now=()=>Date.now()/1000;let posts=[];
   // the page's own once-a-second work must not touch these checks while they run (it re-reads prices and calls these two itself), so only this test calls them
-  const _rsw=realSellWatch,_acw=autoCashWatch,_ab=acct.orders;realSellWatch=()=>{};autoCashWatch=()=>{};
+  const _rsw=realSellWatch,_acw=autoCashWatch,_ar=acctRefresh;realSellWatch=()=>{};autoCashWatch=()=>{};acctRefresh=async()=>{};      // acctRefresh would reload the order list (and wipe the faked one) after each sale
   apost=async(p,o)=>{posts.push([p,o]);return window.__ans||{ok:true,filled:true,fill_count:10,net:4.9,left:0}};
   const ord=(o)=>Object.assign({filled:true,src:"auto",env:"prod",order_id:"o1",ticker:TK,sym:"BTC",side:"yes",fill_count:10,cost_total:6.2,w:now()+300,t:now()-100},o||{});
   const setup=(o)=>{acct.info={env:"prod",ready:true,trading:true,selling:true,build:HELPER_EXPECT};acct.stale=false;acct.sum={ok:true,balance:100};acct.orders=[ord(o)];
@@ -148,11 +148,13 @@ with sync_playwright() as p:
   await go("live_book_high_listed_quote_low",null,0.30,0.55,null,0,{tk:TK,ts:now(),yes_bid:0.05,yes_ask:0.07,no_bid:0.93,no_ask:0.95});
   await go("flip_no",{side:"no"},0.70,0.50);
   // throttle: the same market is not hit twice within 2 s, and an unclear answer is never repeated
-  setup();res.BTC={pCal:0.3,tick:Math.floor(now())};bookBy.BTC={tk:TK,ts:now(),ok:true,yes:57,no:45};
-  window.__ans={ok:true,filled:false};let t=Math.floor(now());_rsw(t);await new Promise(r=>setTimeout(r,40));_rsw(t);await new Promise(r=>setTimeout(r,40));out.throttle_posts=posts.length;
-  sellSt[TK].last-=3;window.__ans={ok:true,filled:false};_rsw(t);await new Promise(r=>setTimeout(r,40));out.after_2s_posts=posts.length;
-  setup();apost=async()=>{throw new Error("timeout")};res.BTC={pCal:0.3,tick:t};bookBy.BTC={tk:TK,ts:now(),ok:true,yes:57,no:45};
-  _rsw(t);await new Promise(r=>setTimeout(r,40));sellSt[TK].last-=3;_rsw(t);await new Promise(r=>setTimeout(r,40));out.unclear_answer_done=sellSt[TK].done;
+  // the page recalculates res.BTC every second, so the faked price and book are put back right before each call
+  const fix=()=>{res.BTC={pCal:0.3,tick:Math.floor(now())};bookBy.BTC={tk:TK,ts:now(),ok:true,yes:57,no:45}};
+  setup();fix();
+  window.__ans={ok:true,filled:false};let t=Math.floor(now());_rsw(t);await new Promise(r=>setTimeout(r,40));fix();_rsw(t);await new Promise(r=>setTimeout(r,40));out.throttle_posts=posts.length;
+  sellSt[TK].last-=3;window.__ans={ok:true,filled:false};fix();_rsw(t);await new Promise(r=>setTimeout(r,40));out.after_2s_posts=posts.length;
+  setup();apost=async()=>{throw new Error("timeout")};fix();
+  _rsw(t);await new Promise(r=>setTimeout(r,40));sellSt[TK].last-=3;fix();_rsw(t);await new Promise(r=>setTimeout(r,40));out.unclear_answer_done=sellSt[TK].done;
   // the fake-money cash-out test reads the same live order book; the table from before is kept aside
   refreshBook=()=>{};autoSt.cs={n:3,f65:{ex:1}};delete autoSt.csV;const fb={sym:"BTC",side:"UP",tk:TK,stake:10,mult:1.1};pendAuto=[fb];res.BTC={pCal:0.30,tick:t};
   bookBy.BTC={tk:TK,ts:now(),ok:true,yes:57,no:45};quoteBy.BTC={tk:TK,ts:now(),yes_bid:0.97,yes_ask:0.98,no_bid:0.02,no_ask:0.03};_acw(t,100);
@@ -164,7 +166,7 @@ with sync_playwright() as p:
   out.sold_all_loss=oc(full);out.part_sold_lost_rest=oc(Object.assign({},part,{}));liveRes[TK]="yes";out.part_sold_won_rest=oc(part);out.unsold_won=oc(win);
   delete liveRes[TK];out.part_sold_waiting=oc(part);out.unsold_waiting=oc(plain);out.sold_all_profit=oc(ord({closed:true,sold_count:10,sold_net:7}));
   liveRes[TK]="yes";out.label_full_won=resTxt(full,false);liveRes[TK]="no";out.label_full_lost=resTxt(ord({closed:true,sold_count:10,sold_net:9}),true);delete liveRes[TK];out.label_full=resTxt(full,false);out.label_part=resTxt(part,true);out.label_plain=resTxt(plain,true);
-  realSellWatch=_rsw;autoCashWatch=_acw;
+  realSellWatch=_rsw;autoCashWatch=_acw;acctRefresh=_ar;
   return out}"""
     sv = pg.evaluate(SELLJS)
     one = lambda k: len(sv[k]) == 1 and sv[k][0]["url"] == "/account/sell"
@@ -214,6 +216,12 @@ with sync_playwright() as p:
     pk = pg.evaluate("""()=>{const mk=T=>({w:77,T,tau:T,min:0.9,top:null,more:[],closest:null});const cnt=()=>[...document.querySelectorAll('#sig .sigrow.pick')].filter(e=>!e.classList.contains('leaving')).map(e=>e.innerText);
       const base=Object.assign({},lastS),o={};render(Object.assign({},base,{picks:[mk(300)]}));o.a=cnt();render(Object.assign({},base,{picks:[mk(300),mk(180)]}));o.b=cnt();render(Object.assign({},base,{picks:[mk(300),mk(180),mk(60)]}));o.c=cnt();return o}""")
     ok(len(pk["a"]) == 1 and len(pk["b"]) == 1 and len(pk["c"]) == 1 and "03:00" in pk["b"][0] and "01:00" in pk["c"][0], "a new best pick notification replaces the old one (1, 1, 1 on screen, always the newest): %s" % [len(pk["a"]), len(pk["b"]), len(pk["c"])])
+    # closing the newest pick (X, or Switch to, which does the same dismissal) must not bring the older one back; a newer pick still shows
+    pc = pg.evaluate("""()=>{const mk=T=>({w:77,T,tau:T,min:0.9,top:null,more:[],closest:null});const cnt=()=>[...document.querySelectorAll('#sig .sigrow.pick')].filter(e=>!e.classList.contains('leaving')).length;
+      const base=Object.assign({},lastS),o={};dismissed.clear();render(Object.assign({},base,{picks:[mk(300),mk(180)]}));o.before=cnt();
+      dismissed.add("pick|77|180");render(Object.assign({},base,{picks:[mk(300),mk(180)]}));o.after_close=cnt();render(Object.assign({},base,{picks:[mk(300),mk(180)]}));o.again=cnt();
+      render(Object.assign({},base,{picks:[mk(300),mk(180),mk(60)]}));o.newer=cnt();dismissed.clear();return o}""")
+    ok(pc == {"before": 1, "after_close": 0, "again": 0, "newer": 1}, "closing the newest best pick does not bring the older one back, and a newer pick still appears: %s" % pc)
     ok(not errs, "no script errors during the checks: %s" % errs[:1])
     b.close()
 
