@@ -184,6 +184,28 @@ with sync_playwright() as p:
       liveRes[T]="yes";acct.info={env:"prod",ready:true,trading:true};acct.sum={ok:true,balance:100};acct.orders=[mk(true,{ticker:T}),mk(true,{ticker:T}),mk(false),mk(false)];rhSrc="auto";$("rhw").style.display="block";renderRH();
       return {rows:document.querySelectorAll("#rhTbl tr").length-1,refusal:$("rhTbl").innerText.includes("insufficient"),sum:$("rhSum").innerText,kept:acct.orders.length}}""")
     ok(hh["rows"] == 2 and not hh["refusal"] and "not filled" not in hh["sum"] and hh["kept"] == 4 and "+$6.00" in hh["sum"], "the real bet history hides bets that didn't go through and its totals are unchanged: %s" % hh)
+    # ---- bet history layout and the sale status (UP/DOWN, time left when bought, 12-hour times, a Selling column; the Auto card shows tries too)
+    H2 = """()=>{const T="KXHYPE15M-26NOV251930-30",t0=1795652897;
+  acct.info={env:"prod",ready:true,trading:true,selling:true};acct.sum={ok:true,balance:100};
+  acct.orders=[{filled:true,src:"auto",env:"prod",ticker:T,sym:"HYPE",side:"no",cost_total:21.03,fill_count:22.48,time:"2026-11-25 19:28:17",t:t0,w:1795653000,price_cents:99,count:22,order_id:"o9"},
+   {filled:true,src:"auto",env:"prod",ticker:"KXDOGE15M-X",sym:"DOGE",side:"yes",cost_total:12.34,fill_count:15,time:"2026-11-25 18:26:56",t:t0-3600,w:t0-3600+95,price_cents:85,count:15,order_id:"o8",closed:true,sold_count:15,sold_net:9.5},
+   {filled:true,src:"auto",env:"prod",ticker:"KXBTC15M-Z",sym:"BTC",side:"yes",cost_total:5,fill_count:8,time:"x",t:t0-7200,w:t0-7200+400,price_cents:60,count:8,order_id:"o7"}];
+  liveRes[T]="no";
+  acct.sells=[{ticker:T,side:"no",env:"prod",t:t0+3,rule:"m10",filled:false,refused:"The bid is now 40¢, below the 88¢ minimum for this sale, so nothing was sold."},{ticker:T,side:"no",env:"prod",t:t0+6,rule:"m10",filled:false,refused:"The bid is now 54¢, below the 88¢ minimum for this sale, so nothing was sold."},
+              {ticker:"KXDOGE15M-X",side:"yes",env:"prod",t:t0-3500,rule:"f65",filled:true,fill_count:15,net:9.5}];
+  rhSrc="auto";$("rhw").style.display="block";renderRH();
+  const head=[...document.querySelectorAll("#rhTbl tr:first-child th")].map(x=>x.innerText),rows=[...document.querySelectorAll("#rhTbl tr")].slice(1).map(r=>[...r.cells].map(c=>c.innerText));
+  // the status line
+  winStart=winStart||0;const o=acct.orders[0];sellStatus(o,"tried to sell early (Market +10 pts), not sold: The bid is now 54¢, below the 88¢ minimum for this sale; still held");acct.bud={auto:{'*':{bank:227.89,avail:222,open:0,net:0,w:0,l:0,peak:230,since:1}}};real.auto=true;renderRealAuto();
+  return {head,rows,status:$("arStats").innerText.replace(/\\\\n+/g," | ")}}"""
+    hv = pg.evaluate(H2)
+    ok([x.upper() for x in hv["head"]] == ["TIME", "COIN", "SIDE", "TIME LEFT WHEN BOUGHT", "CONTRACTS", "AVG PAID", "MULTIPLIER", "RESULT", "SELLING", "COST", "PAYOUT", "NET"], "the bet history columns: no Limit column, a time-left column and a Selling column: %s" % hv["head"])
+    r0, r1, r2 = hv["rows"]
+    ok((r0[2], r1[2], r2[2]) == ("DOWN", "UP", "UP"), "sides read UP / DOWN instead of YES / NO")
+    ok(re.search(r"\d:\d\d:\d\d (AM|PM)$", r0[0]) is not None, "times are on a 12-hour clock: %s" % r0[0])
+    ok((r0[3], r1[3], r2[3]) == ("1:43", "1:35", "6:40"), "time left in the window when each bet was bought (m:ss): %s" % [r0[3], r1[3], r2[3]])
+    ok(r0[8].startswith("Tried 2") and "not sold" in r0[8] and "54" in r0[8] and r1[8].startswith("Sold 15.00 for $9.50") and r2[8] == "–", "the Selling column shows tries with the reason, sales with the cash back, or a dash: %s / %s" % (r0[8], r1[8]))
+    ok("tried to sell early" in hv["status"] and "HYPE DOWN" in hv["status"], "the real Auto card's status line shows a try to sell")
     ok(not errs, "no script errors during the checks: %s" % errs[:1])
     b.close()
 

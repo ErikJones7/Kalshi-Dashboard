@@ -252,3 +252,8 @@ BUILD 2026-11-26aa: SALES AND THE FAKE CASH-OUT TEST NOW READ KALSHI'S LIVE ORDE
 
 BUILD 2026-11-26ab: WIDER SAFETY LIMIT ON EARLY SALES
 - An early sale used to carry a price floor 2 cents under the live bid; it now carries a floor 10 cents under it (never below 1 cent). The order still sells to the best bids first, so the floor is not a target price: it only stops a sale from filling at junk prices if the book empties in the second between the check and the order. The helper still refuses a sale when the live bid is below the floor it is given.
+
+BUILD 2026-11-26ac: BET HISTORY AND STATUS SHOW SALES
+- Real bet history: the Side column reads UP / DOWN instead of YES / NO; the Limit column is gone and a "Time left when bought" column (minutes:seconds left in the window when the order went in) takes its place; the Time column is on a 12-hour clock (for example Nov 25, 7:28:17 PM); a new "Selling" column says "Sold 22.48 for $14.20 (Market +10 pts)", or "Tried 2x (Market +10 pts), not sold: <the reason>", or a dash if no sale was tried. It reads data/live_sells.jsonl through the helper's /account/sells. The Result column already says "Sold early: Won/Lost" or "Part sold".
+- The status line on the real Auto card now shows a sale, or a try to sell, for that coin in the same way it shows the bet itself (for example "HYPE DOWN: tried to sell early (Market +10 pts), not sold: the bid is now 54c, below the 88c minimum; still held"). The event list shows them too, as before.
+- The order list under Menu, Kalshi account is unchanged (YES / NO, Limit, 24-hour times).

@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26ab</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26ac</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1435,15 +1435,18 @@ function realSellWatch(tick){
     sellGo(o,st,hit,ps,bid);
   }
 }
+function sellStatus(o,text){      // the Auto card's status line for this coin shows the sale (or the try) too
+  const sym=o.sym||symOf(o),side=o.side==="yes"?"UP":"DOWN",txt=sym+" "+side+": "+text;
+  real.autoLast={t:Date.now(),win:winStart,sym,side,text:txt};(real.autoSet=real.autoSet||{})[sym+"|"+side]={t:Date.now(),win:winStart,text:txt}}
 async function sellGo(o,st,rule,ps,bid){
   st.busy=true;st.last=Date.now()/1000;st.tries++;
   const tag=(o.sym||symOf(o))+" "+(o.side==="yes"?"UP":"DOWN"),min=Math.max(1,Math.floor(bid*100+1e-9)-10);      // sells to the best bids first; this is only a safety limit so a book that empties can't fill at junk prices
   try{
     const d=await apost("/account/sell",{ticker:o.ticker,side:o.side,min_price:min,rule,ps:Math.round(ps*1000)/1000,w:o.w});
-    if(d.ok&&d.filled){realEvent("Auto "+tag+": SOLD EARLY ("+SELL_LAB[rule]+"): "+ctr(d.fill_count)+" contracts for "+money(d.net)+" after fees. The model gave it "+Math.round(ps*100)+"% and the bid was "+Math.round(bid*100)+"¢"+(d.left>0.01?"; "+ctr(d.left)+" contracts still held":""));if(!(d.left>0.01))st.done=true}
-    else if(d.ok)realEvent("Auto "+tag+": sale not filled ("+SELL_LAB[rule]+"), the bet is still held; trying again");
-    else{const e=d.error||"failed";realEvent("Auto "+tag+": sale refused ("+e.replace(/\.$/,"")+")");if(/already been sold|already settled|switched off|no filled Auto bet|isn't set up|about to close/i.test(e))st.done=true}
-  }catch(e){realEvent("Auto "+tag+": sale not sent ("+(e.message||"failed")+")");st.done=true}      // the answer is unknown, so it is never repeated
+    if(d.ok&&d.filled){sellStatus(o,"SOLD EARLY ("+SELL_LAB[rule]+"): "+ctr(d.fill_count)+" contracts for "+money(d.net)+" after fees"+(d.left>0.01?", "+ctr(d.left)+" still held":""));realEvent("Auto "+tag+": SOLD EARLY ("+SELL_LAB[rule]+"): "+ctr(d.fill_count)+" contracts for "+money(d.net)+" after fees. The model gave it "+Math.round(ps*100)+"% and the bid was "+Math.round(bid*100)+"¢"+(d.left>0.01?"; "+ctr(d.left)+" contracts still held":""));if(!(d.left>0.01))st.done=true}
+    else if(d.ok){sellStatus(o,"tried to sell early ("+SELL_LAB[rule]+"), not filled, still held; trying again");realEvent("Auto "+tag+": sale not filled ("+SELL_LAB[rule]+"), the bet is still held; trying again")}
+    else{const e=d.error||"failed";sellStatus(o,"tried to sell early ("+SELL_LAB[rule]+"), not sold: "+e.replace(/, so nothing was sold\.?$/,"").replace(/\.$/,"")+"; still held");realEvent("Auto "+tag+": sale refused ("+e.replace(/\.$/,"")+")");if(/already been sold|already settled|switched off|no filled Auto bet|isn't set up|about to close/i.test(e))st.done=true}
+  }catch(e){sellStatus(o,"tried to sell early, not sent ("+(e.message||"failed")+")");realEvent("Auto "+tag+": sale not sent ("+(e.message||"failed")+")");st.done=true}      // the answer is unknown, so it is never repeated
   st.busy=false;acctRefresh(true);
 }
 let sellBuilt=false;
@@ -1699,6 +1702,7 @@ async function acctRefresh(full){
     else acct.sum=null;
     acct.orders=await aget("/account/orders");for(const r of acct.orders)if(r.res)liveRes[r.ticker]=r.res;
     acct.bud=(await aget("/account/budget")).budget||{};
+    try{acct.sells=await aget("/account/sells")}catch(e){acct.sells=acct.sells||[]}      // every early-sale try, for the bet history
     
   }catch(e){acct.err=e.message||"Couldn't reach your account.";if(!acct.info)acct.sum=null}
   acct.busy=false;realRestore().catch(()=>{});renderAcctMenu();if($("kaw").style.display!=="none")renderKa();if($("rhw").style.display!=="none")renderRH();
@@ -1733,13 +1737,21 @@ function renderRHGoal(){      // Auto's daily / weekly minimum returns, in its b
   const nm=t=>new Date(t).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"});
   setH($("rhGoalTbl"),'<tr><th>Day</th><th>Bets settled</th><th>Net</th><th>Return</th><th>Daily min</th></tr>'+G.days.map(d=>`<tr><td>${escH(nm(d.t))}</td><td>${d.n}</td><td class="${d.n?cls(d.net):""}">${d.n?$$(d.net):"–"}</td><td class="${d.n?cls(d.net):""}">${d.n?sg(d.pct):"–"}</td><td class="${!d.n?"dim":d.pct>=G.gd?"hit":"miss"}">${!d.n||!G.gd?"–":d.pct>=G.gd?"Met":"Not met"}</td></tr>`).join(""));
 }
+const t12=ts=>new Date(ts*1000).toLocaleString(undefined,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit",second:"2-digit",hour12:true});      // 12-hour clock
+const leftTxt=r=>r.w&&r.t&&r.w>r.t?Math.floor((r.w-r.t)/60)+":"+String(Math.floor((r.w-r.t)%60)).padStart(2,"0"):"–";      // time left in the window when the bet was bought (m:ss)
+function sellTxt(r){      // what happened with early selling on this bet, from the helper's sale log
+  const L=(acct.sells||[]).filter(x=>x.ticker===r.ticker&&x.side===r.side&&x.env===r.env).sort((a,b)=>a.t-b.t);
+  if(!L.length)return "–";
+  const f=L.filter(x=>x.filled),lab=x=>SELL_LAB[x.rule]||x.rule||"";
+  if(f.length){const c=f.reduce((t,x)=>t+(x.fill_count||0),0),n=f.reduce((t,x)=>t+(x.net||0),0),m=L.length-f.length;return "Sold "+ctr(c)+" for "+money(n)+" ("+lab(f[f.length-1])+")"+(m?", "+m+" other "+(m===1?"try":"tries")+" not filled":"")}
+  const x=L[L.length-1];return "Tried "+L.length+"× ("+lab(x)+"), not sold: "+String(x.refused||x.error||x.status||"not filled").replace(/, so nothing was sold\.?$/,"").replace(/\.$/,"")}
 function renderRH(){      // real bets of one mode, using Kalshi's own price, multiplier and payout once they are in
   if(!rhSrc)return;const rows=(acct.orders||[]).filter(r=>r.filled&&r.src===rhSrc&&r.env===((acct.info&&acct.info.env)||r.env));      // only bets that went through; the attempts that didn't are still kept in the helper's order log (data/live_orders.jsonl)
   let w=0,l=0,net=0,open=0;
   const tr=rows.map(r=>{const oc=outcome(r),won=r.filled?oc.won:null,n=r.filled?oc.net:null;
     if(r.filled){if(won==null)open++;else{won?w++:l++;net+=n}}
-    return `<tr><td>${escH(r.time)}</td><td>${escH(symOf(r)||"")}</td><td>${escH(String(r.side).toUpperCase())}</td><td>${ctr(r.filled&&r.fill_count!=null?r.fill_count:r.count)}</td><td>${r.price_cents}¢</td><td>${r.filled&&r.avg_cents!=null?r.avg_cents+"¢":"–"}</td><td>${r.filled&&r.mult?"×"+r.mult.toFixed(2):"–"}</td><td class="${r.filled?(won===false?"miss":"hit"):"miss"}">${r.filled?resTxt(r,won):escH(r.refused||r.error||"Not filled")}</td><td>${r.filled?money(r.cost_total):"–"}</td><td>${r.filled&&oc.pay!=null?money(oc.pay):"–"}</td><td class="${n>0?"hit":n<0?"miss":""}">${n==null?"–":(n>=0?"+":"-")+"$"+Math.abs(n).toFixed(2)}</td></tr>`});
-  const h=["Time","Coin","Side","Contracts","Limit","Avg paid","Multiplier","Result","Cost","Payout","Net"];
+    return `<tr><td>${r.t?escH(t12(r.t)):escH(r.time)}</td><td>${escH(symOf(r)||"")}</td><td>${escH({yes:"UP",no:"DOWN"}[r.side]||String(r.side).toUpperCase())}</td><td>${leftTxt(r)}</td><td>${ctr(r.filled&&r.fill_count!=null?r.fill_count:r.count)}</td><td>${r.filled&&r.avg_cents!=null?r.avg_cents+"¢":"–"}</td><td>${r.filled&&r.mult?"×"+r.mult.toFixed(2):"–"}</td><td class="${r.filled?(won===false?"miss":"hit"):"miss"}">${r.filled?resTxt(r,won):escH(r.refused||r.error||"Not filled")}</td><td>${escH(sellTxt(r))}</td><td>${r.filled?money(r.cost_total):"–"}</td><td>${r.filled&&oc.pay!=null?money(oc.pay):"–"}</td><td class="${n>0?"hit":n<0?"miss":""}">${n==null?"–":(n>=0?"+":"-")+"$"+Math.abs(n).toFixed(2)}</td></tr>`});
+  const h=["Time","Coin","Side","Time left when bought","Contracts","Avg paid","Multiplier","Result","Selling","Cost","Payout","Net"];
   setH($("rhTbl"),'<tr>'+h.map(x=>`<th>${x}</th>`).join("")+'</tr>'+(tr.length?tr.join(""):`<tr><td colspan="${h.length}" class="dim">No real bets yet</td></tr>`));
   renderRHGoal();
   setT($("rhSum"),rows.length?`${w} won, ${l} lost, ${open} waiting. Net ${(net>=0?"+":"-")+"$"+Math.abs(net).toFixed(2)} on settled bets. Newest first, ${(acct.info&&acct.info.env==="demo")?"demo":"real"} account.`:"");
