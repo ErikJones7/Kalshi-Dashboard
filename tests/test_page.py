@@ -206,6 +206,10 @@ with sync_playwright() as p:
     ok((r0[3], r1[3], r2[3]) == ("1:43", "1:35", "6:40"), "time left in the window when each bet was bought (m:ss): %s" % [r0[3], r1[3], r2[3]])
     ok(r0[8].startswith("Tried 2") and "not sold" in r0[8] and "54" in r0[8] and r1[8].startswith("Sold 15.00 for $9.50") and r2[8] == "–", "the Selling column shows tries with the reason, sales with the cash back, or a dash: %s / %s" % (r0[8], r1[8]))
     ok("tried to sell early" in hv["status"] and "HYPE DOWN" in hv["status"], "the real Auto card's status line shows a try to sell")
+    # ---- a new best pick notification replaces the old one
+    pk = pg.evaluate("""()=>{const mk=T=>({w:77,T,tau:T,min:0.9,top:null,more:[],closest:null});const cnt=()=>[...document.querySelectorAll('#sig .sigrow.pick')].filter(e=>!e.classList.contains('leaving')).map(e=>e.innerText);
+      const base=Object.assign({},lastS),o={};render(Object.assign({},base,{picks:[mk(300)]}));o.a=cnt();render(Object.assign({},base,{picks:[mk(300),mk(180)]}));o.b=cnt();render(Object.assign({},base,{picks:[mk(300),mk(180),mk(60)]}));o.c=cnt();return o}""")
+    ok(len(pk["a"]) == 1 and len(pk["b"]) == 1 and len(pk["c"]) == 1 and "03:00" in pk["b"][0] and "01:00" in pk["c"][0], "a new best pick notification replaces the old one (1, 1, 1 on screen, always the newest): %s" % [len(pk["a"]), len(pk["b"]), len(pk["c"])])
     ok(not errs, "no script errors during the checks: %s" % errs[:1])
     b.close()
 
