@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26y</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26z</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1728,15 +1728,15 @@ function renderRHGoal(){      // Auto's daily / weekly minimum returns, in its b
   setH($("rhGoalTbl"),'<tr><th>Day</th><th>Bets settled</th><th>Net</th><th>Return</th><th>Daily min</th></tr>'+G.days.map(d=>`<tr><td>${escH(nm(d.t))}</td><td>${d.n}</td><td class="${d.n?cls(d.net):""}">${d.n?$$(d.net):"–"}</td><td class="${d.n?cls(d.net):""}">${d.n?sg(d.pct):"–"}</td><td class="${!d.n?"dim":d.pct>=G.gd?"hit":"miss"}">${!d.n||!G.gd?"–":d.pct>=G.gd?"Met":"Not met"}</td></tr>`).join(""));
 }
 function renderRH(){      // real bets of one mode, using Kalshi's own price, multiplier and payout once they are in
-  if(!rhSrc)return;const rows=(acct.orders||[]).filter(r=>r.src===rhSrc&&r.env===((acct.info&&acct.info.env)||r.env));
-  let w=0,l=0,net=0,open=0,fail=0;
+  if(!rhSrc)return;const rows=(acct.orders||[]).filter(r=>r.filled&&r.src===rhSrc&&r.env===((acct.info&&acct.info.env)||r.env));      // only bets that went through; the attempts that didn't are still kept in the helper's order log (data/live_orders.jsonl)
+  let w=0,l=0,net=0,open=0;
   const tr=rows.map(r=>{const oc=outcome(r),won=r.filled?oc.won:null,n=r.filled?oc.net:null;
-    if(r.filled){if(won==null)open++;else{won?w++:l++;net+=n}}else fail++;
+    if(r.filled){if(won==null)open++;else{won?w++:l++;net+=n}}
     return `<tr><td>${escH(r.time)}</td><td>${escH(symOf(r)||"")}</td><td>${escH(String(r.side).toUpperCase())}</td><td>${ctr(r.filled&&r.fill_count!=null?r.fill_count:r.count)}</td><td>${r.price_cents}¢</td><td>${r.filled&&r.avg_cents!=null?r.avg_cents+"¢":"–"}</td><td>${r.filled&&r.mult?"×"+r.mult.toFixed(2):"–"}</td><td class="${r.filled?(won===false?"miss":"hit"):"miss"}">${r.filled?resTxt(r,won):escH(r.refused||r.error||"Not filled")}</td><td>${r.filled?money(r.cost_total):"–"}</td><td>${r.filled&&oc.pay!=null?money(oc.pay):"–"}</td><td class="${n>0?"hit":n<0?"miss":""}">${n==null?"–":(n>=0?"+":"-")+"$"+Math.abs(n).toFixed(2)}</td></tr>`});
   const h=["Time","Coin","Side","Contracts","Limit","Avg paid","Multiplier","Result","Cost","Payout","Net"];
   setH($("rhTbl"),'<tr>'+h.map(x=>`<th>${x}</th>`).join("")+'</tr>'+(tr.length?tr.join(""):`<tr><td colspan="${h.length}" class="dim">No real bets yet</td></tr>`));
   renderRHGoal();
-  setT($("rhSum"),rows.length?`${w} won, ${l} lost, ${open} waiting, ${fail} not filled. Net ${(net>=0?"+":"-")+"$"+Math.abs(net).toFixed(2)} on settled bets. Newest first, ${(acct.info&&acct.info.env==="demo")?"demo":"real"} account.`:"");
+  setT($("rhSum"),rows.length?`${w} won, ${l} lost, ${open} waiting. Net ${(net>=0?"+":"-")+"$"+Math.abs(net).toFixed(2)} on settled bets. Newest first, ${(acct.info&&acct.info.env==="demo")?"demo":"real"} account.`:"");
 }
 async function openRH(src){rhSrc=src;setT($("rhTitle"),"Auto mode real bet history");$("rhw").style.display="block";renderRH();await acctRefresh(true)}
 $("rhClose").onclick=()=>{$("rhw").style.display="none";rhSrc=null};

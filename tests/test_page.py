@@ -168,6 +168,11 @@ with sync_playwright() as p:
     ok(sv["part_sold_won_rest"] == {"won": True, "net": 1.8, "pay": 8} and sv["part_sold_lost_rest"]["net"] == -4.2 and sv["part_sold_waiting"]["won"] is None, "a part-sold bet pays the sale plus only the contracts still held: %s" % sv["part_sold_won_rest"])
     ok(sv["unsold_won"] == {"won": True, "net": 3.8, "pay": 10} and sv["unsold_waiting"]["won"] is None, "a bet that was never sold is accounted exactly as before")
     ok((sv["label_full"], sv["label_part"], sv["label_plain"]) == ("Sold early: Lost", "Part sold: Won", "Won"), "the bet history says which bets were sold early: %s" % [sv["label_full"], sv["label_part"], sv["label_plain"]])
+    # ---- the real bet history shows only bets that went through (attempts that didn't are still kept in the helper's log)
+    hh = pg.evaluate("""()=>{const T="KXBTC15M-H",mk=(f,o)=>Object.assign({filled:f,src:"auto",env:"prod",ticker:T+Math.random(),sym:"BTC",side:"yes",cost_total:5,fill_count:8,time:"t",price_cents:60,count:8,order_id:f?"o":null,refused:f?null:"insufficient balance"},o||{});
+      liveRes[T]="yes";acct.info={env:"prod",ready:true,trading:true};acct.sum={ok:true,balance:100};acct.orders=[mk(true,{ticker:T}),mk(true,{ticker:T}),mk(false),mk(false)];rhSrc="auto";$("rhw").style.display="block";renderRH();
+      return {rows:document.querySelectorAll("#rhTbl tr").length-1,refusal:$("rhTbl").innerText.includes("insufficient"),sum:$("rhSum").innerText,kept:acct.orders.length}}""")
+    ok(hh["rows"] == 2 and not hh["refusal"] and "not filled" not in hh["sum"] and hh["kept"] == 4 and "+$6.00" in hh["sum"], "the real bet history hides bets that didn't go through and its totals are unchanged: %s" % hh)
     ok(not errs, "no script errors during the checks: %s" % errs[:1])
     b.close()
 
