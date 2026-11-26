@@ -120,6 +120,8 @@ with sync_playwright() as p:
     # ---- early selling of real Auto bets (rules, guards, accounting); every Kalshi call is faked, nothing real is sent
     SELLJS = """async()=>{
   sim=false;refreshBook=()=>{};const out={},TK="KXBTC15M-26NOV251830-30",now=()=>Date.now()/1000;let posts=[];
+  // the page's own once-a-second work must not touch these checks while they run (it re-reads prices and calls these two itself), so only this test calls them
+  const _rsw=realSellWatch,_acw=autoCashWatch,_ab=acct.orders;realSellWatch=()=>{};autoCashWatch=()=>{};
   apost=async(p,o)=>{posts.push([p,o]);return window.__ans||{ok:true,filled:true,fill_count:10,net:4.9,left:0}};
   const ord=(o)=>Object.assign({filled:true,src:"auto",env:"prod",order_id:"o1",ticker:TK,sym:"BTC",side:"yes",fill_count:10,cost_total:6.2,w:now()+300,t:now()-100},o||{});
   const setup=(o)=>{acct.info={env:"prod",ready:true,trading:true,selling:true,build:HELPER_EXPECT};acct.stale=false;acct.sum={ok:true,balance:100};acct.orders=[ord(o)];
@@ -127,7 +129,7 @@ with sync_playwright() as p:
   const book=(side,bid,age)=>bid==null?null:(side==="no"?{tk:TK,ts:now()-(age||0),ok:true,no:bid*100+2,yes:(1-bid)*100}:{tk:TK,ts:now()-(age||0),ok:true,yes:bid*100+2,no:(1-bid)*100});
   const go=async(label,o,pCal,bid,mod,age,lag)=>{setup(o);if(mod)mod();const tick=Math.floor(now()),side=(o&&o.side)||"yes";res.BTC={pCal,tick};delete bookBy.BTC;const bk=book(side,bid,age);if(bk)bookBy.BTC=bk;
     quoteBy.BTC=lag||{tk:TK,ts:now(),yes_bid:0.55,yes_ask:0.57,no_bid:0.43,no_ask:0.45};
-    realSellWatch(tick);await new Promise(r=>setTimeout(r,60));out[label]=posts.map(p=>({url:p[0],side:p[1].side,min:p[1].min_price,rule:p[1].rule,ps:p[1].ps}))};
+    _rsw(tick);await new Promise(r=>setTimeout(r,60));out[label]=posts.map(p=>({url:p[0],side:p[1].side,min:p[1].min_price,rule:p[1].rule,ps:p[1].ps}))};
   await go("flip_yes",null,0.30,0.55);
   await go("market10_yes",null,0.80,0.93);
   await go("no_rule_just_below_m10",null,0.84,0.93);
@@ -147,13 +149,13 @@ with sync_playwright() as p:
   await go("flip_no",{side:"no"},0.70,0.50);
   // throttle: the same market is not hit twice within 2 s, and an unclear answer is never repeated
   setup();res.BTC={pCal:0.3,tick:Math.floor(now())};bookBy.BTC={tk:TK,ts:now(),ok:true,yes:57,no:45};
-  window.__ans={ok:true,filled:false};let t=Math.floor(now());realSellWatch(t);await new Promise(r=>setTimeout(r,40));realSellWatch(t);await new Promise(r=>setTimeout(r,40));out.throttle_posts=posts.length;
-  sellSt[TK].last-=3;window.__ans={ok:true,filled:false};realSellWatch(t);await new Promise(r=>setTimeout(r,40));out.after_2s_posts=posts.length;
+  window.__ans={ok:true,filled:false};let t=Math.floor(now());_rsw(t);await new Promise(r=>setTimeout(r,40));_rsw(t);await new Promise(r=>setTimeout(r,40));out.throttle_posts=posts.length;
+  sellSt[TK].last-=3;window.__ans={ok:true,filled:false};_rsw(t);await new Promise(r=>setTimeout(r,40));out.after_2s_posts=posts.length;
   setup();apost=async()=>{throw new Error("timeout")};res.BTC={pCal:0.3,tick:t};bookBy.BTC={tk:TK,ts:now(),ok:true,yes:57,no:45};
-  realSellWatch(t);await new Promise(r=>setTimeout(r,40));sellSt[TK].last-=3;realSellWatch(t);await new Promise(r=>setTimeout(r,40));out.unclear_answer_done=sellSt[TK].done;
+  _rsw(t);await new Promise(r=>setTimeout(r,40));sellSt[TK].last-=3;_rsw(t);await new Promise(r=>setTimeout(r,40));out.unclear_answer_done=sellSt[TK].done;
   // the fake-money cash-out test reads the same live order book; the table from before is kept aside
   refreshBook=()=>{};autoSt.cs={n:3,f65:{ex:1}};delete autoSt.csV;const fb={sym:"BTC",side:"UP",tk:TK,stake:10,mult:1.1};pendAuto=[fb];res.BTC={pCal:0.30,tick:t};
-  bookBy.BTC={tk:TK,ts:now(),ok:true,yes:57,no:45};quoteBy.BTC={tk:TK,ts:now(),yes_bid:0.97,yes_ask:0.98,no_bid:0.02,no_ask:0.03};autoCashWatch(t,100);
+  bookBy.BTC={tk:TK,ts:now(),ok:true,yes:57,no:45};quoteBy.BTC={tk:TK,ts:now(),yes_bid:0.97,yes_ask:0.98,no_bid:0.02,no_ask:0.03};_acw(t,100);
   out.shadow_bid=fb.co&&fb.co.f65&&fb.co.f65.bid;out.shadow_old_table_kept=JSON.stringify(autoSt.cs0)===JSON.stringify({n:3,f65:{ex:1}})&&autoSt.cs===null&&autoSt.csV===2;pendAuto=[];
   // accounting
   liveRes[TK]="no";
@@ -161,7 +163,8 @@ with sync_playwright() as p:
   const oc=r=>{const x=outcome(r);return {won:x.won,net:x.net==null?null:Math.round(x.net*100)/100,pay:x.pay==null?null:Math.round(x.pay*100)/100}};
   out.sold_all_loss=oc(full);out.part_sold_lost_rest=oc(Object.assign({},part,{}));liveRes[TK]="yes";out.part_sold_won_rest=oc(part);out.unsold_won=oc(win);
   delete liveRes[TK];out.part_sold_waiting=oc(part);out.unsold_waiting=oc(plain);out.sold_all_profit=oc(ord({closed:true,sold_count:10,sold_net:7}));
-  out.label_full=resTxt(full,false);out.label_part=resTxt(part,true);out.label_plain=resTxt(plain,true);
+  liveRes[TK]="yes";out.label_full_won=resTxt(full,false);liveRes[TK]="no";out.label_full_lost=resTxt(ord({closed:true,sold_count:10,sold_net:9}),true);delete liveRes[TK];out.label_full=resTxt(full,false);out.label_part=resTxt(part,true);out.label_plain=resTxt(plain,true);
+  realSellWatch=_rsw;autoCashWatch=_acw;
   return out}"""
     sv = pg.evaluate(SELLJS)
     one = lambda k: len(sv[k]) == 1 and sv[k][0]["url"] == "/account/sell"
@@ -178,7 +181,8 @@ with sync_playwright() as p:
     ok(sv["sold_all_loss"] == {"won": False, "net": -1.3, "pay": 4.9} and sv["sold_all_profit"]["won"] is True and sv["sold_all_profit"]["net"] == 0.8, "a bet sold in full is judged by the money it brought back: %s" % sv["sold_all_loss"])
     ok(sv["part_sold_won_rest"] == {"won": True, "net": 1.8, "pay": 8} and sv["part_sold_lost_rest"]["net"] == -4.2 and sv["part_sold_waiting"]["won"] is None, "a part-sold bet pays the sale plus only the contracts still held: %s" % sv["part_sold_won_rest"])
     ok(sv["unsold_won"] == {"won": True, "net": 3.8, "pay": 10} and sv["unsold_waiting"]["won"] is None, "a bet that was never sold is accounted exactly as before")
-    ok((sv["label_full"], sv["label_part"], sv["label_plain"]) == ("Sold early: Lost", "Part sold: Won", "Won"), "the bet history says which bets were sold early: %s" % [sv["label_full"], sv["label_part"], sv["label_plain"]])
+    ok((sv["label_full_won"], sv["label_full_lost"], sv["label_full"], sv["label_part"], sv["label_plain"]) == ("Sold early: loss · would have won if held", "Sold early: profit · would have lost if held", "Sold early: loss · market not settled yet", "Part sold: Won", "Won"),
+       "a bet sold early shows its money result and how it would have ended if held: %s" % [sv["label_full_won"], sv["label_full_lost"], sv["label_full"]])
     # ---- the real bet history shows only bets that went through (attempts that didn't are still kept in the helper's log)
     hh = pg.evaluate("""()=>{const T="KXBTC15M-H",mk=(f,o)=>Object.assign({filled:f,src:"auto",env:"prod",ticker:T+Math.random(),sym:"BTC",side:"yes",cost_total:5,fill_count:8,time:"t",price_cents:60,count:8,order_id:f?"o":null,refused:f?null:"insufficient balance"},o||{});
       liveRes[T]="yes";acct.info={env:"prod",ready:true,trading:true};acct.sum={ok:true,balance:100};acct.orders=[mk(true,{ticker:T}),mk(true,{ticker:T}),mk(false),mk(false)];rhSrc="auto";$("rhw").style.display="block";renderRH();

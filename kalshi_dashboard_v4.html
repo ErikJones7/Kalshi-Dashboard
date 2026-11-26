@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26ad</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26ae</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -2049,7 +2049,7 @@ function outcome(r){      // a real bet's result: Kalshi's settlement, or, once 
   if(r.closed){const net=(r.sold_net||0)-(r.cost_total||0);return{won:net>0,net,pay:r.sold_net||0}}
   const res=r.filled?liveRes[r.ticker]:null,won=res?res===r.side:null;
   return{won,net:won==null?null:pay(r,won)-r.cost_total,pay:won==null?null:pay(r,won)}}
-const resTxt=(r,won)=>won==null?(r.sold_count?"Part sold, waiting":"Filled, waiting"):(r.closed?"Sold early: ":r.sold_count?"Part sold: ":"")+(won?"Won":"Lost");
+const resTxt=(r,won)=>won==null?(r.sold_count?"Part sold, waiting":"Filled, waiting"):r.closed?"Sold early: "+(won?"profit":"loss")+(liveRes[r.ticker]?" · would have "+(liveRes[r.ticker]===r.side?"won":"lost")+" if held":" · market not settled yet"):(r.sold_count?"Part sold: ":"")+(won?"Won":"Lost");      // a bet sold in full is judged by the money, and shows how it would have ended if held
 function realOf(src){      // this mode's filled real bets on the account being shown, with each one's Kalshi result
   const env=acct.info&&acct.info.env,now=Date.now()/1000;
   return (acct.orders||[]).filter(r=>r.filled&&r.src===src&&r.env===env).map(r=>{
