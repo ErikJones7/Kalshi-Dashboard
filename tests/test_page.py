@@ -165,9 +165,9 @@ with sync_playwright() as p:
   return out}"""
     sv = pg.evaluate(SELLJS)
     one = lambda k: len(sv[k]) == 1 and sv[k][0]["url"] == "/account/sell"
-    ok(one("flip_yes") and sv["flip_yes"][0]["side"] == "yes" and sv["flip_yes"][0]["rule"] == "f65" and sv["flip_yes"][0]["min"] == 53, "the model flipping to 70%% the other way sells a YES bet at the bid minus 2c: %s" % sv["flip_yes"])
+    ok(one("flip_yes") and sv["flip_yes"][0]["side"] == "yes" and sv["flip_yes"][0]["rule"] == "f65" and sv["flip_yes"][0]["min"] == 45, "the model flipping to 70%% the other way sells a YES bet at the bid minus 10c: %s" % sv["flip_yes"])
     ok(one("market10_yes") and sv["market10_yes"][0]["rule"] == "m10", "a bid 10 points above the model's win chance sells it: %s" % sv["market10_yes"])
-    ok(one("flip_no") and sv["flip_no"][0]["side"] == "no" and sv["flip_no"][0]["min"] == 48, "a NO bet is sold the same way, from the NO bid: %s" % sv["flip_no"])
+    ok(one("flip_no") and sv["flip_no"][0]["side"] == "no" and sv["flip_no"][0]["min"] == 40, "a NO bet is sold the same way, from the NO bid: %s" % sv["flip_no"])
     ok(all(sv[k] == [] for k in ("no_rule_just_below_m10", "model_agrees_no_sale")), "no rule firing means no sale")
     ok(all(sv[k] == [] for k in ("selling_off", "stale_book", "no_book_yet", "last_10_seconds", "dust_bid", "no_rules_ticked", "already_sold_row", "settled_row", "not_auto_row", "stale_helper")),
        "nothing is sold when selling is off, the order-book price is stale or missing, under 10 s are left, the bid is dust, no rule is ticked, the bet is sold/settled/not Auto, or the helper is old")

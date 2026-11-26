@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26aa</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26ab</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1410,7 +1410,7 @@ function autoCashWatch(tick,tau){
     b.co=b.co||{};
     for(const k in CASH_RULES)if(!b.co[k]&&CASH_RULES[k][1](ps,nb))b.co[k]={tau,bid:Math.round(bid*1000)/1000,nb:Math.round(nb*10000)/10000,ps:Math.round(ps*1000)/1000}}}
 /* Early selling of REAL Auto bets. Off until you switch it on (the helper refuses any sale while it is off). Every second, for each open real Auto bet, the ticked rules
-   below are checked against Kalshi's live bid; the first one that fires sells whatever the bet still holds at the bid (or up to 2 cents under it) with a reduce-only,
+   below are checked against Kalshi's live bid; the first one that fires sells whatever the bet still holds at the bid (or up to 10 cents under it) with a reduce-only,
    immediate-or-cancel order, so it can only close that bet and never open a position. Nothing is sold in the last 10 seconds, when the bid is under 5 cents after
    the selling fee, or when the price is not fresh. A sale that does not fill is tried again every 2 seconds, up to 4 times; an answer that is unclear is never repeated.
    The fake Auto cash-out test above keeps recording all six rules and never sells. */
@@ -1437,7 +1437,7 @@ function realSellWatch(tick){
 }
 async function sellGo(o,st,rule,ps,bid){
   st.busy=true;st.last=Date.now()/1000;st.tries++;
-  const tag=(o.sym||symOf(o))+" "+(o.side==="yes"?"UP":"DOWN"),min=Math.max(1,Math.floor(bid*100+1e-9)-2);
+  const tag=(o.sym||symOf(o))+" "+(o.side==="yes"?"UP":"DOWN"),min=Math.max(1,Math.floor(bid*100+1e-9)-10);      // sells to the best bids first; this is only a safety limit so a book that empties can't fill at junk prices
   try{
     const d=await apost("/account/sell",{ticker:o.ticker,side:o.side,min_price:min,rule,ps:Math.round(ps*1000)/1000,w:o.w});
     if(d.ok&&d.filled){realEvent("Auto "+tag+": SOLD EARLY ("+SELL_LAB[rule]+"): "+ctr(d.fill_count)+" contracts for "+money(d.net)+" after fees. The model gave it "+Math.round(ps*100)+"% and the bid was "+Math.round(bid*100)+"¢"+(d.left>0.01?"; "+ctr(d.left)+" contracts still held":""));if(!(d.left>0.01))st.done=true}

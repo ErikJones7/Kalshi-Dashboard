@@ -249,3 +249,6 @@ BUILD 2026-11-26aa: SALES AND THE FAKE CASH-OUT TEST NOW READ KALSHI'S LIVE ORDE
 - The fake cash-out table built before this build judged sales from the lagging quote, so it is not trustworthy. It is kept (autoSt.cs0, saved in sim_state.json) and a fresh table starts empty. Nothing else about the fake test changed (same six rules, never sells). The per-bet "co" fields already written to sim_trades.jsonl are kept as they are.
 - On that 19:28 bet: with the real bids a sale was possible only around 66 cents against 93 cents paid, so even a sale would have lost about $6 on a bet that won. The "Market +10 pts" rule would have fired once at 19:28:26, by 0.2 of a point.
 - Not changed: the "Kalshi live multipliers" card still shows the listed quote (labelled with how old it is). Buying already re-prices from the live book in the helper.
+
+BUILD 2026-11-26ab: WIDER SAFETY LIMIT ON EARLY SALES
+- An early sale used to carry a price floor 2 cents under the live bid; it now carries a floor 10 cents under it (never below 1 cent). The order still sells to the best bids first, so the floor is not a target price: it only stops a sale from filling at junk prices if the book empties in the second between the check and the order. The helper still refuses a sale when the live bid is below the floor it is given.
