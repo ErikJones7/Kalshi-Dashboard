@@ -384,7 +384,7 @@ with sync_playwright() as p:
   autoNoSale("BTC","UP",wS,wEnd);
   out.after_drop={pend:pendAuto.length,done:autoDone,note:autoNote,excl:[...autoNS.s]};
   autoStep(T,120,wS,wEnd);
-  out.new_pick=pendAuto.map(b=>b.sym+" "+b.side);
+  out.new_pick=pendAuto.map(b=>b.sym+" "+b.side);out.stamp=pendAuto.map(b=>[b.conf,b.mk,b.bp,b.be]);
   // c. with the window's other bet still standing, nothing new is picked
   pendAuto=[{w:wS,sym:"ETH",side:"DOWN",rk:wEnd+"|ETH|DOWN",stake:10,mult:1.1},{w:wS,sym:"SOL",side:"UP",rk:wEnd+"|SOL|UP",stake:10,mult:1.1}];autoDone=true;
   autoNoSale("SOL","UP",wS,wEnd);out.other_leg={pend:pendAuto.map(b=>b.sym),done:autoDone};
@@ -399,7 +399,21 @@ with sync_playwright() as p:
        "no contracts at the price (unfilled, nothing for sale, not enough resting, empty book) stops that coin; a price above what the bet is worth still retries: %s" % ns)
     ok(ns["after_drop"]["pend"] == 0 and ns["after_drop"]["done"] is False and ns["after_drop"]["excl"] == ["BTC"] and ns["new_pick"] == ["ETH DOWN"],
        "the coin's fake bet is dropped and Auto picks another coin that passes every check, never the dropped one: %s" % ns["new_pick"])
+    ok(ns["stamp"] == [[0.97, 0.85, 0.892, 0.033]], "each fake Auto bet is stamped with the market's chance, the blended chance and its edge: %s" % ns["stamp"])
     ok(ns["other_leg"] == {"pend": ["ETH"], "done": True} and ns["too_late"] == {"pend": 1, "done": True}, "no new pick while the window's other bet stands, or under 25 s left")
+    # ---- market-blend test (shadow only): books what "only bet when the blended chance beats the price" would have kept and dropped
+    BL = """()=>{
+  const sv=autoSt.bl,out={};autoSt.bl={};
+  // a bet the blend keeps (market agrees) and one it drops (market far below the model)
+  blBook({be:0.03,conf:0.97,bp:0.95,mk:0.94,hit:true,stake:10,pnl:0.5,px:"real"});
+  blBook({be:-0.06,conf:0.95,bp:0.87,mk:0.83,hit:false,stake:10,pnl:-10});
+  blBook({be:null,conf:0.95,hit:true,stake:10,pnl:1});      // no market price recorded: not counted
+  const a=autoSt.bl.all;out.n=a.n;out.b0=a.b0;out.b2=a.b2;out.real=autoSt.bl.real.n;
+  renderBl();out.html=$("autoBl").textContent;
+  autoSt.bl=sv;renderBl();return out}"""
+    bl = pg.evaluate(BL)
+    ok(bl["n"] == 2 and bl["real"] == 1 and bl["b0"] == {"kn": 1, "kw": 1, "ks": 10, "kp": 0.5, "dn": 1, "dw": 0, "ds": 10, "dp": -10} and "model 96.0%, market 88.5%, blended 91.0%" in bl["html"],
+       "the market-blend table keeps the bet whose blended chance beats the price and drops the other; bets with no market price are left out: %s" % bl["b0"])
     # ---- a new best pick notification replaces the old one
     pk = pg.evaluate("""()=>{const mk=T=>({w:77,T,tau:T,min:0.9,top:null,more:[],closest:null});const cnt=()=>[...document.querySelectorAll('#sig .sigrow.pick')].filter(e=>!e.classList.contains('leaving')).map(e=>e.innerText);
       const base=Object.assign({},lastS),o={};render(Object.assign({},base,{picks:[mk(300)]}));o.a=cnt();render(Object.assign({},base,{picks:[mk(300),mk(180)]}));o.b=cnt();render(Object.assign({},base,{picks:[mk(300),mk(180),mk(60)]}));o.c=cnt();return o}""")

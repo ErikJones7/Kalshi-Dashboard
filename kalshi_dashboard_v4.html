@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26am</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26an</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -209,6 +209,7 @@ body{transition:margin-left .14s ease-out}
     <div class="autostats" id="autoStats" style="margin-top:8px"></div>
     <div id="autoCo" style="margin:8px 0"></div>
     <div id="autoRc" style="margin:8px 0"></div>
+    <div id="autoBl" style="margin:8px 0"></div>
   </details>
 </div>
 
@@ -897,7 +898,7 @@ function settleAutoRows(rows){      // the Auto bets of one window
   let wp=0;
   for(const b of rows){b.hit=(b.side==="UP")===b.up;b.payout=b.hit?b.stake*b.mult:0;b.pnl=b.payout-b.stake;wp+=b.pnl;
     autoSt.net+=b.pnl;autoSt.bank+=b.pnl;if(b.hit)autoSt.w++;else autoSt.l++;autoSt.windows++;
-    cashBook(b);rcBook(b);b.bank=autoSt.bank;b.cp="AUTO";simLog.push(b);if(!sim)hOutbox.sim.push(b)}
+    cashBook(b);rcBook(b);blBook(b);b.bank=autoSt.bank;b.cp="AUTO";simLog.push(b);if(!sim)hOutbox.sim.push(b)}
   autoSt.peak=Math.max(autoSt.peak,autoSt.bank);
   if(wp<0){autoSt.streak++;if(autoSt.streak>=3){autoSt.pause=2;autoSt.streak=0}}else if(wp>0)autoSt.streak=0;
   if(autoSt.bank<1){autoSt.bank=autoSt.start;autoSt.peak=autoSt.start;autoSt.streak=0;autoNote="Fake bankroll used up, restarted from the start amount"}}
@@ -1326,7 +1327,7 @@ function render(s){
   if(T.recent.length){tr+='<table class="mini"><tr><th>Window</th><th>Coin</th><th>Call</th><th>Model</th><th>Kalshi multiplier</th><th>Result</th></tr>'+
     T.recent.map(x=>`<tr><td>${new Date((x.w+900)*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</td><td>${x.sym}</td><td>${x.side}</td><td>${pc(x.p)} @${mmss(x.tau)}</td><td>${mx(sideMult(x))}</td><td class="${x.pending?"":x.hit?"hit":"miss"}">${x.pending?"LIVE":x.hit?"HIT":"MISS"}</td></tr>`).join("")+"</table>"}
   setH($("track"),tr);
-  safe("real-money cards",()=>renderLive(s));safe("auto mode and picks cards",()=>{renderAuto();renderCash();renderRc();renderPicks()});
+  safe("real-money cards",()=>renderLive(s));safe("auto mode and picks cards",()=>{renderAuto();renderCash();renderRc();renderBl();renderPicks()});
   const C=s.calib;
   let cb=`<div class="s">${C.n} scored samples</div>`;
   cb+='<table class="mini"><tr><th>Confidence</th><th>Samples</th><th>Model said</th><th>Actually right</th></tr>'+
@@ -1587,6 +1588,25 @@ function rcBook(b){if(!(b.re!=null))return;
   for(const grp of(b.px==="real"?["all","real"]:["all"])){const g=rc[grp]=rc[grp]||{n:0};g.n++;
     for(const k in RC_T){const e=g[k]=g[k]||{kn:0,kw:0,ks:0,kp:0,dn:0,dw:0,ds:0,dp:0},keep=b.re>=RC_T[k],pre=keep?"k":"d";
       e[pre+"n"]++;if(b.hit)e[pre+"w"]++;e[pre+"s"]+=b.stake;e[pre+"p"]+=b.pnl}}}
+/* Market-blend test (shadow only, nothing is skipped). The skip log showed the model is overconfident exactly when Auto bets: when the model is
+   90%+ and Kalshi's live price is 4+ points lower (88 coin-windows, 2026-11-26/27), the model said 93.4%, the market 86.0%, and they won 88.6%,
+   about two-thirds of the way toward the market. So each fake Auto bet is stamped with the market's chance (mk, the ask for its side), a blended
+   chance bp = 0.65 x market + 0.35 x model, and be = bp minus the price paid with the fee. At settlement the page books what "only bet when be >= X"
+   would have kept and dropped. The weight rests on 46 windows, so this checks it on new bets before anything real uses it. */
+const BL_W=0.65,BL_T={b0:0,b2:0.02,b4:0.04};
+function blBook(b){if(!(b.be!=null))return;
+  const bl=autoSt.bl=autoSt.bl||{};
+  for(const grp of(b.px==="real"?["all","real"]:["all"])){const g=bl[grp]=bl[grp]||{n:0,w:0,ps:0,bs:0,ms:0};g.n++;if(b.hit)g.w++;g.ps+=b.conf||0;g.bs+=b.bp;g.ms+=b.mk;
+    for(const k in BL_T){const e=g[k]=g[k]||{kn:0,kw:0,ks:0,kp:0,dn:0,dw:0,ds:0,dp:0},keep=b.be>=BL_T[k],pre=keep?"k":"d";
+      e[pre+"n"]++;if(b.hit)e[pre+"w"]++;e[pre+"s"]+=b.stake;e[pre+"p"]+=b.pnl}}}
+function renderBl(){
+  const bl=autoSt.bl,el=$("autoBl");if(!el)return;
+  if(!bl||!bl.all||!bl.all.n){setH(el,'<div class="s">Market-blend test: collecting data. Nothing is ever skipped; each bet records whether a model-plus-market chance would have kept it.</div>');return}
+  const cl=v=>v>0.0005?"hit":v<-0.0005?"miss":"",pc1=v=>(v>=0?"+":"")+(100*v).toFixed(1)+"%",hr=(w,n)=>n?Math.round(100*w/n)+"% ("+w+"/"+n+")":"–",a=bl.all;
+  const row=(grp,lab,k)=>{const g=bl[grp];if(!g||!g[k])return"";const e=g[k];return `<tr><td style="text-align:left">${lab}</td><td>${BL_T[k]*100} pts</td><td>${e.kn}</td><td>${hr(e.kw,e.kn)}</td><td class="${cl(e.kp/(e.ks||1))}">${e.ks?pc1(e.kp/e.ks):"–"}</td><td>${e.dn}</td><td>${hr(e.dw,e.dn)}</td><td class="${cl(e.dp/(e.ds||1))}">${e.ds?pc1(e.dp/e.ds):"–"}</td></tr>`};
+  setH(el,'<div class="s" style="margin:6px 0 4px">Market-blend test on '+a.n+' settled fake Auto bets'+(bl.real?" ("+bl.real.n+" followed a real fill)":"")+' (shadow only, nothing is skipped). Average chance at the bet: model '+(100*a.ps/a.n).toFixed(1)+'%, market '+(100*a.ms/a.n).toFixed(1)+'%, blended '+(100*a.bs/a.n).toFixed(1)+'%; they won '+(100*a.w/a.n).toFixed(1)+'%. The rule: blend the chance two-thirds toward Kalshi\'s price and only bet when it beats the price paid (with the fee) by at least the points shown. Return = profit divided by money staked.</div>'+
+    '<table class="mini"><tr><th style="text-align:left">Bets</th><th>Min. edge</th><th>Would keep</th><th>Kept: hit rate</th><th>Kept: return</th><th>Would drop</th><th>Dropped: hit rate</th><th>Dropped: return</th></tr>'+
+    Object.keys(BL_T).map(k=>row("all","All fake bets",k)).join("")+Object.keys(BL_T).map(k=>row("real","Real-fill bets",k)).join("")+'</table>')}
 function renderRc(){
   const rc=autoSt.rc,el=$("autoRc");if(!el)return;
   if(!rc||!rc.all||!rc.all.n){setH(el,'<div class="s">Shrink-and-edge test: collecting data. Nothing is ever skipped; each bet records whether the rule would have kept it.</div>');return}
@@ -1653,7 +1673,8 @@ function autoStep(tick,tau,wStart,wEnd){
   const place=[];for(const x of picks){const stake=Math.floor(autoSt.bank*tot/picks.length*100)/100;if(stake>=1)place.push({x,stake})}
   autoDone=true;
   if(!place.length){autoNote="Edge too small to bet";return}
-  for(const {x,stake} of place)pendAuto.push({w:wStart,sym:x.sym,side:x.side,p:x.e.p,rp:rcP(x.e.p),re:Math.round((rcP(x.e.p)-x.cost)*1000)/1000,lb:x.e.lb,edge:x.edge,tau:x.tau,anchorLn:x.anchorLn,ask:x.ask,bid:x.bid,mult:1/x.cost,stake,split:place.length>1,tk:x.tk,rk:wEnd+"|"+x.sym+"|"+x.side,rw:real.auto?1:0,rs:SESSION,agree:x.agree,opp:x.opp});
+  for(const {x,stake} of place){const mk=x.side==="UP"?x.ask:(x.bid!=null?1-x.bid:null),bp=mk>0&&mk<1?BL_W*mk+(1-BL_W)*x.conf:null;
+  pendAuto.push({w:wStart,sym:x.sym,side:x.side,p:x.e.p,rp:rcP(x.e.p),re:Math.round((rcP(x.e.p)-x.cost)*1000)/1000,conf:x.conf,mk:mk!=null?Math.round(mk*1000)/1000:null,bp:bp!=null?Math.round(bp*1000)/1000:null,be:bp!=null?Math.round((bp-x.cost)*1000)/1000:null,lb:x.e.lb,edge:x.edge,tau:x.tau,anchorLn:x.anchorLn,ask:x.ask,bid:x.bid,mult:1/x.cost,stake,split:place.length>1,tk:x.tk,rk:wEnd+"|"+x.sym+"|"+x.side,rw:real.auto?1:0,rs:SESSION,agree:x.agree,opp:x.opp})}
   if(real.auto)safe("real auto bet",()=>realAuto(best,two,picks,wEnd));
   if(!real.auto){curAutoAlert={w:wStart,end:wEnd,tau,bets:place.map(({x,stake})=>({sym:x.sym,side:x.side,stake,mult:1/x.cost,conf:x.conf,lb:x.e.lb,edge:x.edge}))};autoNewFlag=true}      // with real Auto betting on, the popup and sound come from the real bet instead (see realMirror)
   autoNote="Bet placed";autoSave()}

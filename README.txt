@@ -83,6 +83,13 @@ Fake money
     a real order fills, the fake bet uses the price Kalshi really gave; when the real order is refused, the fake bet is dropped.
   - Fake bets settle on Kalshi's own result for the market. If Kalshi has no result after 15 minutes, the app's own estimate is
     used and the bet is marked.
+  - Market-blend test (table on the fake Auto card, shadow only, nothing is skipped): the model is overconfident exactly when Auto
+    bets, because Auto only buys when Kalshi's price is well below the model, and there the market is usually closer to right. Each
+    fake bet records the market's chance (the ask for its side), a blended chance (0.65 x market + 0.35 x model) and that minus the
+    price paid with the fee. At settlement the table shows what "only bet when the blend beats the price by 0/2/4 points" would have
+    kept and dropped, with hit rates and returns, for all fake bets and for those that followed a real fill.
+  - Resetting the fake bankroll resets only the bankroll and its win/loss counts. The cash-out, shrink-and-edge and market-blend
+    tables, and what Auto has learned, are kept.
 
 
 EARLY SELLING (real Auto bets)
@@ -150,6 +157,7 @@ Timed bets were removed on 2026-11-25. Their saved data is kept unchanged in sim
 
 CHANGELOG (newest first; details are in the GitHub history)
 ---------
+2026-11-26an  market-blend test on fake Auto (shadow only)
 2026-11-26am  nothing for sale: Auto drops that coin and looks for another one at once
 2026-11-26al  real early-selling table on the bet history
 2026-11-26ak  skip log saved for every window; Auto buys take what is for sale instead of all-or-nothing (helper 2026-11-26n)
