@@ -1,288 +1,155 @@
 KALSHI DASHBOARD
 ================
+Tracks Kalshi's 15-minute crypto markets (BTC, ETH, SOL, XRP, DOGE, BNB, HYPE, NEAR, ZEC), predicts where each coin ends the
+window, and runs Auto mode: fake-money bets always, real-money bets on your Kalshi account when you switch them on.
+Statistical estimates, not financial advice.
 
-FIRST TIME (Windows)
-  1. Unzip this folder somewhere permanent (for example Documents\KalshiDashboard).
+
+SETUP AND UPDATES
+-----------------
+First time (Windows)
+  1. Put this folder somewhere permanent.
   2. Double-click "Add Desktop Shortcuts.vbs" once.
-  3. Open "Kalshi Dashboard" from your Desktop. It opens in its own window; closing that window
-     closes everything. Nothing else to start or stop.
-  Python must be installed (python.org, tick "Add Python to PATH").
+  3. Open "Kalshi Dashboard" from your Desktop. It opens in its own window; closing that window closes everything.
+  Python 3 must be installed (python.org, tick "Add Python to PATH"). No extra packages are needed.
+  Mac / Linux: double-click "Kalshi Dashboard.command".
 
-UPDATING (no new setup)
-  Download the new zip and unzip it over this same folder, replacing the files when asked.
-  Your Desktop icons keep working. Your saved data (the "data" folder) is never touched.
-  If an old version is still running, the new one replaces it automatically.
+Updates
+  Menu > Updates > "Check for updates" downloads a newer version from the update address and installs it. Your data folder,
+  keys folder and settings are never touched. The files being replaced are copied to backup\ first (the newest two copies
+  are kept). When the helper's own file changes it restarts itself and the page reloads to match. If the page says the helper
+  is out of date, close and reopen the app.
 
-KALSHI ACCOUNT AND LIVE BETTING (optional)
-  Menu > Kalshi account walks you through it: create an API key on kalshi.com (Profile > API Keys), put the private key file
-  Kalshi gives you in the "keys" folder (button in the panel), and paste the Key ID. The private key never leaves this computer
-  and is never sent to the dashboard page. Betting stays OFF until you press the "Real betting" button in the Kalshi
-  account panel. There are no per-bet or per-day limits: each mode can only bet the money you allocated to it. Only 15-minute crypto markets can be bought, as fill-or-kill orders. Every bet attempt is
-  recorded in data\live_orders.jsonl. Use the Demo account option to try it with fake money first.
-  REAL-MONEY VIEWS: the Timed bets card and the Auto mode card each have a "Real money" button that swaps the card for a
-  real-money version that looks and works like the fake-money one. Type an amount in its Allocated $ box (Auto mode: one box;
-  Timed bets: one per coin, or the "Total $ for all coins" box at the top, which splits that total evenly across every coin, even if some coins already have money) and press Set or Enter. That money is its bankroll: it can only bet that amount,
-  and the amount goes up and down with its wins and losses. The rest of your Kalshi cash is never touched (for example $50 of a
-  $90 account leaves $40 untouched). If it wins $10 the box shows $60; type 50 and press Set and the extra $10 goes back to your
-  cash. Type a bigger number to add more (never more than your free cash), or 0 to take everything back. The amount can't go
-  below what is in a bet that hasn't settled. Then press "Start real betting" once.
-  Real bets are placed only when the fake-money twin bets, and a mode can never bet more than its allocated money. They switch off whenever you
-  restart, and "Stop all real betting" turns everything off at once. The Kalshi account card shows your cash, what is allocated,
-  what is currently bet, and your real wins and losses (taken from Kalshi's own market results). Once a real bet has gone through, the helper replaces its own estimates with Kalshi's records: the price and fee actually paid, the
-  multiplier that gives, and the payout when the market settles. Real wins, losses, net and bankroll use those figures.
-  Each card has its own "View real bet history" button (what was bought, the price paid, multiplier, result and payout).
-  The Start/Stop real betting button sits next to the "Real money" label on each card.
-  The Auto mode and Timed bets cards show the real-money version at all times, with the fake-money version in a dropdown at the bottom.
-  The "Activity log" button in the
-  Kalshi account panel opens a card with everything the real-money modes did, with times.
-  The helper restarts itself when its program file is replaced (for example by an update), and the page reloads to match it.
-  The key can place real bets: keep the keys folder private and never share it or the zip of this folder. If a key is ever exposed,
-  delete it on Kalshi's API Keys page.
+Files
+  kalshi_dashboard_v4.html   the dashboard page
+  kalshi_helper.py           the helper: talks to Kalshi, places and sells real orders, saves your data
+  settings.json              your settings (Key ID, betting on/off, allocations); created by the helper
+  keys\                      your Kalshi private key file. Never share this folder or a copy of this folder.
+  data\                      everything the app records (see SAVED DATA below)
+  backup\                    the files replaced by the last two updates
+  app_profile\               the app window's browser profile
+  build_exe.bat              optional: builds a single KalshiDashboard.exe
 
-MAC / LINUX
-  Double-click "Kalshi Dashboard.command" (needs Python 3). Updating works the same way.
 
-BETS YOU ADD BY HAND
-  If you buy more contracts yourself in a market Auto or Timed bets already bet in, only the contracts the app itself bought count toward its
-  net, allocation and free-to-bet. Your own contracts are not credited to it, win or lose.
+KALSHI ACCOUNT (optional)
+-------------------------
+Menu > Kalshi account walks you through it: create an API key on kalshi.com (Profile > API Keys), put the private key file
+in the keys folder (button in the panel) and paste the Key ID. The private key never leaves this computer and is never sent
+to the page. A Demo account option lets you try everything with Kalshi's fake money first. If a key is ever exposed, delete
+it on Kalshi's API Keys page.
 
-DAILY AND WEEKLY GOALS (real Auto mode)
-  Auto aims for at least +2% a day and +15% over the week (Monday to Sunday). Open "View real bet history" on the Auto card to see today's
-  and this week's settled profit as a share of the bankroll at the start of that day or week, whether each minimum is met, and the last
-  7 days one by one. The two minimums can be changed there in the "Day min" and "Week min" boxes. They are targets, not guarantees. Auto never stops betting because of
-  them, and the daily minimum never changes a bet; the weekly minimum only changes bet size as described next.
-  Weekly catch-up: for the first 5 days of the week Auto bets as normal. From the end of day 5, if the week's return is behind the
-  straight-line pace to the weekly minimum (for example +10.7% by the end of day 5 for +15%), Auto bets 1.5 times its normal amount
-  (and its Max bet limit is raised by a quarter) until the week is back on pace, then it goes back to normal. The size is the
-  "Catch-up bet size" box in the bet history (1 turns it off). Bigger bets can lose more, so this is riskier, not safer.
+Real betting is off until you allow it in the Kalshi account panel and then press "Start real betting" on the Auto card.
+Both are remembered across restarts and updates; "Stop all real betting" turns everything off at once and nothing restarts
+by itself after that. The panel shows your cash, what is allocated, what is currently bet, real wins and losses, the order
+list, and an "Activity log" of everything the real-money side did.
 
-AUTO'S PRICE CHECK
-  Before Auto decides to bet, it asks the helper for the price an order would really match against (Kalshi's order book), not just the
-  quoted price on the market page, and works out its edge and multiplier from that. If nothing is for sale on the side it wants, it skips
-  that coin. If the helper can't read the book, it falls back to the quoted price as before.
 
-FAKE TIMED BETS ARE PRICED LIKE A REAL FILL
-  A fake Timed bet used to take the quoted price with no fee and bet the whole bankroll at that price, however few contracts were for sale. Now
-  it is priced the way a real order would be: it reads Kalshi's order book (through the helper), buys the cheapest level first and works
-  upward, adds Kalshi's fee, and only bets what is actually for sale (the rest of that coin's bankroll stays put until the bet settles). If the
-  book can't be read, or in a practice run, it uses the quoted price plus the fee. The Timed card shows the date this started and a separate
-  tally of the bets since then, because earlier Timed results used the old pricing and look better than a real fill would. The real Timed bet
-  no longer waits for the fake one's price. (This needs the new helper build, 2026-11-25f; the page tells you if the helper must be restarted.)
+AUTO MODE
+---------
+How a bet is chosen
+  - Every second the model gives each coin a probability of finishing the window above Kalshi's target. It simulates price
+    paths to the end of the window and averages each path's last 60 seconds, the way Kalshi settles (inside the last minute
+    the seconds already gone are real prices). The result is corrected against what has really happened (calibration).
+  - Auto bets only against Kalshi's own target for the window, only with 4 minutes or less left, and only when the signal
+    has been steady. It pulls the model's number toward how often similar situations really won and subtracts one standard
+    error (the "safe estimate").
+  - The price is Kalshi's live order book (what an order would really match against), read through the helper, never the
+    listed price on the market page, which can lag by 10-25 seconds. If the book can't be read or nothing is for sale, no bet.
+  - It bets when the safe estimate beats the price plus Kalshi's fee by enough. Stakes are a fraction of the bankroll (Kelly
+    sizing), capped by "Max bet %", and smaller while the bankroll is below its peak.
+  - At most two coins per window, and the second must point the opposite way (one UP, one DOWN). The two share 1.3 times the
+    one-bet size.
 
-FAKE BETS USE KALSHI'S OWN TARGET AND KALSHI'S OWN RESULT
-  Auto and Timed bets (fake and real) are only placed against Kalshi's own target number for the window; if Kalshi's number hasn't loaded yet,
-  the bet waits. When a window closes, a fake bet is no longer judged by the app's own 60-second average: it waits for Kalshi's result for that
-  market ("waiting for Kalshi" is shown on the card) and is settled on that. A window's Auto bets settle together. If Kalshi has not published
-  a result after 15 minutes, the bet is settled on the app's own estimate instead and is marked as such. The Timed and Auto cards show how many
-  bets were settled on Kalshi's result and how many times it differed from the app's own estimate. Closing the page while a bet is waiting
-  drops that bet (its bankroll is left as it was).
+Real money
+  - Type an amount in "Allocated $" and press Set. That money is Auto's real bankroll: it moves with its wins and losses, and
+    the rest of your Kalshi cash is never touched. Type a smaller number to send money back to your cash, 0 to take it all
+    back. It can't go below what is in an unsettled bet.
+  - A real bet is placed when the fake-money Auto bets, sized from the real bankroll. Its price limit is the estimated chance
+    minus 1 cent, plus "Pay up to N cents extra" (default 1). Orders are fill-or-kill and can use fractions of a contract.
+    A bet refused only on price is tried again every second while the signal holds, until about 15 seconds are left.
+  - If Kalshi refuses a bet for "insufficient balance", real bets are capped below that size and a red warning appears on the
+    Auto card until a bet that big goes through ("Clear this limit" clears it by hand).
+  - Contracts you buy yourself in the same market are not counted toward Auto's bankroll or results.
+  - Daily and weekly goals: Auto aims for at least +2% a day and +15% a week (Monday to Sunday); both can be changed in the
+    real bet history. They never stop betting. After day 5, if the week is behind the straight-line pace, bets are 1.5 times
+    normal size until it is back on pace ("Catch-up bet size", 1 turns it off). Bigger bets can lose more.
 
-PRICE LOG (for testing better models later)
-  While the helper is running, the page sends it one row per coin per second to data\prices-YYYYMMDD.csv.gz (one compressed file per UTC
-  day, about 5-10 MB a day, the last 14 days are kept): the combined price, each exchange's own price, the best bid / ask and their sizes
-  on OKX and Coinbase, and Kalshi's quote and target. Nothing in the app reads it. It exists so alternative models can be compared on
-  exactly what the page saw. To stop it, type  localStorage.setItem("k15pricelog","false")  in the browser console.
+Fake money
+  - Fake Auto runs all the time with its own bankroll (Start $ and Reset bankroll on the card). It mirrors the real bets: when
+    a real order fills, the fake bet uses the price Kalshi really gave; when the real order is refused, the fake bet is dropped.
+  - Fake bets settle on Kalshi's own result for the market. If Kalshi has no result after 15 minutes, the app's own estimate is
+    used and the bet is marked.
 
-NOTIFICATIONS
-  While real Auto betting is on, the Auto popup and sound come from the real bet (when its order is actually bought), not from the
-  fake-money one. With real Auto betting off, the fake-money Auto bet still notifies as before.
 
-REFRESH RATE
-  In the last 4 minutes of every window the dashboard refreshes every coin's Kalshi price twice a second (once a second before that).
-  If Kalshi says there are too many requests, it drops back to once a second for a minute and carries on.
+EARLY SELLING (real Auto bets)
+------------------------------
+  - Off until you press "Early selling" on the real Auto card. Tick the rules to use (any ticked rule can sell):
+      Flip 55/65/75/85%+   the model now gives the other side at least that much
+      Market +5 / +10 pts  what a contract nets at Kalshi's live bid, after the selling fee, is that many points above the
+                           model's win chance
+    Starting ticks: Flip 65%+ and Market +10 pts.
+  - "Do not sell below N c bid": while the bid is under N cents the bet is held. 0 (the start) means no minimum.
+  - Sales are judged from the live order book, once a second. Nothing is sold in the last 10 seconds, when the book price is
+    over 3 seconds old, or when a contract would net under 5 cents. The order is reduce-only (it can only close what Auto's bet
+    holds) and immediate-or-cancel, with a safety floor 10 cents under the bid. A sale that doesn't fill is tried again every
+    2 seconds, up to 4 times. A sale whose answer is unclear (a timeout) is never repeated; check Kalshi's own order history.
+  - The helper enforces this too: no sale while Early selling is off, it switches off with real betting, and it only sells
+    contracts one of this app's own Auto bets bought.
+  - Money: a fully sold bet is settled at once by the cash it brought back (a win if more than it cost). A part-sold bet keeps
+    the rest until the market settles. The bet history shows "Sold early: profit/loss · would have won/lost if held".
+  - Fake Auto keeps testing all six rules on every fake bet (the cash-out table on the fake Auto card). It never sells.
 
-PRICES
-  A real bet is only placed when its price is at or below what the model thinks it is worth (minus 1 cent). The "Pay up to N cents extra"
-  box on Auto mode and Timed bets lets it pay a little more so more bets go through (default 1; 0 is the strictest). A refused bet says
-  why in the activity log. On Timed bets, a coin whose leftover is too small to bet (under $1) after a loss goes to $0 and the
-  leftover returns to your cash.
-  If a real Auto mode or Timed bets order is refused only because the price is not there yet, it keeps looking every few seconds until
-  the window is nearly over, as long as the signal still holds and the price is still worth paying. (A Timed bet that retries is placed
-  later than its "Bet at" time.)
 
-KEEPING GOING
-  If something in the page ever fails, it is caught and the page keeps running; a "problems caught" note appears next to the build number
-  (click it to copy the details). Price feeds that go silent reconnect on their own, and requests that never answer time out.
+ON SCREEN
+---------
+  - Kalshi live multipliers card: always shown. It shows the listed price's age when it is 6-20 s old, and "waiting for
+    Kalshi's price" when there is none for this window.
+  - Best pick: a notification at your chosen times left. A new one replaces the old one, and closing it (X or "Switch to")
+    never brings an older one back. The Best pick record card keeps every pick.
+  - Real bet history (one per card): only bets that went through, with UP/DOWN, time left when bought, multiplier, result,
+    a Selling column (sold, tried and why, or a dash), and 12-hour times. Every attempt is still in data\live_orders.jsonl.
+  - While real Auto betting is on, the Auto popup and sound come from the real bet once it is bought.
+  - Prices: Coinbase whenever it has had a price in the last 15 seconds; Kraken, OKX or Hyperliquid only while it hasn't.
+    Each coin is corrected by its own small, learned gap to Kalshi's reference index (CF Benchmarks). The graph's green dotted
+    line is the 60-second average Kalshi settles on.
+  - Menu > Kalshi account also has "Check CF Benchmarks access" (read-only) and "Correct prices with Kalshi's index (live)",
+    which is off by default.
+  - If something in the page fails it is caught and the page keeps running; a "problems caught" note appears next to the build
+    number (click it to copy the details).
 
-COINS
-  ADA, BCH and TON are no longer tracked. Any money that was allocated to them goes back to your cash automatically.
 
-FILES
-  kalshi_helper.py            the helper (fetches Kalshi data, saves your data)
-  kalshi_dashboard_v4.html    the dashboard page
-  keys\                       your Kalshi private key file (only if you connect your account; never share this folder)
-  data\                       created on first run: signals, final calls, calibration, simulated bets (CSV files)
-  build_exe.bat               optional: builds a single KalshiDashboard.exe
+SAVED DATA (data\ folder)
+-------------------------
+  live_orders.jsonl          every real order attempt, filled or not, with Kalshi's reason and timing (ms per step)
+  live_sells.jsonl           every early sale or try to sell
+  exit_log.jsonl             one line per Auto position (real and fake): every second from buy to close (model chance, live
+                             order-book bids, listed quote, coin price, volatility, model range and uncertainty), a snapshot
+                             at every sale or rule firing, the highest bid after it, and Kalshi's result and settlement value.
+                             It changes no decision; it exists to test better sell rules on the prices the bot really saw.
+  sim_trades.jsonl / .csv    fake bets (Auto, and the old Timed bets), with each cash-out rule's firing ("co")
+  sim_state.json             fake bankrolls and what Auto has learned
+  signals, final_calls, calibration (.csv/.jsonl, calibration_summary.json)   model records used for calibration
+  prices-YYYYMMDD.csv.gz     one row per coin per second (exchange prices, top of book, Kalshi's listed quote); kept 14 days.
+                             Its Kalshi quote is the lagging listed price (often unchanged for 30 s), so don't judge sell rules
+                             on it; use exit_log.jsonl. To stop it: localStorage.setItem("k15pricelog","false") in the console.
+  cfb-YYYYMMDD.csv.gz        Kalshi's CF Benchmarks index values; kept 14 days
 
-THE START REAL BETTING BUTTONS ARE REMEMBERED
-Auto mode and Timed bets each have a Start real betting button. Whatever you left them on (or off) is saved in settings.json, so closing the app, restarting it or updating it puts them back the way they were. Only your own presses change what is remembered. Switching all real betting off in Menu, Kalshi account forgets both, and nothing restarts by itself after that: you press Start again. If the account isn't ready or there is no real money allocated when the app comes back, it says so in the real-betting log and leaves the button off. The first time you update to this version the buttons start off, because the older version did not remember anything.
+Timed bets were removed on 2026-11-25. Their saved data is kept unchanged in sim_trades and sim_state.
 
-FAKE AUTO FOLLOWS THE REAL AUTO BET
-While real Auto betting is on, a fake Auto bet on the same coin and side as a real one waits for the real order. If the real order fills, the fake bet uses the multiplier Kalshi actually gave the real order (fee included) and takes the same share of the fake bankroll that the real fill was of the real bankroll (so a real bet that only partly filled gives a smaller fake bet too). If the real order is refused or never fills, the fake bet is dropped too, so the fake record doesn't count bets the real account couldn't get. If no real order was attempted (account not ready, no real money left, real betting switched off) or the answer is unknown, the fake bet keeps its own estimated price. The Auto card shows "Real fill copied / skipped" counts. Timed bets are not changed.
 
-AUTO MODE: A SECOND COIN MUST POINT THE OTHER WAY
-Auto mode bets one coin per window. It adds a second coin only if that coin points the opposite way (one UP, one DOWN) and passes the same checks as the first: confidence, a steady signal, a safe-estimate edge over the price paid, and a real order-book price. Coins mostly move together, so two bets the same way would usually win or lose together; an UP and a DOWN bet partly offset a market-wide reversal. The two bets share 1.3 times the one-bet size, split evenly, on the fake and the real side.
-
-REAL AUTO AND TIMED ORDERS CAN USE PART OF A CONTRACT
-Kalshi sells contracts in pieces as small as 0.01. Real Auto and Timed orders now top the whole contracts up with a fraction, so the bet spends the stake it was sized for (never more than the stake, and never more than the contracts for sale) instead of rounding down to whole contracts. Payouts are therefore no longer whole dollars. If Kalshi ever refuses a fractional count, the same bet is sent again as whole contracts and fractions stay off until the helper is restarted; the order log notes it. Orders you place by hand are unchanged. This needs the helper build 2026-11-26b: close the helper and reopen the dashboard after updating.
-
-EACH AUTO BET NOW KEEPS HOW MANY OTHER COINS AGREED
-When Auto mode places a bet, the real order log (data/live_orders.jsonl) records two numbers with it: "agree" (how many other coins qualified for a bet the same way at that moment) and "opp" (how many qualified the opposite way). Nothing in the bot's behavior changes. The numbers are only there so you can check later whether bets where no other coin agreed did worse. This needs the helper build 2026-11-26c: close the helper and reopen the dashboard after updating.
-
-CONTRACTS SHOWN TO 2 DECIMALS
-In the real bet history (Auto and Timed) and the all-orders list, the Contracts column now shows two decimals (for example 10.01 or 12.00), since fractional contracts are allowed.
-
-FAKE AUTO CONTROLS ON THE TOP ROW
-On the Auto mode card, the fake money row now holds its Start $ box, View bet history and Reset bankroll buttons on the same line as its title, so they are visible without opening the dropdown. Clicking them, or typing in the box, does not fold the dropdown; click the arrow or the title to open or close it.
-
-FAKE TIMED BETS NOW USE ALLOCATED MONEY, WITH AN AUTOMATIC RE-SPLIT
-The fake money row on the Timed bets card now works like the real one: a "Total $ for all coins" box with Split evenly, and an "Allocated $" box for each coin. Each coin's allocation is its bankroll and moves with its wins and losses. A coin that loses everything stays at $0 (the old "After a loss: restart" choice is gone). A coin's box can't be changed while it has an unsettled bet.
-New: "Re-split at +5%" (the number is adjustable). When the coins' total reaches that many % above the total you last allocated, and no bet is open, the profit is taken and the whole total is split evenly across all the coins again. That also revives any coin that was at $0. Setting a coin's amount, Split evenly and a re-split each move the "last allocated" total, so adding money never counts as profit. Reset all puts each coin back to the amount you last set for it.
-The real money Timed bets are unchanged.
-
-FIX: THE FIRST RE-SPLIT LEVEL USES THE MONEY YOU ALLOCATED
-The fake Timed bets' "last allocated" total now starts as the sum of the coins' Allocated amounts (what you gave them), not the coins' balances at the moment the feature first ran. Coins already above +5% of that total re-split at the next moment no bet is open.
-
-ONE-TIME CLEAN-UP OF OLD COINS (ADA, BCH, TON)
-The first time this build opens, it forgets everything it had stored for ADA, BCH and TON (coins Kalshi no longer lists): their signal history, final calls, calibration samples, practice bankrolls and Auto learning counters, in this browser and in the saved state. It runs once. Their rows in the data folder's CSV and JSONL files were removed separately, with a backup copy kept in data/backup_old_coins.
-
-COINBASE PRICE USED WHENEVER IT IS AVAILABLE
-Before, once a coin dropped to a backup price feed (Kraken, OKX or Hyperliquid) after a short Coinbase gap, it stayed on that backup until the backup went quiet, sometimes for minutes, even though Coinbase was back. Now every coin uses Coinbase whenever Coinbase has had a price in the last 15 seconds, and goes back to it the moment it returns. A backup is used only while Coinbase has had nothing for 15 seconds. The Using column in the sources table shows what each coin is on.
-
-CASH-OUT TEST ON THE FAKE AUTO BETS (NOTHING IS SOLD)
-Each open fake Auto bet now has its possible early sale checked every second against Kalshi's bid, under six rules: the model flips to the other side at 55, 65, 75 or 85 percent, or the market pays 5 or 10 points more than the model's win chance. When the bet settles, the card shows what each rule would have added or lost compared with holding, net of the selling fee, and how many losers it saved or winners it sold early. It never sells anything and doesn't change any bet or bankroll. Each bet's row in sim_trades.jsonl also keeps when each rule would have fired and the price at that moment (field "co"), so the best rule can be learned from real data later. The bid used is Kalshi's market quote, so very large positions on thin books could get a worse price than shown.
-
-PRICES NOW LINE UP WITH KALSHI'S REFERENCE PRICE
-Kalshi settles on a blended reference price (CF Benchmarks) averaged over about 60 seconds, not on the latest Coinbase trade. Measured on 22 hours of your data, the reference sits a small steady distance above Coinbase (about 0 to 8 basis points depending on the coin: BTC about 0, BNB and NEAR about 7). Three changes:
-1. Each coin's price is now corrected by its own gap. At every window open the page compares Kalshi's target price with Coinbase's 60-second average just before it (only when that whole minute was priced from Coinbase), keeps the last 20 gaps per coin, and adds the median to the price used everywhere (graph, tables, predictions, bets). It starts from the measured values and replaces them with each coin's own as windows pass. The typical error against Kalshi's target dropped from about 2.2 to 0.8 basis points in testing. The price log's "px" column now holds the corrected price; its Coinbase, Kraken, OKX and Hyperliquid columns stay raw.
-2. The graph has a green dotted 60-second average line, and the target card and the coin table show the 60-second average against the target, since that is what Kalshi settles on.
-3. Coinbase is used whenever it has a recent price (earlier fix). Other exchanges were tested in a blend and did not improve the match, so they remain backups only.
-
-BUILD 2026-11-26l / HELPER 2026-11-26d: FASTER RETRIES AND ORDER TIMING
-- A real Auto or Timed bet that Kalshi refuses only because of the price (not enough for sale, price moved) now looks again after 1 second instead of 3 (RETRY_MS in the page). It still stops when the signal changes, the price isn't worth it, the bankroll is gone, or under 15 seconds are left. The retry cap was raised from 40 to 120 tries so it keeps looking for about as long as before (up to two minutes).
-- The helper now records how long each step of every order took, in milliseconds, in the "ms" field of each row in data/live_orders.jsonl: checks, gap (the 0.25 s pause between automatic orders), market (the market lookup), book (the order book lookup), sizing, post (Kalshi's answer to the order) and total.
-- The helper changed, so restart it (the page will say so until you do).
-
-BUILD 2026-11-26m: THE REAL AUTO CARD NO LONGER SAYS "WAITING FOR THE REAL BET" WHEN NOTHING IS HAPPENING
-- That text was shown whenever the fake Auto bet had been decided but the real order hadn't written a status line yet. Three cases never wrote one: the real account not being ready, the real Auto bankroll having under $1 free, and a bet whose share of the real bankroll came to under $1. In those cases the card sat on "Waiting for the real bet" until the window ended, even though the real bet had already been skipped. Each now says what happened (for example "not placed (its real bankroll is $0.50)").
-- The moment a real order is handed over it now shows "checking Kalshi's price", and "(another order is being placed first)" when it is queued behind another real order, instead of staying blank until it reaches Kalshi.
-- The helper did not change.
-
-BUILD 2026-11-26n / HELPER 2026-11-26e: CHECK WHETHER YOUR ACCOUNT CAN USE KALSHI'S CF BENCHMARKS VALUES
-- Kalshi's 15-minute crypto markets settle on CF Benchmarks index values (BRTI for Bitcoin, and an "..._RTI" index for each other coin), and Kalshi's own API passes those values on to API users. If your account can read them, the app could use the exact numbers Kalshi settles on instead of Coinbase prices plus a learned gap.
-- Menu > Kalshi account now has a "Check CF Benchmarks access" button. It makes one read-only call per coin (BTC, ETH, SOL, XRP, DOGE, BNB, HYPE, NEAR, ZEC), takes about 5 seconds, and shows for each coin Kalshi's answer (status), how long it took, the index value, the price the page is using, the difference in basis points, and Kalshi's exact reply if it failed. Nothing is bought, saved or changed, and no bot uses these values yet.
-- The helper's list of allowed read-only paths gained /cfbenchmarks/values. Everything else (the only allowed POST, the other GET paths) is unchanged.
-- The helper changed, so it restarts by itself when the file is replaced; the page says it is out of date until it has.
-
-BUILD 2026-11-26o / HELPER 2026-11-26f: THE CF BENCHMARKS CHECK NOW MEASURES HOW OLD THE VALUES ARE
-- "Check CF Benchmarks access" (Menu > Kalshi account) now runs 3 rounds, a minute apart (about 3 minutes; leave the page open). For every coin and round it shows how old the value is (the time stamp CF puts on it against the moment Kalshi's answer arrived), how far it is from the price this page had at the second it arrived, and how far it is from the price the page had at the value's own time stamp. It also shows the first part of Kalshi's raw reply for BTC, so the layout can be checked.
-- A one-line verdict at the top says whether the values are fresh and match the page, fresh but a real distance from it, old (so unusable for live prices), or have no readable time stamp.
-- Still read-only: nothing is bought, saved or changed, and no bot uses these values.
-- The helper changed (it now reports the time stamps), so it restarts by itself when the file is replaced.
-
-BUILD 2026-11-26p / HELPER 2026-11-26g: FIX FOR THE CF BENCHMARKS CHECK (IT WAS READING THE OLDEST VALUE)
-- Kalshi's CF Benchmarks answer is a list of one-second values covering about the last hour, oldest first. The check took the first one, so the values it showed were an hour old (that is why the age read 3600 s, and why the first run's gaps of +12 to +47 bp meant nothing). It now takes the newest value in the list and its own time stamp.
-- Compared with the price the page had at the same second, the CF values from the second run were within a few basis points (typically about 2.5 bp) for most coins.
-- The helper changed, so it restarts by itself when the file is replaced.
-
-BUILD 2026-11-26q / HELPER 2026-11-26h: LIVE CORRECTION FROM KALSHI'S INDEX (OFF BY DEFAULT)
-- The helper now keeps a read-only feed of the CF Benchmarks index values Kalshi's 15-minute crypto markets settle on (BTC, ETH, SOL, XRP, DOGE, BNB, HYPE, NEAR, ZEC). While the page is open it asks Kalshi for each coin about every 10 seconds (about 1 request a second in total; Kalshi allows about 4), keeps the last 10 minutes in memory, and appends every new one-second value to data/cfb-YYYYMMDD.csv.gz (columns t, coin, value; kept 14 days). It slows down or stops by itself if Kalshi says to slow down or says this account can't read the values.
-- The page compares those index values with the Coinbase prices it recorded for the same seconds and takes the median difference as each coin's LIVE offset in basis points. With "Correct prices with Kalshi's index (live)" ticked (Menu > Kalshi account), the page adds that live offset to the Coinbase price instead of the offset learned at window opens. The live offset moves at most 3 bp per 10 seconds, is ignored if it looks wrong (over 150 bp), and the page falls back to the learned offset when the live one is older than 45 seconds or when the price isn't coming from Coinbase.
-- The tick box is OFF by default. The feed runs and is logged either way, and a status line under the box shows each coin's live offset next to the learned one. Nothing else changes: no bot rule, threshold or bet size.
-- The helper changed, so it restarts by itself when the file is replaced.
-
-BUILD 2026-11-26r: SHRINK-AND-EDGE TEST (SHADOW ONLY, NOTHING IS SKIPPED)
-- On settled bets the app's predicted chances ran about 5 points too high (about 95% predicted against about 90% that came true on real bets, and 97% against 92% on fake ones, after taking out bets priced from Kraken). A test on past fake bets found that shrinking the chance (95% counts as about 90%, 98% as about 95%) and only betting when the shrunk chance beats the price paid by 4 to 6 points would have kept the better bets: fitted on the first 76 fake bets, it also helped on the next 51 (kept bets averaged +24.7% a bet against +16.5% for all, with a 90% range of +1.9 to +16.0 points for the gain).
-- Every fake Auto bet now carries two extra numbers when it is placed: rp (the shrunk chance) and re (the shrunk chance minus the price paid). At settlement the page books what the rule "only bet when re is at least 2, 4 or 6 points" would have kept and dropped, for all fake Auto bets and separately for those that followed a real fill. A table under the cash-out test on the fake Auto card shows, for each setting, how many bets it would keep and drop, with hit rate and return (profit divided by money staked) for each group. rp and re are also saved with each bet in data/sim_trades.jsonl.
-- Nothing is skipped and no bet, stake, threshold or real order changes. The helper did not change.
-
-BUILD 2026-11-26s (helper 2026-11-26i): KALSHI CASH GUARD AND RAW ACCOUNT READOUT
-- Problem found: since you raised the real Auto allocation, Kalshi has refused every real bet above about $5 with "HTTP 400: insufficient balance" (about 30 refusals from $5.22 to $41.27), while the helper reads a Kalshi balance of $225.15 and your Kalshi app shows it as available. Before the raise, Kalshi accepted bets up to $26.75 without trouble. Kalshi only checks cash when an order would actually fill (your log shows "not enough contracts for sale" refusals come first), so a harmless non-filling test order cannot measure it.
-- New safeguard (page): when Kalshi refuses a real Auto bet for insufficient balance, the real Auto card shows a red warning with the smallest refused size, how many were refused in a row and what the app thought was free, and real Auto bets are capped at 60% of the smallest refused size (never below $1, and never below the biggest bet Kalshi has accepted that was smaller than the refusal). The refusal is not retried. A bet near the cap that Kalshi accepts raises the cap by 50%; a bet at least as big as anything refused clears the limit. A "Clear this limit" button clears it by hand. When the page opens it works the limit out from the last 6 hours of the helper's order log, so it is in place straight away. Timed bets are not capped.
-- New readout (helper): GET /account/raw shows Kalshi's own raw replies for the balance, the orders still resting (they can lock up cash) and any sub-account balances. It only reads; nothing can place or cancel an order. The helper restarts by itself when the file is replaced.
-
-BUILD 2026-11-26t: CASH LIMIT LIFTED
-- The money was moved to the pool Kalshi orders draw on (Kalshi's own balance now shows $222.13 in pool 2 and $0 in pool 0). The $3.13 limit on real Auto bets, and every Kalshi "insufficient balance" refusal from before that moment, are now ignored when the page opens, so real Auto bets size from the allocation again. The safeguard itself stays: if Kalshi refuses a real bet for insufficient balance again, the limit and the red warning come back.
-
-BUILD 2026-11-26u (helper 2026-11-26j): CLEAN-UP, NO CHANGE IN BEHAVIOUR
-- Found with ESLint (page) and pyflakes/vulture (helper), then removed: 17 variables the page computed and never used (lastSigHtml, targetOv, fx, bw, bh, sg_, two copies of dd, cp, lv, mG, i, sgn, ev x2, updReady, one unused rows), and from the helper the unused functions book_depth and already_running plus three unused local variables. About 900 characters in total.
-- Checked by running 89 older test scripts against the old and new files, each side in its own folder, one test at a time: 123 checks pass and 33 fail on both, and the 33 are old scripts that test behaviour that was changed on purpose. The few differences between runs also appeared between two runs of the old build (clock timing in the tests).
-- Looked at and left alone: no two functions in the page have the same body, and in 40 seconds of simulated running the page used about 4% of one CPU core (the busiest function, mc, took about 1% of the time), so nothing was rewritten for speed.
-
-BUILD 2026-11-26v (helper 2026-11-26k): ONLY THE NEWEST TWO BACKUPS ARE KEPT
-- When the helper updates itself it saves the files it is replacing in backup/. It used to keep every one of those copies forever. Now, right after a successful update, it deletes all but the newest two folders in backup/ (judged by the date and time at the end of each folder name). Only folders named like <version>_<date>-<time> directly inside backup/ are ever touched.
-- This copy's backup/ folder already holds only two. Also removed by hand at your request: the old Windows .exe build (dist/, build/, build_log.txt), data/backup_old_coins/, _scratch/, release/, "Claude outputs/" and __pycache__/. The browser profile folder (app_profile/) was not touched.
-
-BUILD 2026-11-26w (helper 2026-11-26k): TIMED BETS REMOVED
-- The Timed bets card is gone from the page: the real-money part (Start real betting, the coin table, Total $ for all coins, Split evenly, Pay up to, real bet history), the fake-money practice version, and everything behind them (the fake bets that fired at a set time before the window closed, the order-book pricing used only by them, their re-split and reset buttons, the retry loop, and the code that handed leftover Timed money back to your cash).
-- The "Timed bets" row is gone from the "Real bets from" table on the Kalshi account card. The "All" row, "Net today" and "Net all time" still count every real bet on the account, including the 3 filled Timed bets from before, so All can be larger than the Auto mode row alone.
-- All Timed data was kept and nothing was deleted: sim_trades.jsonl / sim_trades.csv (921 Timed rows), sim_state.json (the Timed bankrolls, wins and losses, re-split history), live_orders.jsonl and settings.json. The page still loads Timed's saved state from the data folder and writes it back unchanged each time it saves. The old Timed orders still show as "timed" in the order list under Menu, Kalshi account.
-- The best-pick ranking used the Timed "Min confidence" box (90%) as its cut-off. It still uses that same saved value, but there is no box for it any more.
-- The helper is unchanged and still understands Timed allocations and orders, but the page no longer sends any, and $0 is allocated to Timed.
-- Checked: a deterministic practice run of 6 windows on the old and new page (same random numbers, same clock) gave exactly the same Auto mode bankroll, bets, results, learning, best picks, signals and final calls; the only difference was that the 174 fake Timed rows are no longer produced. Run against a copy of your real data folder, the new page left sim_state.json's Timed fields and all 921 Timed rows exactly as they were. ESLint finds no undefined or unused names. tests/test_page.py has 4 new checks for this.
-
-BUILD 2026-11-26x: KALSHI LIVE MULTIPLIERS CARD NO LONGER DISAPPEARS
-- Problem: the "Kalshi live multipliers" card vanished for a while after a window changed (and now and then in the middle of a window). The card was only drawn while the page held a Kalshi price for the selected coin that was less than 6 seconds old and belonged to the current window. Measured from your price log (157 windows, selected coin): the price was missing for a median of about 30 seconds after each window opened (90% of windows: up to 45 s, longest 52 s), plus 72 shorter gaps in the middle of windows.
-- Cause of the gap at the window change (measured live at the 18:15 ET change, BTC): Kalshi's list of open markets does not show the new window's market until about 28 s after it opens. The same market can be fetched by its own name (for example KXBTC15M-26NOV251830-30) from about 4 s after it opens, with its target price and quote, and its name can be worked out in advance. Checked on all 9 coins at 18:17 ET: every name built this way was found, active, with the right close time and a target price.
-- Fix 1 (the price): for the first 45 s of each window the page now asks for the new market by name first, and uses it only when Kalshi says it is open, it closes at the expected time and it has a target price. If that does not work (not open yet, any error) it uses the open-markets list exactly as before, and after a failed by-name request it uses only the list for that coin for a minute. A "too many requests" answer is still handled by the slow-down rule. After 45 s only the list is used, as before. This is one request per coin per second, same as before, because the list is skipped when the by-name request works. It also gives the target price about 24 s earlier in the window; the value is the same one, and the learned gap to Kalshi's index only uses the minute before the window opened, so it is unchanged.
-- Fix 2 (the card): the card is always on screen now. With a fresh price it looks as before. If the newest price is 6 to 20 seconds old it still shows the multipliers and adds "price from N s ago". Past 20 seconds, or when the only price is from the previous window, it shows UP - / DOWN - with "waiting for Kalshi's price" or "waiting for Kalshi to open this window". It never shows the last window's price for the new window. This also covers the shorter gaps in the middle of a window, whose cause is not known yet.
-- Nothing about betting rules changed. Bets are priced from Kalshi's quote only late in a window, under the same age and window checks as before.
-- tests/test_page.py has 11 new checks for this (card with a fresh, 10 s old, 30 s old, previous-window and missing price; by-name fetch at 10 s, not-open-yet, failure and fallback, after 45 s, 429, and market names in New York time).
-
-BUILD 2026-11-26y (helper 2026-11-26l): EARLY SELLING OF REAL AUTO BETS (OFF UNTIL YOU SWITCH IT ON)
-- New on the real Auto card: an "Early selling: OFF/ON" button and six tick boxes. Ticked at first: "Flip 65%+" and "Market +10 pts". When it is on and any ticked rule fires for an open real Auto bet, the bet is sold back to Kalshi instead of being held to the end. Flip N%: the model now gives the other side at least N%. Market +N pts: what one contract would net at Kalshi's bid, after the selling fee, is at least N points above the model's win chance. Flip 55/65/75/85 are nested (a lower one fires whenever a higher one does), so the useful mix is one flip rule plus one market rule.
-- How a sale is made: once a second the page checks each open real Auto bet against Kalshi's live bid. It never sells in the last 10 seconds of a window, when the price is more than 3 seconds old, or when a contract would net under 5 cents. The sale is a reduce-only, immediate-or-cancel order for the contracts that bet still holds, with a floor at the bid minus 2 cents. Reduce-only means it can only close what is held and can never open a new position; immediate-or-cancel means whatever does not fill at once is cancelled and the bet stays held (it is tried again every 2 seconds, up to 4 times). If the answer to a sale is unclear (a timeout) it is never repeated; check the Kalshi site.
-- Safeguards in the helper (not only the page): selling is refused unless Early selling is ON, it switches itself off when real betting is switched off or the environment changes, it can only sell contracts that one of this app's own Auto bets bought (hand-placed bets cannot be sold from here), and the sale price floor is enforced against the live order book.
-- Money: a fully sold bet frees its money at once, with the cash that came back (after Kalshi's selling fee) added to the Auto bankroll; it counts as a win or loss by the money (sold above what it cost = win). A bet sold in part keeps the rest open; the part not sold pays at settlement as usual. The bet history says "Sold early: Won/Lost" or "Part sold". About 3 seconds after a sale the helper replaces its estimate with Kalshi's own record of the fill and fee.
-- Every sale try, filled or refused, is written to data/live_sells.jsonl (a new file, kept apart from live_orders.jsonl so nothing that counts bets can mistake a sale for a bet). GET /account/sells shows it.
-- The fake-money cash-out test is unchanged: fake Auto keeps recording all six rules on every bet and never sells.
-- UNTESTED AGAINST KALSHI ITSELF: this build was tested against a fake Kalshi only (order format, floors, partial fills, accounting). The reduce-only flag, and how Kalshi reports a sale's fills, come from Kalshi's published order documentation and have not been exercised on your account. Switch it on with a small allocation and watch the first sales in the event list and in Kalshi's own order history.
-- Evidence so far is thin: in the fake-money test (18 settled bets since it began) Flip 65%+ fired on 1 bet and saved a $115 loss; Market +10 pts fired on 4 bets (saved 2 losers, sold 2 winners early) and was about $3 worse than holding. An earlier replay of about 22 hours (339 bets, 22 losers) had Flip 65%+ adding roughly 3 points of return per dollar staked. Read the table under the fake Auto card as it fills.
-
-BUILD 2026-11-26z: BET HISTORY SHOWS ONLY BETS THAT WENT THROUGH
-- The real bet history (View real bet history) no longer lists attempts that did not go through (refused, not filled, price moved), and its summary line no longer counts them. Nothing is deleted: every attempt, with Kalshi's reason, is still written to data/live_orders.jsonl by the helper (unchanged), and the order list under Menu, Kalshi account still shows all of them. Wins, losses, net and the daily and weekly tables are unchanged, because they never counted unfilled attempts.
-
-BUILD 2026-11-26aa: SALES AND THE FAKE CASH-OUT TEST NOW READ KALSHI'S LIVE ORDER BOOK
-- What happened: at 19:28 ET the real HYPE NO bet fired the "Market +10 pts" rule four times (19:28:20 to 19:28:28). Each time the helper refused the sale, because Kalshi's live order book bid for that side was 40, 54, 66 and 61 cents, far under the roughly 90 cents the page believed (floor 88). The bet then won. Nothing was sold and no money moved: the helper's price floor did its job.
-- Cause: the bid and ask that Kalshi lists on the market (yes_bid, no_bid and so on) can stay frozen for 10 to 25 seconds while the order book moves every second. Measured live at 19:34 ET on three coins for 26 seconds: BTC's listed quote never changed from 37/38 while the real book moved from 43 to 34 and back to 39; HYPE's and DOGE's listed quotes changed once each. The page judged sales from the listed quote.
-- Fix: the real early-selling check and the fake cash-out test now take the bid from the live order book (read through the helper, at most once a second per open bet) and ignore the listed quote. If the book price is missing or older than 3 seconds nothing is sold. The helper's floor check is unchanged.
-- The fake cash-out table built before this build judged sales from the lagging quote, so it is not trustworthy. It is kept (autoSt.cs0, saved in sim_state.json) and a fresh table starts empty. Nothing else about the fake test changed (same six rules, never sells). The per-bet "co" fields already written to sim_trades.jsonl are kept as they are.
-- On that 19:28 bet: with the real bids a sale was possible only around 66 cents against 93 cents paid, so even a sale would have lost about $6 on a bet that won. The "Market +10 pts" rule would have fired once at 19:28:26, by 0.2 of a point.
-- Not changed: the "Kalshi live multipliers" card still shows the listed quote (labelled with how old it is). Buying already re-prices from the live book in the helper.
-
-BUILD 2026-11-26ab: WIDER SAFETY LIMIT ON EARLY SALES
-- An early sale used to carry a price floor 2 cents under the live bid; it now carries a floor 10 cents under it (never below 1 cent). The order still sells to the best bids first, so the floor is not a target price: it only stops a sale from filling at junk prices if the book empties in the second between the check and the order. The helper still refuses a sale when the live bid is below the floor it is given.
-
-BUILD 2026-11-26ac: BET HISTORY AND STATUS SHOW SALES
-- Real bet history: the Side column reads UP / DOWN instead of YES / NO; the Limit column is gone and a "Time left when bought" column (minutes:seconds left in the window when the order went in) takes its place; the Time column is on a 12-hour clock (for example Nov 25, 7:28:17 PM); a new "Selling" column says "Sold 22.48 for $14.20 (Market +10 pts)", or "Tried 2x (Market +10 pts), not sold: <the reason>", or a dash if no sale was tried. It reads data/live_sells.jsonl through the helper's /account/sells. The Result column already says "Sold early: Won/Lost" or "Part sold".
-- The status line on the real Auto card now shows a sale, or a try to sell, for that coin in the same way it shows the bet itself (for example "HYPE DOWN: tried to sell early (Market +10 pts), not sold: the bid is now 54c, below the 88c minimum; still held"). The event list shows them too, as before.
-- The order list under Menu, Kalshi account is unchanged (YES / NO, Limit, 24-hour times).
-
-BUILD 2026-11-26ad: ONLY THE NEWEST BEST PICK NOTIFICATION STAYS ON SCREEN
-- The best-pick notifications that appear at your chosen times (for example 5:00, 3:00 and 1:00 left) used to stack up in the window. Now each new one replaces the one before, so at most one best pick notification is on screen. The Best pick record card is not touched and still lists every pick. Signal, final prediction and Auto bet notifications are unchanged.
-
-BUILD 2026-11-26ae: SOLD-EARLY RESULT SHOWS HOW IT WOULD HAVE ENDED
-- A bet sold in full used to read "Sold early: Won" or "Sold early: Lost", judged by the money the sale brought back, which could read "Lost" for a bet that would have won if held (and "Won" for one that would have lost). It now reads "Sold early: profit" or "Sold early: loss", followed by "would have won if held" or "would have lost if held" once Kalshi's result is in (before that, "market not settled yet"). The money, the net and the win/loss counts are unchanged (a bet sold in full still counts as a win when the sale brought back more than it cost).
-
-BUILD 2026-11-26af: CLOSING THE BEST PICK NOTIFICATION NO LONGER BRINGS THE OLD ONE BACK
-- Clicking "Switch to <coin>" or the X on a best-pick notification closed it, but the page then showed the pick before it again. Now only the newest pick can ever be on screen: once you close it, nothing shows until a newer pick arrives. Every pick still stays in the best pick record.
-
-BUILD 2026-11-26ag: MINIMUM BID FOR EARLY SELLING
-- New box next to the early-selling rule ticks: "Do not sell below [ ] c bid". While a bet's live bid is under that many cents, early selling leaves it alone and it is held to the end. 0 (the starting value) means no minimum, so nothing changes until you set it. The number is remembered in this browser.
-- Why: of the 18 real bets sold early so far, 3 were sold at a bid of 49-65 cents and all 3 would have won if held (about $31.80 given up), while both losers that were saved were sold at 84 cents or more. Three sales is a thin sample, so treat 75-80 as a thing to try, not a proven number.
-- What it costs: a held bet that loses is a full loss instead of the partial money a sale would have brought back, so a minimum can only make some losses bigger. The fake-money cash-out test keeps recording every rule with no minimum, so it still shows the unfiltered picture.
-
-BUILD 2026-11-26ah: AUTO NO LONGER WAITS FOR KALSHI'S LISTED PRICE
-- Before, Auto would only look at a coin once Kalshi's listed price for it had been fetched in the last 3 seconds; only then did it read the live order book. The listed price can stay frozen for 10-25 seconds, so that check could hold a bet back for no reason.
-- Now, with the helper running, Auto prices every bet from the live order book alone: the listed price can be old or missing (the market is then found by its name). If the order book can't be read, or nothing is for sale, no bet is placed; Auto never falls back to the listed price.
-- The real Auto order is also sized from the order book (it used to start from the listed price and let the helper re-price it), and each retry after a refusal reads a fresh order book first. Manual clicks still use the listed quote. With no helper running (fake money only) Auto still uses the listed price, fresh to 3 seconds, as before.
-
-BUILD 2026-11-26ai (HELPER 2026-11-26m): EXIT LOG FOR EVERY AUTO POSITION
-- Research only: nothing about buying or selling changes. For every Auto position, real and fake, the page now records each second from the buy to the close: the model's win chance for the bet's side (and before calibration), Kalshi's live order-book bids for both sides, the listed quote (for comparison, it lags), its age, and the coin's price.
-- Every early sale or try to sell (and, for fake bets, every cash-out-test rule the moment it fires) gets a snapshot: the model's win chance, the market price (bid, and bid after the selling fee), the gap between them, the time left, the price paid, the unrealized profit or loss per contract and in total, and how the model moved over the last 15, 30 and 60 seconds and since the buy.
-- After the close it adds the highest bid seen after each sale, and once Kalshi settles the market, the result, Kalshi's settlement value and the target. The finished position is then saved by the helper to data/exit_log.jsonl (one line per position).
-- The helper changed (build 2026-11-26m). Close and reopen the app to start it. Until then the old helper keeps trading and selling as before, and finished positions wait in the browser (up to 100); the early-selling note shows how many are saved or waiting.
-- Purpose: with enough positions, test exit rules that sell fewer eventual winners while keeping the current share of eventual losers sold, on the same live prices the bot really saw.
-
-BUILD 2026-11-26aj: EXIT LOG ALSO RECORDS VOLATILITY AND MODEL UNCERTAINTY
-- Each second of the exit log now also has the coin's current volatility, the width of the model's predicted end-price range (68%, as a share of the price), and how uncertain the learned win-chance estimate is (1 standard deviation, plus how many past samples it rests on). These are what volatility-adjusted and confidence-adjusted sell rules need to be tested later. Nothing about buying or selling changes. The helper is unchanged (2026-11-26m).
+CHANGELOG (newest first; details are in the GitHub history)
+---------
+2026-11-26aj  exit log also records volatility, the model's range and its uncertainty
+2026-11-26ai  exit log for every Auto position (helper 2026-11-26m)
+2026-11-26ah  Auto prices and sizes bets from the live order book; no fresh listed price needed
+2026-11-26ag  minimum bid for early selling
+2026-11-26af  closing the best pick notification no longer brings the old one back
+2026-11-26ae  sold-early result shows how the bet would have ended if held
+2026-11-26ad  only the newest best pick notification stays on screen
+2026-11-26ac  bet history shows sales, UP/DOWN, time left when bought, 12-hour times
+2026-11-26ab  early-sale safety floor 10 cents under the bid
+2026-11-26aa  sales and the fake cash-out test read the live order book (the old cash-out table is kept aside)
+2026-11-26z   bet history shows only bets that went through
+2026-11-26y   early selling of real Auto bets (helper 2026-11-26l)
+2026-11-26x   Kalshi live multipliers card no longer disappears; new markets fetched by name
+2026-11-26w   Timed bets removed (data kept)
