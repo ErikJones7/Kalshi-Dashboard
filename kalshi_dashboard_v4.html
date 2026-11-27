@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26ah</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26ai</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1412,7 +1412,7 @@ function autoCashWatch(tick,tau){
     if(!(bid>0&&bid<1))continue;
     const ps=b.side==="UP"?r.pCal:1-r.pCal,nb=bid-0.07*bid*(1-bid);      // nb = what one contract nets after the selling fee
     b.co=b.co||{};
-    for(const k in CASH_RULES)if(!b.co[k]&&CASH_RULES[k][1](ps,nb))b.co[k]={tau,bid:Math.round(bid*1000)/1000,nb:Math.round(nb*10000)/10000,ps:Math.round(ps*1000)/1000}}}
+    for(const k in CASH_RULES)if(!b.co[k]&&CASH_RULES[k][1](ps,nb)){b.co[k]={tau,bid:Math.round(bid*1000)/1000,nb:Math.round(nb*10000)/10000,ps:Math.round(ps*1000)/1000};safe("exit log",()=>exitSale("fake|"+b.rk,k,ps,bid))}}}
 /* Early selling of REAL Auto bets. Off until you switch it on (the helper refuses any sale while it is off). Every second, for each open real Auto bet, the ticked rules
    below are checked against Kalshi's live bid; the first one that fires sells whatever the bet still holds at the bid (or up to 10 cents under it) with a reduce-only,
    immediate-or-cancel order, so it can only close that bet and never open a position. Nothing is sold in the last 10 seconds, when the bid is under 5 cents after
@@ -1441,18 +1441,69 @@ function realSellWatch(tick){
     sellGo(o,st,hit,ps,bid);
   }
 }
+/* Exit log (research only, changes no decision). For every Auto position, real and fake, the page records each second from the buy to the close:
+   the model's win chance for the bet's side, Kalshi's live order-book bids (and the lagging listed quote, for comparison) and the coin's price.
+   Every sale or try to sell also gets a snapshot (model chance, market price, the gap, time left, unrealized P&L, how the model moved).
+   After the close it adds the highest bid seen after each sale, and once Kalshi settles the market, the result and the settlement value.
+   Each position then goes to the helper (data/exit_log.jsonl); until a helper that has the log is running, finished positions wait in this browser. */
+const exitPos={};let exitQ=ls.get("k15exitq",[]),exitSent=ls.get("k15exitn",0),exitBusy=false,exitErr="";
+const r3=x=>x==null||!isFinite(x)?null:Math.round(x*1000)/1000;
+function exitOpen(){      // the Auto positions to follow right now
+  const out=[],now=Date.now()/1000,env=acct.info&&acct.info.env;
+  for(const o of acct.orders||[])if(o.filled&&o.src==="auto"&&o.order_id&&o.env===env&&o.w>now-5&&o.w-now<=930&&o.fill_count>0)
+    out.push({key:"real|"+o.order_id,kind:"real",sym:o.sym||symOf(o),tk:o.ticker,side:o.side,end:o.w,buy_t:o.t,entry:o.cost_total/o.fill_count,contracts:o.fill_count,cost:o.cost_total,oid:o.order_id});
+  for(const b of pendAuto)if(b.tk&&b.mult>0)out.push({key:"fake|"+b.rk,kind:"fake",sym:b.sym,tk:b.tk,side:b.side==="UP"?"yes":"no",end:b.w+WINDOW,buy_t:b.w+WINDOW-b.tau,entry:1/b.mult,contracts:b.stake*b.mult,cost:b.stake});
+  return out}
+function exitWatch(tick){
+  if(sim||!hBase)return;
+  const now=Date.now()/1000;
+  for(const p of exitOpen()){
+    let e=exitPos[p.key];if(!e){if(now>p.end-1)continue;e=exitPos[p.key]=Object.assign({v:1,rows:[],sales:[]},p)}
+    if(now>e.end||e.rows.length>1100)continue;
+    const r=res[e.sym],yes=e.side==="yes";refreshBook(e.sym,e.tk);
+    const bk=bookBy[e.sym],bo=bk&&bk.ok&&bk.tk===e.tk&&now-bk.ts<=5?bk:null,q=quoteBy[e.sym],qo=q&&q.tk===e.tk&&now-q.ts<=30?q:null;
+    const ps=r&&r.pCal!=null&&r.tick>=tick-8?(yes?r.pCal:1-r.pCal):null,last=e.rows[e.rows.length-1];
+    if(last&&last[0]===tick)continue;
+    // [second, seconds left, model win chance (bet side), model before calibration, live YES bid c, live NO bid c, order-book age s, listed YES bid, listed NO bid, listed price age s, coin price]
+    e.rows.push([tick,Math.round(e.end-tick),r3(ps),r&&r.pRaw!=null?r3(yes?r.pRaw:1-r.pRaw):null,bo&&bo.no!=null?r3(100-bo.no):null,bo&&bo.yes!=null?r3(100-bo.yes):null,bo?Math.round((now-bo.ts)*10)/10:null,
+      qo?qo.yes_bid:null,qo?qo.no_bid:null,qo?Math.round(now-qo.ts):null,r?r.P||null:null])}
+  exitClose(now)}
+function exitPs(e,t){let best=null;for(const x of e.rows){if(x[0]>t)break;if(x[2]!=null)best=x}return best?best[2]:null}      // the model's chance at (or just before) second t
+function exitSale(key,rule,ps,bid){      // snapshot when a sale is tried (real) or a rule fires (fake cash-out test)
+  let e=exitPos[key];if(!e){const p=exitOpen().find(z=>z.key===key);if(!p)return null;e=exitPos[key]=Object.assign({v:1,rows:[],sales:[]},p)}
+  const now=Date.now()/1000,t=Math.floor(now),nb=bid-0.07*bid*(1-bid),mv=s=>{const a=exitPs(e,t-s);return a==null||ps==null?null:r3(ps-a)};
+  const x={t:Math.round(now*10)/10,rule,left:Math.round(e.end-now),model:r3(ps),bid:r3(bid),bid_after_fee:r3(nb),gap:r3(nb-ps),entry:r3(e.entry),upnl_per:r3(nb-e.entry),upnl:r3((nb-e.entry)*e.contracts),
+    move15:mv(15),move30:mv(30),move60:mv(60),move_since_buy:e.rows.length&&e.rows.find(z=>z[2]!=null)?r3(ps-e.rows.find(z=>z[2]!=null)[2]):null};
+  e.sales.push(x);return x}
+function exitClose(now){
+  for(const k in exitPos){const e=exitPos[k];
+    if(now<e.end+2||e.done)continue;
+    if(!e.closedAt){e.closedAt=now;const own=z=>e.side==="yes"?z[4]:z[5];
+      for(const x of e.sales){let mx=null;for(const z of e.rows)if(z[0]>x.t&&own(z)!=null&&(mx==null||own(z)>mx))mx=own(z);x.max_bid_after=mx==null?null:r3(mx/100)}}
+    if(e.res==null&&now-(e.lastAsk||0)>=6&&now-e.closedAt<1200&&now>=kalshiSlowUntil){e.lastAsk=now;      // Kalshi's result and settlement value
+      kalshiGet("/markets/"+encodeURIComponent(e.tk)).then(d=>{const m=d&&d.market,r=m?String(m.result||"").toLowerCase():"";
+        if(r==="yes"||r==="no"){e.res=r;e.won=r===e.side;e.settle_value=m.expiration_value!=null&&m.expiration_value!==""?+m.expiration_value:null;e.strike=m.floor_strike!=null?+m.floor_strike:null}}).catch(()=>{})}
+    if(e.res!=null||now-e.closedAt>=1200){e.done=true;const rec=Object.assign({},e);delete rec.lastAsk;delete rec.done;rec.closedAt=Math.round(rec.closedAt);exitQ.push(rec);delete exitPos[k];
+      if(exitQ.length>100)exitQ=exitQ.slice(-100);try{ls.set("k15exitq",exitQ)}catch(err){}}}
+  exitFlush(now)}
+let exitLastFlush=0;
+function exitFlush(now){
+  if(!exitQ.length||exitBusy||!hBase||now-exitLastFlush<30&&exitQ.length<5)return;exitBusy=true;exitLastFlush=now;const batch=exitQ.slice(0,40);
+  hpost("/data/exits",{rows:batch}).then(d=>{if(d&&d.ok){exitQ=exitQ.slice(batch.length);exitSent+=batch.length;exitErr="";ls.set("k15exitq",exitQ);ls.set("k15exitn",exitSent)}})
+    .catch(e=>{exitErr=/404/.test(e.message)?"waiting for the updated helper (close and reopen the app)":e.message||"failed"}).finally(()=>{exitBusy=false})}
 function sellStatus(o,text){      // the Auto card's status line for this coin shows the sale (or the try) too
   const sym=o.sym||symOf(o),side=o.side==="yes"?"UP":"DOWN",txt=sym+" "+side+": "+text;
   real.autoLast={t:Date.now(),win:winStart,sym,side,text:txt};(real.autoSet=real.autoSet||{})[sym+"|"+side]={t:Date.now(),win:winStart,text:txt}}
 async function sellGo(o,st,rule,ps,bid){
-  st.busy=true;st.last=Date.now()/1000;st.tries++;
+  st.busy=true;st.last=Date.now()/1000;st.tries++;const xs=exitSale("real|"+o.order_id,rule,ps,bid);
   const tag=(o.sym||symOf(o))+" "+(o.side==="yes"?"UP":"DOWN"),min=Math.max(1,Math.floor(bid*100+1e-9)-10);      // sells to the best bids first; this is only a safety limit so a book that empties can't fill at junk prices
   try{
     const d=await apost("/account/sell",{ticker:o.ticker,side:o.side,min_price:min,rule,ps:Math.round(ps*1000)/1000,w:o.w});
+    if(xs)Object.assign(xs,{filled:!!(d.ok&&d.filled),fill_count:d.fill_count||0,net:d.net||0,refused:d.ok?null:(d.error||"failed")});
     if(d.ok&&d.filled){sellStatus(o,"SOLD EARLY ("+SELL_LAB[rule]+"): "+ctr(d.fill_count)+" contracts for "+money(d.net)+" after fees"+(d.left>0.01?", "+ctr(d.left)+" still held":""));realEvent("Auto "+tag+": SOLD EARLY ("+SELL_LAB[rule]+"): "+ctr(d.fill_count)+" contracts for "+money(d.net)+" after fees. The model gave it "+Math.round(ps*100)+"% and the bid was "+Math.round(bid*100)+"¢"+(d.left>0.01?"; "+ctr(d.left)+" contracts still held":""));if(!(d.left>0.01))st.done=true}
     else if(d.ok){sellStatus(o,"tried to sell early ("+SELL_LAB[rule]+"), not filled, still held; trying again");realEvent("Auto "+tag+": sale not filled ("+SELL_LAB[rule]+"), the bet is still held; trying again")}
     else{const e=d.error||"failed";sellStatus(o,"tried to sell early ("+SELL_LAB[rule]+"), not sold: "+e.replace(/, so nothing was sold\.?$/,"").replace(/\.$/,"")+"; still held");realEvent("Auto "+tag+": sale refused ("+e.replace(/\.$/,"")+")");if(/already been sold|already settled|switched off|no filled Auto bet|isn't set up|about to close/i.test(e))st.done=true}
-  }catch(e){sellStatus(o,"tried to sell early, not sent ("+(e.message||"failed")+")");realEvent("Auto "+tag+": sale not sent ("+(e.message||"failed")+")");st.done=true}      // the answer is unknown, so it is never repeated
+  }catch(e){if(xs)xs.refused="not sent: "+(e.message||"failed");sellStatus(o,"tried to sell early, not sent ("+(e.message||"failed")+")");realEvent("Auto "+tag+": sale not sent ("+(e.message||"failed")+")");st.done=true}      // the answer is unknown, so it is never repeated
   st.busy=false;acctRefresh(true);
 }
 let sellBuilt=false;
@@ -1468,9 +1519,10 @@ function renderSell(){
   for(const c of $("sellRuleBox").querySelectorAll("input"))if(c.checked!==!!sellRules[c.dataset.r])c.checked=!!sellRules[c.dataset.r];
   if(document.activeElement!==$("sellMin")&&+$("sellMin").value!==sellMin)$("sellMin").value=sellMin;
   const act=Object.keys(sellRules).filter(k=>sellRules[k]&&CASH_RULES[k]).map(k=>SELL_LAB[k]),sold=(acct.orders||[]).filter(o=>o.src==="auto"&&o.sold_count>0&&o.env===i.env);
-  setT($("sellNote"),!on?"Off: real bets are held to the end. Turning it on sells an open real Auto bet when a ticked rule fires (flip = the model now gives the other side that much; market +N pts = the bid, after the selling fee, is N points above the model's win chance). Fake Auto keeps testing all six rules.":
-    (act.length?"On: sells when any of these fires: "+act.join(", ")+(sellMin>0?", but never while the bid is under "+sellMin+"¢":"")+".":"On, but no rule is ticked, so nothing is sold.")+(sold.length?" Sold early so far: "+sold.length+" bet"+(sold.length===1?"":"s")+", "+(g=>(g>=0?"+":"-")+"$"+Math.abs(g).toFixed(2))(sold.reduce((t,o)=>t+(o.sold_net||0)-(o.closed?o.cost_total:o.cost_total*(o.sold_count/o.fill_count)),0))+" on the part sold, after fees.":""));
+  setT($("sellNote"),(!on?"Off: real bets are held to the end. Turning it on sells an open real Auto bet when a ticked rule fires (flip = the model now gives the other side that much; market +N pts = the bid, after the selling fee, is N points above the model's win chance). Fake Auto keeps testing all six rules.":
+    (act.length?"On: sells when any of these fires: "+act.join(", ")+(sellMin>0?", but never while the bid is under "+sellMin+"¢":"")+".":"On, but no rule is ticked, so nothing is sold.")+(sold.length?" Sold early so far: "+sold.length+" bet"+(sold.length===1?"":"s")+", "+(g=>(g>=0?"+":"-")+"$"+Math.abs(g).toFixed(2))(sold.reduce((t,o)=>t+(o.sold_net||0)-(o.closed?o.cost_total:o.cost_total*(o.sold_count/o.fill_count)),0))+" on the part sold, after fees.":""))+exitTxt());
 }
+function exitTxt(){const open=Object.keys(exitPos).length;return " Exit log: "+exitSent+" positions saved"+(exitQ.length?", "+exitQ.length+" waiting to be saved":"")+(open?", "+open+" being recorded":"")+(exitErr?" ("+exitErr+")":"")+"."}
 /* Shrink-and-edge test (shadow only, nothing is skipped): the predicted chances ran about 5 points too high on settled bets, so each fake Auto bet is
    stamped with a shrunk chance (rp) and the shrunk chance minus the price paid (re). At settlement the page books what a rule "only bet when re >= X points"
    would have kept and dropped, for all fake Auto bets and for the ones that followed a real fill. The shrink (0.78 x logit - 0.08) was fitted on 76 fake bets and
@@ -1505,6 +1557,7 @@ function autoStep(tick,tau,wStart,wEnd){
       pendASnap.push({sym,side,conf,anchorLn:r.anchorLn,tb:atb(r.tau),bi:abin(conf)})}}
   autoCashWatch(tick,tau);
   safe("early selling watch",()=>realSellWatch(tick));
+  safe("exit log",()=>exitWatch(tick));
   if(!autoSt.on||autoDone||tau>240)return;
   if(tau<25){autoDone=true;autoNote="No good bet this window";return}
   const now=Date.now()/1000,cands=[];let refr=0,waiting=0;
@@ -1692,7 +1745,7 @@ let acct={info:null,sum:null,orders:[],bud:{},err:"",busy:false};
 // real-money mirrors: in memory only, so they are always OFF after a restart and have to be switched on on purpose
 let real={auto:false,autoView:true,events:[],evT:[],autoLast:null,q:Promise.resolve()};
 let liveRes={};
-const HELPER_EXPECT="2026-11-26l";      // the helper build this page needs (changes only when the helper program itself changes)
+const HELPER_EXPECT="2026-11-26m",HELPER_OK=["2026-11-26l",HELPER_EXPECT];      // the helper build this page needs (changes only when the helper program itself changes)
 const staleMsg="The helper program that is running is older than this page. Fully close it (Ctrl+Shift+Esc, end pythonw.exe / python.exe) and reopen the dashboard from its icon, or some real-money controls won't work right.";
 const oldHelper="The helper that is running is an older version that doesn't know about Kalshi accounts. Fully close it and reopen the dashboard from its icon: press Ctrl+Shift+Esc, open the Details tab, end every pythonw.exe (or python.exe) entry, then double-click the Kalshi Dashboard icon.";
 const acctNeed="Open the dashboard from its icon (the address starts with http://127.0.0.1) to use your Kalshi account.";
@@ -1709,7 +1762,7 @@ async function apost(p,o){
 async function acctRefresh(full){
   if(acct.busy)return;acct.busy=true;
   try{
-    acct.info=await aget("/account/status");acct.err="";acct.stale=!!(acct.info&&acct.info.build!==HELPER_EXPECT);
+    acct.info=await aget("/account/status");acct.err="";acct.stale=!!(acct.info&&!HELPER_OK.includes(acct.info.build));      // the helper from before the exit log (2026-11-26l) still trades and sells; only the exit log waits for the new one
     if(acct.info.ready){const sm=await aget("/account/summary"+(full?"?force=1":""));acct.sum=sm;if(!sm.ok)acct.err=sm.error||""}
     else acct.sum=null;
     acct.orders=await aget("/account/orders");for(const r of acct.orders)if(r.res)liveRes[r.ticker]=r.res;

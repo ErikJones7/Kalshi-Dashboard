@@ -40,7 +40,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-26l"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-26m"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -238,6 +238,39 @@ def _load_store():
 PRICE_HEADER = ("t,coin,px,cb,kr,okx,hl,okx_bid,okx_ask,okx_bidsz,okx_asksz,cb_bid,cb_ask,cb_bidsz,cb_asksz,"
                 "k_yes_bid,k_yes_ask,k_no_bid,k_no_ask,k_strike,k_close")
 PRICE_KEEP_DAYS = 14
+
+
+EXIT_LOG = "exit_log.jsonl"      # one record per Auto position: its second-by-second path (model, live order book, listed quote), any sales, the result
+_exit_seen = set()
+_exit_loaded = [False]
+
+
+def save_exits(body):
+    """Exit research log (data/exit_log.jsonl). The page sends each Auto position (real or fake) once its window has settled:
+    every second from the buy to the close (the model's win chance, Kalshi's live order-book bids, the listed quote) plus
+    a snapshot of every sale or try to sell. Nothing in the app reads it back; it exists so exit rules can be tested on exactly what the page saw."""
+    rows = [r for r in (body.get("rows") or []) if isinstance(r, dict) and isinstance(r.get("key"), str) and len(r["key"]) < 200]
+    added = 0
+    with lock:
+        os.makedirs(DATA, exist_ok=True)
+        path = os.path.join(DATA, EXIT_LOG)
+        if not _exit_loaded[0]:
+            _exit_loaded[0] = True
+            if os.path.isfile(path):
+                with open(path, encoding="utf-8") as f:
+                    for line in f:
+                        try:
+                            _exit_seen.add(json.loads(line).get("key"))
+                        except Exception:
+                            pass
+        with open(path, "a", encoding="utf-8") as f:
+            for r in rows:
+                if r["key"] in _exit_seen:
+                    continue
+                _exit_seen.add(r["key"])
+                f.write(json.dumps(r, separators=(",", ":")) + "\n")
+                added += 1
+    return {"ok": True, "added": added, "known": len(_exit_seen)}
 
 
 def save_prices(body):
@@ -2210,6 +2243,15 @@ class Handler(BaseHTTPRequestHandler):
             threading.Thread(target=self.server.shutdown, daemon=True).start()
             return
         last_active[0] = time.time()
+        if self.path.startswith("/data/exits"):
+            try:
+                n = int(self.headers.get("Content-Length", "0"))
+                if n > 16 * 1024 * 1024:
+                    return self._send(413, json.dumps({"error": "too large"}))
+                return self._send(200, json.dumps(save_exits(json.loads(self.rfile.read(n).decode("utf-8") or "{}"))))
+            except Exception as e:
+                log("exit log failed: %s" % e)
+                return self._send(400, json.dumps({"error": str(e)}))
         if self.path.startswith("/data/prices"):
             try:
                 n = int(self.headers.get("Content-Length", "0"))

@@ -186,6 +186,13 @@ ok(any(r.get("refused") for r in sl) and any(r.get("filled") for r in sl) and no
 ok(all(r.get("kind") != "sell" for r in [json.loads(l) for l in open(os.path.join(H.DATA, "live_orders.jsonl"))]), "sales never appear in the bet log")
 st, d = call("/account/config", {"trading": False}); st, d2 = call("/account/status"); ok(d2["selling"] is False and H.load_settings().get("kalshi_selling") is False, "switching betting off also switches Early selling off")
 
+# ---- exit log: each Auto position the page sends is appended once to data/exit_log.jsonl
+rec = {"key": "real|o1", "kind": "real", "tk": "KXBTC15M-X", "rows": [[1, 60, 0.9, 0.91, 94, 5, 0, 0.95, 0.04, 12, 60000.5]], "sales": [{"rule": "m10", "gap": 0.125}], "res": "yes"}
+st, d = call("/data/exits", {"rows": [rec, {"key": "fake|1|BTC|UP", "rows": []}]}); ok(st == 200 and d["ok"] and d["added"] == 2, "the exit log takes the page's positions: %s" % d)
+st, d = call("/data/exits", {"rows": [rec, {"nokey": 1}]}); ok(d["ok"] and d["added"] == 0, "a position already saved (or one without a key) is not written twice")
+el = [json.loads(l) for l in open(os.path.join(H.DATA, "exit_log.jsonl"))]
+ok(len(el) == 2 and el[0]["rows"][0][4] == 94 and el[0]["sales"][0]["rule"] == "m10", "exit_log.jsonl holds each position once, with its rows and sales")
+
 shutil.rmtree(TMP, ignore_errors=True)
 print("\n%d failed" % len(FAILS) if FAILS else "\nall passed")
 sys.exit(1 if FAILS else 0)

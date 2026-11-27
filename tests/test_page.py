@@ -257,6 +257,49 @@ with sync_playwright() as p:
     ok(len(ab["no_helper_fresh_listed"]["bets"]) == 1 and ab["no_helper_stale_listed"]["bets"] == [], "with no helper running (fake money only) the fresh listed price is still used, and a stale one is not")
     ok(ab["lv_book"] == {"ticker": ab["lv_book"]["ticker"], "ask": 90, "price": 93, "err": None} and ab["lv_click_listed"]["ask"] == 50, "a real Auto order is sized from the order book (90c), not the listed 50c; a manual click still uses the listed quote: %s" % ab["lv_book"])
     ok(ab["lv_stale_book"]["err"].endswith("stale") and ab["lv_stale_book"]["reads"] == 1 and "above the 96" in ab["lv_book_too_dear"], "a stale book refreshes and retries instead of falling back; a book price above what the bet is worth is refused")
+    # ---- exit log: each Auto position's path (model, live book, listed quote) and a snapshot of every sale, sent to the helper after the result
+    EX = """async()=>{
+  const out={},now=()=>Date.now()/1000,sv={rb:refreshBook,kg:kalshiGet,hp:hpost,hb:hBase,rsw:realSellWatch,acw:autoCashWatch};
+  realSellWatch=()=>{};autoCashWatch=()=>{};refreshBook=()=>{};hBase="http://x";sim=false;kalshiSlowUntil=0;
+  for(const k in exitPos)delete exitPos[k];exitQ=[];exitSent=0;exitErr="";
+  const end=Math.floor(now())+100,TK=windowTicker("BTC",end),T=Math.floor(now());
+  acct.info={env:"prod",ready:true,trading:true,selling:true,build:HELPER_EXPECT};
+  acct.orders=[{filled:true,src:"auto",env:"prod",order_id:"o1",ticker:TK,sym:"BTC",side:"yes",fill_count:10,cost_total:9,w:end,t:T-30}];
+  pendAuto=[{w:end-900,sym:"BTC",side:"UP",tk:TK,rk:end+"|BTC|UP",tau:130,stake:9,mult:1/0.9}];
+  const put=(p,yb)=>{res.BTC={pCal:p,pRaw:p+0.01,tick:T,P:60000.5};bookBy.BTC={tk:TK,ts:now(),ok:true,yes:100-(100-yb)+2,no:100-yb};quoteBy.BTC={tk:TK,ts:now()-12,yes_bid:0.95,no_bid:0.04,yes_ask:0.96,no_ask:0.05,close:end}};
+  put(0.90,94);res.BTC.tick=T-30;exitWatch(T-30);put(0.85,93);res.BTC.tick=T-15;exitWatch(T-15);put(0.80,93);exitWatch(T);exitWatch(T);
+  const e=exitPos["real|o1"],f=exitPos["fake|"+end+"|BTC|UP"];
+  out.rows=e&&e.rows.length;out.row=e&&e.rows[2];out.fake_rows=f&&f.rows.length;out.fake_entry=f&&Math.round(f.entry*1000)/1000;
+  const x=exitSale("real|o1","m10",0.80,0.93);out.snap=x;
+  // after the sale the bid goes up to 97c, then the window closes
+  put(0.95,97);res.BTC.tick=Math.floor(now())+1;exitWatch(Math.floor(now())+1);
+  for(const k in exitPos)exitPos[k].end=now()-3;
+  let posted=null;hpost=async(p,o)=>{posted=[p,o.rows.length];return {ok:true,added:o.rows.length}};exitBusy=false;
+  let asks=0;kalshiGet=async p=>{asks++;return {market:{ticker:TK,result:"yes",expiration_value:"60010.25",floor_strike:60000}}};
+  exitClose(now());await new Promise(r=>setTimeout(r,30));exitClose(now());
+  out.queued=exitQ.length;out.asks=asks;const q=exitQ.find(r=>r.key==="real|o1");
+  out.final=q&&{res:q.res,won:q.won,settle_value:q.settle_value,strike:q.strike,max_after:q.sales[0].max_bid_after,contracts:q.contracts};
+  await new Promise(r=>setTimeout(r,30));
+  out.posted=posted;out.after_flush={q:exitQ.length,sent:exitSent};
+  // an old helper (no /data/exits): the positions stay queued and the note says why
+  exitQ=[{key:"k1"}];hpost=async()=>{throw new Error("HTTP 404")};exitLastFlush=0;exitBusy=false;exitFlush(now());await new Promise(r=>setTimeout(r,30));out.old_helper={q:exitQ.length,err:exitErr};
+  // nothing is recorded in a practice run
+  for(const k in exitPos)delete exitPos[k];sim=true;exitWatch(T);out.sim_rows=Object.keys(exitPos).length;sim=false;
+  // the fake cash-out test leaves a snapshot when a rule fires
+  pendAuto=[{w:end-900,sym:"BTC",side:"UP",tk:TK,rk:end+"|BTC|UP",tau:130,stake:9,mult:1/0.9}];for(const k in exitPos)delete exitPos[k];for(const k in exitPos)exitPos[k].end=end;
+  Object.assign(pendAuto[0],{end});res.BTC={pCal:0.30,tick:T};bookBy.BTC={tk:TK,ts:now(),ok:true,yes:57,no:45};sv.acw(T,100);
+  const fe=exitPos["fake|"+end+"|BTC|UP"];out.fake_snap_rules=fe?fe.sales.map(s=>s.rule).sort().join(","):null;
+  realSellWatch=sv.rsw;autoCashWatch=sv.acw;refreshBook=sv.rb;kalshiGet=sv.kg;hpost=sv.hp;hBase=sv.hb;pendAuto=[];acct.orders=[];exitQ=[];exitSent=0;exitErr="";for(const k in exitPos)delete exitPos[k];delete res.BTC;delete bookBy.BTC;delete quoteBy.BTC;
+  return out}"""
+    ex = pg.evaluate(EX)
+    ok(ex["rows"] == 3 and ex["fake_rows"] == 3 and ex["row"][2] == 0.8 and ex["row"][4] == 93 and ex["row"][5] == 5 and ex["row"][7] == 0.95 and ex["fake_entry"] == 0.9, "every second of a real and a fake Auto position is recorded once (model chance, live bids, listed quote): %s" % ex["row"])
+    sn = ex["snap"]
+    ok(sn and sn["model"] == 0.8 and sn["bid"] == 0.93 and sn["gap"] == 0.125 and sn["left"] >= 98 and sn["upnl_per"] == 0.025 and sn["upnl"] == 0.254 and sn["move15"] == -0.05 and sn["move30"] == -0.1,
+       "a sale's snapshot has the model chance, the market price, the gap, time left, unrealized P&L and how the model moved: %s" % sn)
+    ok(ex["final"] == {"res": "yes", "won": True, "settle_value": 60010.25, "strike": 60000, "max_after": 0.97, "contracts": 10} and ex["queued"] == 2, "after the close it adds the highest bid after the sale and Kalshi's result and settlement value: %s" % ex["final"])
+    ok(ex["posted"] == ["/data/exits", 2] and ex["after_flush"] == {"q": 0, "sent": 2}, "finished positions go to the helper's exit log: %s" % ex["posted"])
+    ok(ex["old_helper"]["q"] == 1 and "updated helper" in ex["old_helper"]["err"], "with the old helper they wait in the browser and the note says why")
+    ok(ex["sim_rows"] == 0 and ex["fake_snap_rules"] == "f55,f65,m05,m10", "nothing is recorded in a practice run; the fake cash-out test leaves a snapshot for each rule that fires: %s" % ex["fake_snap_rules"])
     # ---- a new best pick notification replaces the old one
     pk = pg.evaluate("""()=>{const mk=T=>({w:77,T,tau:T,min:0.9,top:null,more:[],closest:null});const cnt=()=>[...document.querySelectorAll('#sig .sigrow.pick')].filter(e=>!e.classList.contains('leaving')).map(e=>e.innerText);
       const base=Object.assign({},lastS),o={};render(Object.assign({},base,{picks:[mk(300)]}));o.a=cnt();render(Object.assign({},base,{picks:[mk(300),mk(180)]}));o.b=cnt();render(Object.assign({},base,{picks:[mk(300),mk(180),mk(60)]}));o.c=cnt();return o}""")
