@@ -68,6 +68,9 @@ Real money
     minus 1 cent, plus "Pay up to N cents extra" (default 1). Orders are immediate-or-cancel: they buy what is for sale at that limit, up to the size, and cancel the rest, so a thin
     book gives a smaller bet instead of none. Hand-placed orders stay fill-or-kill. Fractions of a contract can be bought.
     A bet refused only on price is tried again every second while the signal holds, until about 15 seconds are left.
+  - If nothing was for sale (the order filled nothing, or Kalshi had no contracts at the price), Auto stops on that coin for the
+    rest of the window, drops its fake twin, and looks for another coin straight away. Every usual check still applies to the new
+    pick. It doesn't do this with under 25 seconds left, or when the window's other bet went through.
   - If Kalshi refuses a bet for "insufficient balance", real bets are capped below that size and a red warning appears on the
     Auto card until a bet that big goes through ("Clear this limit" clears it by hand).
   - Contracts you buy yourself in the same market are not counted toward Auto's bankroll or results.
@@ -147,6 +150,7 @@ Timed bets were removed on 2026-11-25. Their saved data is kept unchanged in sim
 
 CHANGELOG (newest first; details are in the GitHub history)
 ---------
+2026-11-26am  nothing for sale: Auto drops that coin and looks for another one at once
 2026-11-26al  real early-selling table on the bet history
 2026-11-26ak  skip log saved for every window; Auto buys take what is for sale instead of all-or-nothing (helper 2026-11-26n)
 2026-11-26aj  exit log also records volatility, the model's range and its uncertainty

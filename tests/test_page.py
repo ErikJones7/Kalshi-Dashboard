@@ -59,7 +59,7 @@ with sync_playwright() as p:
     ok(r["r"] == "stop" and r["posts"] == 1, "a refused-for-balance bet is not retried: %s" % r["r"])
     ok("insufficient balance" in r["txt"] and "capped" in r["txt"], "the event line says why: " + r["txt"][-110:])
     pg.evaluate("o=>{acct.orders=o;balG.seeded=false;balG.cap=null;balG.n=0;balG.minRef=null;balSeedOnce()}", new)
-    sizes = pg.evaluate("""()=>{window.__s=[];realMirror=(src,sym,side,st)=>{__s.push(st);return Promise.resolve('x')};autoSt.cap=0.2;
+    sizes = pg.evaluate("""()=>{window.__s=[];window.__rm=window.__rm||realMirror;realMirror=(src,sym,side,st)=>{__s.push(st);return Promise.resolve('x')};autoSt.cap=0.2;
       realAuto({f:0.2},false,[{sym:'ETH',side:'yes',conf:0.95,agree:0,opp:0}],Date.now()/1000+300);return __s}""")
     ok(sizes == [3.13], "real Auto sizes its bet under the cap: %s" % sizes)
     pg.evaluate("balClear()")
@@ -358,6 +358,48 @@ with sync_playwright() as p:
        "per ticked rule: bets sold, losers saved and winners sold (a sale in two parts counts once), money per bet, price sold at, net vs holding, unsettled: %s" % st["rows"][1:])
     ok(len(st["rows"]) == 3 and st["off"] == 1 and "not counted" in st["txt"] and st["shown"] == "block", "a try that didn't fill, the other account and a rule that is off now are left out")
     ok("No early-selling rule is ticked" in st["none"], "with no rule ticked the table says so")
+    # ---- nothing for sale: that coin is dropped and Auto looks for another one in the same window
+    pg.evaluate("()=>{if(window.__rm)realMirror=window.__rm}")      # an earlier check stands in for realMirror
+    NS = """async()=>{
+  const out={},now=()=>Date.now()/1000,sv={ap:apost,ai:acct.info,rb:refreshBook,ra:real.auto,hb:hBase,ar:acctRefresh,learn:autoSt.learn,bank:autoSt.bank,peak:autoSt.peak};
+  sim=false;hBase="http://x";refreshBook=()=>{};acctRefresh=async()=>{};acct.info=Object.assign({},acct.info||{},{ready:true,trading:true,env:"prod",build:HELPER_EXPECT});real.auto=false;
+  const wEnd=Math.floor(now())+120,wS=wEnd-900,TK=s=>windowTicker(s,wEnd);
+  winStart=wS;
+  // a. how a refusal is classified
+  bookBy.BTC={tk:TK("BTC"),ts:now(),ok:true,yes:90,no:12};acct.sum={ok:true,balance:500};
+  const ask=async ans=>{apost=async()=>ans;return realMirror("auto","BTC","UP",20,{w:wEnd,p:0.97,tk:TK("BTC")})};
+  out.zero_fill=await ask({ok:true,filled:false,fill_count:0});
+  out.nothing=await ask({ok:false,error:"Nothing is for sale at 93¢ or better right now, so nothing was bought."});
+  out.resting=await ask({ok:false,error:"Kalshi returned HTTP 409: fill or kill insufficient resting volume"});
+  out.price=await ask({ok:false,error:"The price is now 95¢, above the 93¢ this bet is worth, so it wasn't placed."});
+  bookBy.BTC={tk:TK("BTC"),ts:now(),ok:true,yes:null,no:12};out.empty_book=await realMirror("auto","BTC","UP",20,{w:wEnd,p:0.97,tk:TK("BTC")});
+  // b. the coin is dropped and Auto picks another one in the same window
+  autoSt.learn={};autoSt.bank=1000;autoSt.peak=1000;autoNS={w:0,s:new Set()};
+  for(const s of syms)delete res[s];
+  const T=Math.floor(now());
+  res.BTC={pCal:0.99,tick:T,tau:120,anchorLn:11,asrc:"kalshi"};res.ETH={pCal:0.03,tick:T,tau:120,anchorLn:7,asrc:"kalshi"};
+  autoStab.BTC={side:"UP",n:9,t:T-1};autoStab.ETH={side:"DOWN",n:9,t:T-1};
+  bookBy.BTC={tk:TK("BTC"),ts:now(),ok:true,yes:90,no:12};bookBy.ETH={tk:TK("ETH"),ts:now(),ok:true,yes:16,no:85};
+  pendAuto=[{w:wS,sym:"BTC",side:"UP",rk:wEnd+"|BTC|UP",stake:10,mult:1.1,tk:TK("BTC")}];autoDone=true;
+  autoNoSale("BTC","UP",wS,wEnd);
+  out.after_drop={pend:pendAuto.length,done:autoDone,note:autoNote,excl:[...autoNS.s]};
+  autoStep(T,120,wS,wEnd);
+  out.new_pick=pendAuto.map(b=>b.sym+" "+b.side);
+  // c. with the window's other bet still standing, nothing new is picked
+  pendAuto=[{w:wS,sym:"ETH",side:"DOWN",rk:wEnd+"|ETH|DOWN",stake:10,mult:1.1},{w:wS,sym:"SOL",side:"UP",rk:wEnd+"|SOL|UP",stake:10,mult:1.1}];autoDone=true;
+  autoNoSale("SOL","UP",wS,wEnd);out.other_leg={pend:pendAuto.map(b=>b.sym),done:autoDone};
+  // d. too late in the window
+  pendAuto=[{w:wS,sym:"ETH",side:"DOWN",rk:wEnd+"|ETH|DOWN",stake:10,mult:1.1}];autoDone=true;
+  autoNoSale("ETH","DOWN",wS,now()+20);out.too_late={pend:pendAuto.length,done:autoDone};
+  apost=sv.ap;acct.info=sv.ai;refreshBook=sv.rb;real.auto=sv.ra;hBase=sv.hb;acctRefresh=sv.ar;autoSt.learn=sv.learn;autoSt.bank=sv.bank;autoSt.peak=sv.peak;
+  pendAuto=[];autoDone=false;autoNS={w:0,s:new Set()};for(const s of ["BTC","ETH"]){delete res[s];delete autoStab[s];delete bookBy[s]}
+  return out}"""
+    ns = pg.evaluate(NS)
+    ok([ns[k] for k in ("zero_fill", "nothing", "resting", "empty_book")] == ["nosale"] * 4 and ns["price"] == "retry",
+       "no contracts at the price (unfilled, nothing for sale, not enough resting, empty book) stops that coin; a price above what the bet is worth still retries: %s" % ns)
+    ok(ns["after_drop"]["pend"] == 0 and ns["after_drop"]["done"] is False and ns["after_drop"]["excl"] == ["BTC"] and ns["new_pick"] == ["ETH DOWN"],
+       "the coin's fake bet is dropped and Auto picks another coin that passes every check, never the dropped one: %s" % ns["new_pick"])
+    ok(ns["other_leg"] == {"pend": ["ETH"], "done": True} and ns["too_late"] == {"pend": 1, "done": True}, "no new pick while the window's other bet stands, or under 25 s left")
     # ---- a new best pick notification replaces the old one
     pk = pg.evaluate("""()=>{const mk=T=>({w:77,T,tau:T,min:0.9,top:null,more:[],closest:null});const cnt=()=>[...document.querySelectorAll('#sig .sigrow.pick')].filter(e=>!e.classList.contains('leaving')).map(e=>e.innerText);
       const base=Object.assign({},lastS),o={};render(Object.assign({},base,{picks:[mk(300)]}));o.a=cnt();render(Object.assign({},base,{picks:[mk(300),mk(180)]}));o.b=cnt();render(Object.assign({},base,{picks:[mk(300),mk(180),mk(60)]}));o.c=cnt();return o}""")
