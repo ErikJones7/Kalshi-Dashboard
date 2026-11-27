@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26ar</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26as</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -183,7 +183,7 @@ body{transition:margin-left .14s ease-out}
 </div>
 
 <div class="card" id="acctCard" style="margin-bottom:12px">
-  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><div class="simttl"><div class="k">Kalshi account (real money)</div><button id="acStop" class="modesw fake" style="display:none" title="Turn all real betting on or off">Real betting: OFF</button></div><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="s" id="acTop"></span></div></div>
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><div class="simttl"><div class="k">Kalshi account</div><button id="acStop" class="modesw fake" style="display:none" title="Turn all real betting on or off">Real betting: OFF</button></div><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="s" id="acTop"></span></div></div>
   <div id="acStats" style="display:flex;gap:28px;flex-wrap:wrap;margin:8px 0"></div>
   <div style="overflow:auto"><table class="mini simtbl" id="acRes"></table></div>
   <div class="s" id="acEv" style="margin-top:6px"></div>
@@ -191,7 +191,7 @@ body{transition:margin-left .14s ease-out}
 
 <div class="card" id="autoCard" style="margin-bottom:12px">
   <div class="simhead">
-    <div class="simttl"><div class="k" id="autoK">Auto mode</div><span class="modetag realm">Real money</span><button id="autoOnBtn" class="onbtn">Start real betting</button></div>
+    <div class="simttl"><div class="k" id="autoK">Auto mode</div><button id="autoOnBtn" class="onbtn">Start real betting</button></div>
     <div class="simctl">
       <label title="Real money set aside for this. It goes up and down with its wins and losses. Type a new amount to add money or send some back to your cash.">Allocated $ <input type="number" id="autoRealStart" min="0" step="0.01" style="width:90px"></label><button id="autoRealSet">Set</button>
       <label>Max bet <input type="number" id="autoCap" min="1" max="100" step="1">%</label>
@@ -200,8 +200,8 @@ body{transition:margin-left .14s ease-out}
     </div>
   </div>
   <div><div class="s" id="arNote" style="margin:6px 0"></div><div class="autostats" id="arStats"></div></div>
-  <div class="s" id="arSell" style="margin:6px 0;display:flex;gap:10px;flex-wrap:wrap;align-items:center"><button id="sellOnBtn" class="onbtn" title="Early selling: when a rule below fires on an open real Auto bet, sell it back to Kalshi instead of holding it to the end. Off until you switch it on.">Early selling: OFF</button><span id="sellRuleBox"></span><label id="sellMinLab" style="white-space:nowrap" title="Early selling will not sell a bet while the bid for it is below this many cents. 0 = no minimum. A bet that is held instead is settled by the market: it pays $1 a contract if it wins and nothing if it loses.">Do not sell below <input id="sellMin" type="number" min="0" max="99" step="1" style="width:56px"> ¢ bid</label><span id="sellNote" style="flex-basis:100%"></span></div>
-  <details class="fakebox" id="autoFakeD"><summary><span class="modetag fake">Fake money</span> practice version <span class="s">(always running, shown for comparison)</span>
+  <div class="s" id="arSell" style="margin:6px 0;display:flex;gap:10px;flex-wrap:wrap;align-items:center"><button id="sellOnBtn" class="onbtn" title="Early selling: when a rule below fires on an open real Auto bet, sell it back to Kalshi instead of holding it to the end. Off until you switch it on.">Early selling: OFF</button><span id="sellRuleBox"></span><span id="sellNote" style="flex-basis:100%"></span></div>
+  <details class="fakebox" id="autoFakeD"><summary>Practice version
     <span class="simctl" id="autoFakeCtl" style="margin-left:auto">
       <label>Start $ <input type="number" id="autoStart" min="1" step="10"></label>
       <button id="autoHist">View bet history</button><button id="autoReset">Reset bankroll</button>
@@ -315,9 +315,9 @@ body{transition:margin-left .14s ease-out}
     <div style="overflow:auto;max-height:55vh"><table class="mini" id="avTbl"></table></div>
   </div>
 </div>
-<details class="card" id="diagBox" style="margin-bottom:12px"><summary class="k" style="cursor:pointer">Data sources &amp; diagnostics (where each coin's price comes from)</summary><div id="diag" style="margin-top:8px"></div></details>
+<details class="card" id="diagBox" style="margin-bottom:12px"><summary class="k" style="cursor:pointer">Data sources &amp; diagnostics</summary><div id="diag" style="margin-top:8px"></div></details>
 <div class="note">Statistical estimate, not financial advice. The model estimates probabilities; it cannot guarantee any outcome. The spot feed (Coinbase) is not identical to Kalshi's CF Benchmarks RTI settlement price, and "edge" ignores fees and spread. Prices come from Coinbase, Kraken, OKX and Hyperliquid; Kalshi targets come through the helper.</div>
-<details class="card" id="tblBox" style="margin-bottom:12px" open><summary class="k" style="cursor:pointer">All coins: prices, targets, moves and forecasts (click to collapse)</summary><div style="overflow:auto"><table id="tbl"></table></div></details>
+<details class="card" id="tblBox" style="margin-bottom:12px" open><summary class="k" style="cursor:pointer">All coins: prices, targets, moves and forecasts</summary><div style="overflow:auto"><table id="tbl"></table></div></details>
 
 <script>
 "use strict";
@@ -1427,7 +1427,7 @@ function autoCashWatch(tick,tau){
    The fake Auto cash-out test above keeps recording all six rules and never sells. */
 const SELL_LAB={f55:"Flip 55%+",f65:"Flip 65%+",f75:"Flip 75%+",f85:"Flip 85%+",m05:"Market +5 pts",m10:"Market +10 pts"};
 let sellRules=ls.get("k15sellrules",{f65:true,m10:true});
-let sellMin=Math.max(0,Math.min(99,+ls.get("k15sellmin",0)||0));      // cents; early selling skips a bet while its live bid is below this (0 = no minimum)
+const sellMin=0;      // the minimum-bid box was removed (2026-11-27): no minimum, early selling may sell at any bid its rules allow
 const sellSt={};      // per market: {tries,last,busy,done}
 function realSellWatch(tick){
   if(sim||!acct.info||!acct.info.selling||acct.stale||!realReady())return;
@@ -1569,11 +1569,9 @@ function renderSell(){
   if(!sellBuilt){sellBuilt=true;
     setH($("sellRuleBox"),Object.keys(SELL_LAB).map(k=>`<label title="${escH(CASH_RULES[k][0])}" style="white-space:nowrap"><input type="checkbox" data-r="${k}"> ${SELL_LAB[k]}</label>`).join(" "));
     for(const c of $("sellRuleBox").querySelectorAll("input"))c.onchange=()=>{sellRules[c.dataset.r]=c.checked;ls.set("k15sellrules",sellRules);renderSell()};
-    $("sellMin").onchange=e=>{const v=Math.max(0,Math.min(99,Math.round(+e.target.value||0)));sellMin=v;e.target.value=v;ls.set("k15sellmin",v);renderSell()};
     $("sellOnBtn").onclick=async()=>{try{const d=await apost("/account/config",{selling:!(acct.info&&acct.info.selling)});if(d&&d.ok===false)realEvent("Early selling: "+(d.error||"not changed"))}catch(e){realEvent("Early selling: not changed ("+(e.message||"failed")+")")}await acctRefresh(true);renderSell()}}
   const on=!!i.selling;setT($("sellOnBtn"),"Early selling: "+(on?"ON":"OFF"));$("sellOnBtn").classList.toggle("realm",on);
   for(const c of $("sellRuleBox").querySelectorAll("input"))if(c.checked!==!!sellRules[c.dataset.r])c.checked=!!sellRules[c.dataset.r];
-  if(document.activeElement!==$("sellMin")&&+$("sellMin").value!==sellMin)$("sellMin").value=sellMin;
   const act=Object.keys(sellRules).filter(k=>sellRules[k]&&CASH_RULES[k]).map(k=>SELL_LAB[k]),sold=(acct.orders||[]).filter(o=>o.src==="auto"&&o.sold_count>0&&o.env===i.env);
   setT($("sellNote"),(!on?"Off: real bets are held to the end. Turning it on sells an open real Auto bet when a ticked rule fires (flip = the model now gives the other side that much; market +N pts = the bid, after the selling fee, is N points above the model's win chance). Fake Auto keeps testing all six rules.":
     (act.length?"On: sells when any of these fires: "+act.join(", ")+(sellMin>0?", but never while the bid is under "+sellMin+"¢":"")+".":"On, but no rule is ticked, so nothing is sold.")+(sold.length?" Sold early so far: "+sold.length+" bet"+(sold.length===1?"":"s")+", "+(g=>(g>=0?"+":"-")+"$"+Math.abs(g).toFixed(2))(sold.reduce((t,o)=>t+(o.sold_net||0)-(o.closed?o.cost_total:o.cost_total*(o.sold_count/o.fill_count)),0))+" on the part sold, after fees.":""))+exitTxt());
@@ -1723,9 +1721,8 @@ function renderPicks(){
   const by={};for(const x of pickHist){(by[x.T]=by[x.T]||[]).push(x)}
   const keys=[...new Set([60,180,300].concat(pickTimes,Object.keys(by).map(Number)))].sort((a,b)=>a-b),all=[].concat(...keys.map(k=>by[k]||[]));
   const row=(lab,a,cls)=>{const n=a.length,w=a.filter(x=>x.hit).length,net=a.reduce((t,x)=>t+(x.hit?x.mult-1:-1),0),ac=n?a.reduce((t,x)=>t+x.conf,0)/n:0;
-    const oa=a.map(x=>x.alt||x).filter(o=>o.hit!=null),on=oa.reduce((t,o)=>t+(o.hit?o.mult-1:-1),0);   // picks made before the ranking learned were the old ranking's own picks
-    return `<tr${cls?` class="${cls}"`:""}><td>${lab}</td><td>${n}</td><td>${w} / ${n-w}</td><td>${n?pc(w/n):"–"}</td><td>${n?pc(ac):"–"}</td><td class="${net>0?"hit":net<0?"miss":""}">${n?(net>=0?"+":"-")+"$"+Math.abs(net).toFixed(2):"–"}</td><td class="${on>0?"hit":on<0?"miss":""}">${oa.length?(on>=0?"+":"-")+"$"+Math.abs(on).toFixed(2):"–"}</td></tr>`};
-  setH($("pickTbl"),'<tr><th>Time left</th><th>Picks</th><th>Wins / losses</th><th>Hit rate</th><th>Avg confidence</th><th>Net per $1</th><th title="What the earlier fixed ranking (confidence squared x multiplier) would have made on the same windows">Old ranking, net per $1</th></tr>'+
+    return `<tr${cls?` class="${cls}"`:""}><td>${lab}</td><td>${n}</td><td>${w} / ${n-w}</td><td>${n?pc(w/n):"–"}</td><td>${n?pc(ac):"–"}</td><td class="${net>0?"hit":net<0?"miss":""}">${n?(net>=0?"+":"-")+"$"+Math.abs(net).toFixed(2):"–"}</td></tr>`};
+  setH($("pickTbl"),'<tr><th>Time left</th><th>Picks</th><th>Wins / losses</th><th>Hit rate</th><th>Avg confidence</th><th>Net per $1</th></tr>'+
     keys.map(k=>row(k%60===0?k/60+(k===60?" minute":" minutes"):k+" seconds",by[k]||[])).join("")+row("All",all,"tot"));
 }
 try{if(localStorage.getItem("k15tblopen")==="0")$("tblBox").open=false}catch(e){}
@@ -2269,7 +2266,7 @@ function renderRealAuto(){
   const cur=Object.values(real.autoSet||{}).filter(x=>x.win===winStart).sort((a,b)=>a.t-b.t);
   const L=real.autoLast,st=!b?"Allocate some real money to begin":!real.auto?"Real betting is off. Press Start real betting to begin. Fake-money Auto mode keeps running either way.":(cur.length?cur.map(x=>escH(x.text)).join("<br>"):(L&&L.win===winStart?escH(L.text):(autoNote==="Bet placed"?"Waiting for the real bet":autoNote)||"Waiting for the next window"));
   const cell=(l,v,c)=>`<div>${l}<b${c?` class="${c}"`:""}>${v}</b></div>`;
-  setH($("arStats"),cell("Allocated",b?$$(b.bank):"–")+cell("Free to bet",b?$$(b.avail):"–")+cell("Net",b?$$(b.net):"–",b?cls(b.net):"")+cell("Wins / losses",b?b.w+" / "+b.l:"–")+
+  setH($("arStats"),cell("Allocated",b?$$(b.bank):"–")+cell("Net",b?$$(b.net):"–",b?cls(b.net):"")+cell("Wins / losses",b?b.w+" / "+b.l:"–")+
     cell("Hit rate",tot?Math.round(b.w/tot*1000)/10+"%":"–")+cell("Windows skipped",b?realSkip().n:"–")+cell("Currently bet",b?$$(b.open):"–")+cell("Peak",b?$$(b.peak):"–")+
     cell("Min confidence now",(g=>g==null?"none":Math.round(g*1000)/10+"%")(autoGate(1)))+cell("Learned from",samples+" samples")+cell("Status",st));
   safe("early selling card",renderSell);balSeedOnce();setH($("arNote"),balWarn()+(acct.stale?'<b class="miss">'+escH(staleMsg)+"</b><br>":"")+escH(flashFor("· Auto")));
@@ -2296,7 +2293,7 @@ function renderAcctCard(){
   setH($("acStats"),C("Unused cash",money(free),"","not allocated to any mode")+C("Allocated to modes",money(allocBank()),"","free to bet "+money(alloc))+C("Currently bet",money(open),"",(sm.positions||[]).length+" open position"+((sm.positions||[]).length===1?"":"s"))+C("Account total",money((sm.balance||0)+(sm.portfolio_value||0)),"","cash plus open positions")+
     C("Net today",sg(st.all.netT),cl(st.all.netT),"settled bets")+C("Net all time",sg(st.all.netA),cl(st.all.netA),"settled bets"));
   const row=(lab,o,c)=>`<tr${c?` class="${c}"`:""}><td>${lab}</td><td>${o.n}</td><td>${o.w} / ${o.l}</td><td>${o.wait||"–"}</td><td class="${cl(o.netT)}">${o.n?sg(o.netT):"–"}</td><td class="${cl(o.netA)}">${o.n?sg(o.netA):"–"}</td></tr>`;
-  setH($("acRes"),'<tr><th>Real bets from</th><th>Filled</th><th>Wins / losses</th><th>Waiting for result</th><th>Net today</th><th>Net all time</th></tr>'+row("Auto mode",st.auto)+(st.manual.n?row("Manual",st.manual):"")+row("All",st.all,"tot"));
+  setH($("acRes"),'<tr><th>Real bets from</th><th>Filled</th><th>Wins / losses</th><th>Waiting for result</th><th>Net today</th><th>Net all time</th></tr>'+row("Auto mode",st.auto)+(st.manual.n?row("Manual",st.manual):""));
 }
 
 

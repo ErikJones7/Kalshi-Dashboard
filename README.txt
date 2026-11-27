@@ -103,7 +103,6 @@ EARLY SELLING (real Auto bets)
       Market +5 / +10 pts  what a contract nets at Kalshi's live bid, after the selling fee, is that many points above the
                            model's win chance
     Starting ticks: Flip 65%+ and Market +10 pts.
-  - "Do not sell below N c bid": while the bid is under N cents the bet is held. 0 (the start) means no minimum.
   - Sales are judged from the live order book, once a second. Nothing is sold in the last 10 seconds, when the book price is
     over 3 seconds old, or when a contract would net under 5 cents. The order is reduce-only (it can only close what Auto's bet
     holds) and immediate-or-cancel, with a safety floor 10 cents under the bid. A sale that doesn't fill is tried again every
@@ -166,6 +165,7 @@ Timed bets were removed on 2026-11-25. Their saved data is kept unchanged in sim
 
 CHANGELOG (newest first; details are in the GitHub history)
 ---------
+2026-11-26as  display clean-up: minimum-bid box, Real money / Fake money labels, Free to bet, the All row and the old-ranking column removed
 2026-11-26ar  sizing test on fake Auto (shadow only)
 2026-11-26aq  bet histories show just the window's end time
 2026-11-26ap  fake bet history laid out like the real one; both show the window bought

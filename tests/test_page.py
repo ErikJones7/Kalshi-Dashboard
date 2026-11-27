@@ -73,7 +73,7 @@ with sync_playwright() as p:
       acct.orders=[o('auto','KXBTC15M-A',5,8),o('sim','KXSOL15M-C',4,6)];liveRes['KXBTC15M-A']='yes';liveRes['KXSOL15M-C']='yes';
       acct.bud={auto:{'*':{bank:227.89,avail:222,open:0,net:0,w:0,l:0,peak:230,since:1}}};real.auto=false;renderAcctCard()}""")
     rows = pg.evaluate("[...document.querySelectorAll('#acRes tr')].slice(1).map(r=>r.cells[0].innerText)")
-    ok(rows == ["Auto mode", "All"], "the Kalshi account card has no Timed bets row: %s" % rows)
+    ok(rows == ["Auto mode"], "the Kalshi account card shows only the Auto mode row (no Timed bets row, no All row): %s" % rows)
     ok(pg.evaluate("realStats().all.n") == 2, "an old Timed fill still counts in the account totals")
     sent = pg.evaluate("""async()=>{simSt={start:{BTC:5},tr:{},ref:9};simDef=22.22;simMode='zero';simGain=10;hBase='http://x';let body=null;
       hpost=async(p,o)=>{body=o;return {}};await saveToHelper();const s=body&&body.simstate;return s&&{simSt:s.simSt,simDef:s.simDef,simMode:s.simMode,simGain:s.simGain}}""")
@@ -125,7 +125,7 @@ with sync_playwright() as p:
   apost=async(p,o)=>{posts.push([p,o]);return window.__ans||{ok:true,filled:true,fill_count:10,net:4.9,left:0}};
   const ord=(o)=>Object.assign({filled:true,src:"auto",env:"prod",order_id:"o1",ticker:TK,sym:"BTC",side:"yes",fill_count:10,cost_total:6.2,w:now()+300,t:now()-100},o||{});
   const setup=(o)=>{acct.info={env:"prod",ready:true,trading:true,selling:true,build:HELPER_EXPECT};acct.stale=false;acct.sum={ok:true,balance:100};acct.orders=[ord(o)];
-    for(const k in sellSt)delete sellSt[k];sellRules={f65:true,m10:true};sellMin=0;posts=[];window.__ans=null};
+    for(const k in sellSt)delete sellSt[k];sellRules={f65:true,m10:true};posts=[];window.__ans=null};
   const book=(side,bid,age)=>bid==null?null:(side==="no"?{tk:TK,ts:now()-(age||0),ok:true,no:bid*100+2,yes:(1-bid)*100}:{tk:TK,ts:now()-(age||0),ok:true,yes:bid*100+2,no:(1-bid)*100});
   const go=async(label,o,pCal,bid,mod,age,lag)=>{setup(o);if(mod)mod();const tick=Math.floor(now()),side=(o&&o.side)||"yes";res.BTC={pCal,tick};delete bookBy.BTC;const bk=book(side,bid,age);if(bk)bookBy.BTC=bk;
     quoteBy.BTC=lag||{tk:TK,ts:now(),yes_bid:0.55,yes_ask:0.57,no_bid:0.43,no_ask:0.45};
@@ -147,9 +147,6 @@ with sync_playwright() as p:
   await go("stale_helper",null,0.30,0.55,()=>{acct.stale=true});
   await go("live_book_high_listed_quote_low",null,0.30,0.55,null,0,{tk:TK,ts:now(),yes_bid:0.05,yes_ask:0.07,no_bid:0.93,no_ask:0.95});
   await go("flip_no",{side:"no"},0.70,0.50);
-  await go("min_bid_holds_low_sale",null,0.30,0.55,()=>{sellMin=75});
-  await go("min_bid_allows_high_sale",null,0.80,0.93,()=>{sellMin=75});
-  await go("min_bid_equal_allows",null,0.80,0.93,()=>{sellMin=93});
   // throttle: the same market is not hit twice within 2 s, and an unclear answer is never repeated
   // the page recalculates res.BTC every second, so the faked price and book are put back right before each call
   const fix=()=>{res.BTC={pCal:0.3,tick:Math.floor(now())};bookBy.BTC={tk:TK,ts:now(),ok:true,yes:57,no:45}};
@@ -176,10 +173,6 @@ with sync_playwright() as p:
     ok(one("flip_yes") and sv["flip_yes"][0]["side"] == "yes" and sv["flip_yes"][0]["rule"] == "f65" and sv["flip_yes"][0]["min"] == 45, "the model flipping to 70%% the other way sells a YES bet at the bid minus 10c: %s" % sv["flip_yes"])
     ok(one("market10_yes") and sv["market10_yes"][0]["rule"] == "m10", "a bid 10 points above the model's win chance sells it: %s" % sv["market10_yes"])
     ok(one("flip_no") and sv["flip_no"][0]["side"] == "no" and sv["flip_no"][0]["min"] == 40, "a NO bet is sold the same way, from the NO bid: %s" % sv["flip_no"])
-    ok(sv["min_bid_holds_low_sale"] == [] and one("min_bid_allows_high_sale") and one("min_bid_equal_allows"), "with a minimum bid of 75c a sale at a 55c bid is held, and one at 93c still goes (also when the minimum equals the bid): %s %s" % (sv["min_bid_holds_low_sale"], sv["min_bid_allows_high_sale"]))
-    mb = pg.evaluate("""()=>{const el=$("sellMin"),o={};const set=v=>{el.value=v;el.dispatchEvent(new Event("change"))};
-      set("80");o.a=[sellMin,el.value,ls.get("k15sellmin",null)];set("150");o.b=[sellMin,el.value];set("abc");o.c=[sellMin,el.value];set("-5");o.d=sellMin;set("0");o.e=sellMin;return o}""")
-    ok(mb["a"] == [80, "80", 80] and mb["b"] == [99, "99"] and mb["c"] == [0, "0"] and mb["d"] == 0 and mb["e"] == 0, "the minimum-bid box keeps what is typed (0-99 cents, anything else becomes 0 or 99) and remembers it: %s" % mb)
     ok(all(sv[k] == [] for k in ("no_rule_just_below_m10", "model_agrees_no_sale")), "no rule firing means no sale")
     ok(all(sv[k] == [] for k in ("selling_off", "stale_book", "no_book_yet", "last_10_seconds", "dust_bid", "no_rules_ticked", "already_sold_row", "settled_row", "not_auto_row", "stale_helper")),
        "nothing is sold when selling is off, the order-book price is stale or missing, under 10 s are left, the bid is dust, no rule is ticked, the bet is sold/settled/not Auto, or the helper is old")
@@ -268,20 +261,21 @@ with sync_playwright() as p:
     ok(ab["lv_stale_book"]["err"].endswith("stale") and ab["lv_stale_book"]["reads"] == 1 and "above the 96" in ab["lv_book_too_dear"], "a stale book refreshes and retries instead of falling back; a book price above what the bet is worth is refused")
     # ---- exit log: each Auto position's path (model, live book, listed quote) and a snapshot of every sale, sent to the helper after the result
     EX = """async()=>{
-  const out={},now=()=>Date.now()/1000,sv={rb:refreshBook,kg:kalshiGet,hp:hpost,hb:hBase,rsw:realSellWatch,acw:autoCashWatch};
+  const out={},now=()=>Date.now()/1000,sv={rb:refreshBook,kg:kalshiGet,hp:hpost,hb:hBase,rsw:realSellWatch,acw:autoCashWatch,ew:exitWatch};
   realSellWatch=()=>{};autoCashWatch=()=>{};refreshBook=()=>{};hBase="http://x";sim=false;kalshiSlowUntil=0;
+  const ew=exitWatch;exitWatch=()=>{};      // the page's own once-a-second work must not run the exit log while these checks do
   for(const k in exitPos)delete exitPos[k];exitQ=[];exitSent=0;exitErr="";
   const end=Math.floor(now())+100,TK=windowTicker("BTC",end),T=Math.floor(now());
   acct.info={env:"prod",ready:true,trading:true,selling:true,build:HELPER_EXPECT};
   acct.orders=[{filled:true,src:"auto",env:"prod",order_id:"o1",ticker:TK,sym:"BTC",side:"yes",fill_count:10,cost_total:9,w:end,t:T-30}];
   pendAuto=[{w:end-900,sym:"BTC",side:"UP",tk:TK,rk:end+"|BTC|UP",tau:130,stake:9,mult:1/0.9}];
   const put=(p,yb)=>{res.BTC={pCal:p,pRaw:p+0.01,tick:T,P:60000.5,tau:100,an:{sigma:0.0005},q:[59900,59950,60000,60060,60100]};bookBy.BTC={tk:TK,ts:now(),ok:true,yes:100-(100-yb)+2,no:100-yb};quoteBy.BTC={tk:TK,ts:now()-12,yes_bid:0.95,no_bid:0.04,yes_ask:0.96,no_ask:0.05,close:end}};
-  put(0.90,94);res.BTC.tick=T-30;exitWatch(T-30);put(0.85,93);res.BTC.tick=T-15;exitWatch(T-15);put(0.80,93);exitWatch(T);exitWatch(T);
+  put(0.90,94);res.BTC.tick=T-30;ew(T-30);put(0.85,93);res.BTC.tick=T-15;ew(T-15);put(0.80,93);ew(T);ew(T);
   const e=exitPos["real|o1"],f=exitPos["fake|"+end+"|BTC|UP"];
   out.rows=e&&e.rows.length;out.row=e&&e.rows[2];out.fake_rows=f&&f.rows.length;out.fake_entry=f&&Math.round(f.entry*1000)/1000;
   const x=exitSale("real|o1","m10",0.80,0.93);out.snap=x;
   // after the sale the bid goes up to 97c, then the window closes
-  put(0.95,97);res.BTC.tick=Math.floor(now())+1;exitWatch(Math.floor(now())+1);
+  put(0.95,97);res.BTC.tick=Math.floor(now())+1;ew(Math.floor(now())+1);
   for(const k in exitPos)exitPos[k].end=now()-3;
   let posted=null;hpost=async(p,o)=>{posted=[p,o.rows.length];return {ok:true,added:o.rows.length}};exitBusy=false;
   let asks=0;kalshiGet=async p=>{asks++;return {market:{ticker:TK,result:"yes",expiration_value:"60010.25",floor_strike:60000}}};
@@ -293,12 +287,12 @@ with sync_playwright() as p:
   // an old helper (no /data/exits): the positions stay queued and the note says why
   exitQ=[{key:"k1"}];hpost=async()=>{throw new Error("HTTP 404")};exitLastFlush=0;exitBusy=false;exitFlush(now());await new Promise(r=>setTimeout(r,30));out.old_helper={q:exitQ.length,err:exitErr};
   // nothing is recorded in a practice run
-  for(const k in exitPos)delete exitPos[k];sim=true;exitWatch(T);out.sim_rows=Object.keys(exitPos).length;sim=false;
+  for(const k in exitPos)delete exitPos[k];sim=true;ew(T);out.sim_rows=Object.keys(exitPos).length;sim=false;
   // the fake cash-out test leaves a snapshot when a rule fires
   pendAuto=[{w:end-900,sym:"BTC",side:"UP",tk:TK,rk:end+"|BTC|UP",tau:130,stake:9,mult:1/0.9}];for(const k in exitPos)delete exitPos[k];for(const k in exitPos)exitPos[k].end=end;
   Object.assign(pendAuto[0],{end});res.BTC={pCal:0.30,tick:T};bookBy.BTC={tk:TK,ts:now(),ok:true,yes:57,no:45};sv.acw(T,100);
   const fe=exitPos["fake|"+end+"|BTC|UP"];out.fake_snap_rules=fe?fe.sales.map(s=>s.rule).sort().join(","):null;
-  realSellWatch=sv.rsw;autoCashWatch=sv.acw;refreshBook=sv.rb;kalshiGet=sv.kg;hpost=sv.hp;hBase=sv.hb;pendAuto=[];acct.orders=[];exitQ=[];exitSent=0;exitErr="";for(const k in exitPos)delete exitPos[k];delete res.BTC;delete bookBy.BTC;delete quoteBy.BTC;
+  realSellWatch=sv.rsw;autoCashWatch=sv.acw;exitWatch=sv.ew;refreshBook=sv.rb;kalshiGet=sv.kg;hpost=sv.hp;hBase=sv.hb;pendAuto=[];acct.orders=[];exitQ=[];exitSent=0;exitErr="";for(const k in exitPos)delete exitPos[k];delete res.BTC;delete bookBy.BTC;delete quoteBy.BTC;
   return out}"""
     ex = pg.evaluate(EX)
     ok(ex["rows"] == 3 and ex["fake_rows"] == 3 and ex["row"][2] == 0.8 and ex["row"][4] == 93 and ex["row"][5] == 5 and ex["row"][7] == 0.95 and len(ex["row"]) == 15 and ex["row"][11] == 0.0005 and abs(ex["row"][12] - 55 / 60000.5) < 1e-6 and ex["row"][13] is not None and ex["fake_entry"] == 0.9, "every second of a real and a fake Auto position is recorded once (model chance, live bids, listed quote, volatility, model range and uncertainty): %s" % ex["row"])
@@ -448,6 +442,13 @@ with sync_playwright() as p:
     sz = pg.evaluate(SZ)
     ok(sz["rows"] == [[1, 0.2, 10, 2, 1], [-20, 0, 20, 0, 0]] and "$30.00-$19.00" in sz["txt"] and "$2.00+$0.20" in sz["txt"],
        "the sizing table books each bet's profit at its current stake and at the corrected stake; bets with no market price are left out: %s" % sz["rows"])
+    # ---- display clean-up: removed boxes, labels and columns stay removed
+    cu = pg.evaluate("""()=>({minbox:!!document.getElementById("sellMin"),realtag:!!document.querySelector("#autoK + .modetag"),free:$("arStats").innerText.includes("Free to bet"),
+      summ:$("autoFakeD").querySelector("summary").childNodes[0].textContent.trim(),acct:document.querySelector("#acctCard .k").textContent,
+      pickhead:[...document.querySelectorAll("#pickTbl th")].map(x=>x.textContent),diag:document.querySelector("#diagBox summary").textContent,tbl:document.querySelector("#tblBox summary").textContent})""")
+    ok(not cu["minbox"] and not cu["realtag"] and not cu["free"] and cu["summ"].startswith("Practice version") and "(" not in cu["summ"] and cu["acct"] == "Kalshi account",
+       "the Auto card has no minimum-bid box, no Real money tag, no Free to bet; the fake part reads Practice version; the account card title has no (real money): %s" % cu)
+    ok("Old ranking, net per $1" not in cu["pickhead"] and cu["diag"] == "Data sources & diagnostics" and cu["tbl"] == "All coins: prices, targets, moves and forecasts", "the old-ranking column and the bracketed title notes are gone")
     # ---- a new best pick notification replaces the old one
     pk = pg.evaluate("""()=>{const mk=T=>({w:77,T,tau:T,min:0.9,top:null,more:[],closest:null});const cnt=()=>[...document.querySelectorAll('#sig .sigrow.pick')].filter(e=>!e.classList.contains('leaving')).map(e=>e.innerText);
       const base=Object.assign({},lastS),o={};render(Object.assign({},base,{picks:[mk(300)]}));o.a=cnt();render(Object.assign({},base,{picks:[mk(300),mk(180)]}));o.b=cnt();render(Object.assign({},base,{picks:[mk(300),mk(180),mk(60)]}));o.c=cnt();return o}""")
