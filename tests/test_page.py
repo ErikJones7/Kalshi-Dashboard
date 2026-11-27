@@ -414,6 +414,20 @@ with sync_playwright() as p:
     bl = pg.evaluate(BL)
     ok(bl["n"] == 2 and bl["real"] == 1 and bl["b0"] == {"kn": 1, "kw": 1, "ks": 10, "kp": 0.5, "dn": 1, "dw": 0, "ds": 10, "dp": -10} and "model 96.0%, market 88.5%, blended 91.0%" in bl["html"],
        "the market-blend table keeps the bet whose blended chance beats the price and drops the other; bets with no market price are left out: %s" % bl["b0"])
+    # ---- the signal popup shows only a fired signal, as it was when it fired
+    SF = """()=>{const base=Object.assign({},lastS),sel=base.selected,out={},w=1795800000;dismissed.clear();
+  const rows=()=>[...document.querySelectorAll('#sig .sigrow.up,#sig .sigrow.dn')].filter(e=>!e.classList.contains('leaving')).map(e=>e.textContent.replace(/\s+/g," ").trim());
+  const live={w,sym:sel,side:"UP",p:0.93,tau:200,final:1,lo:1,hi:1,target:1,price:1};
+  render(Object.assign({},base,{signals:[live],fired:[]}));out.above_not_fired=rows();
+  render(Object.assign({},base,{signals:[live],fired:[{w,sym:sel,side:"UP",p:0.912,tau:205}]}));out.fired=rows();
+  render(Object.assign({},base,{signals:[],fired:[{w,sym:sel,side:"UP",p:0.912,tau:205}]}));out.after_drop=rows();
+  render(Object.assign({},base,{signals:[live],fired:[{w,sym:"ZZZ",side:"UP",p:0.95,tau:100}]}));out.other_coin=rows();
+  dismissed.add(w+"|"+sel+"|UP");render(Object.assign({},base,{signals:[live],fired:[{w,sym:sel,side:"UP",p:0.912,tau:205}]}));out.closed=rows();
+  dismissed.clear();render(base);return out}"""
+    sf = pg.evaluate(SF)
+    ok(sf["above_not_fired"] == [] and len(sf["fired"]) == 1 and "fired with 03:25 left" in sf["fired"][0] and "91.2%" in sf["fired"][0] and sf["after_drop"] == sf["fired"],
+       "no popup for a coin that is above the threshold but hasn't fired; a fired one shows its time and confidence at firing and stays when the live confidence drops: %s" % sf["fired"])
+    ok(sf["other_coin"] == [] and sf["closed"] == [], "another coin's signal and a closed one don't show")
     # ---- a new best pick notification replaces the old one
     pk = pg.evaluate("""()=>{const mk=T=>({w:77,T,tau:T,min:0.9,top:null,more:[],closest:null});const cnt=()=>[...document.querySelectorAll('#sig .sigrow.pick')].filter(e=>!e.classList.contains('leaving')).map(e=>e.innerText);
       const base=Object.assign({},lastS),o={};render(Object.assign({},base,{picks:[mk(300)]}));o.a=cnt();render(Object.assign({},base,{picks:[mk(300),mk(180)]}));o.b=cnt();render(Object.assign({},base,{picks:[mk(300),mk(180),mk(60)]}));o.c=cnt();return o}""")

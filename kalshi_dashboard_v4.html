@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26an</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26ao</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1134,7 +1134,7 @@ function step(tick,light){
   return {tick,elapsed:el,remaining:tau,phase:active?"active":"watch",to_active:Math.max(0,MARK-el),
     selected,coins:rows,summary,pred,reason,quote:q,chart,live:valid.filter(Boolean).length,total:n,sim,
     srcCount:(()=>{const o={};for(const s of syms)if(curSrc[s])o[curSrc[s]]=(o[curSrc[s]]||0)+1;return o})(),
-    signals,newSignal,finalCall,newFinal,picks:curPicks,newPicks,autoAlert:curAutoAlert,newAutoAlert:(()=>{const v=autoNewFlag;autoNewFlag=false;return v})(),track,calib:{a:platt.a,b:platt.b,n:calSamples.length,bins},thr};
+    signals,fired:pendSig.filter(x=>x.w===wStart).map(x=>({w:x.w,sym:x.sym,side:x.side,p:x.p,tau:x.tau})),newSignal,finalCall,newFinal,picks:curPicks,newPicks,autoAlert:curAutoAlert,newAutoAlert:(()=>{const v=autoNewFlag;autoNewFlag=false;return v})(),track,calib:{a:platt.a,b:platt.b,n:calSamples.length,bins},thr};
 }
 
 /* ============================ rendering ============================ */
@@ -1258,7 +1258,7 @@ function render(s){
   {const kk=$("kal"),ok=s.sim||kalshiStatus==="live";setT(kk,ok?"Kalshi: connected"+((()=>{const nw=Date.now()/1000,fa=(Math.floor(nw/WINDOW)+1)*WINDOW-nw<=240&&nw>kalshiSlowUntil;return fa&&!s.sim?" · "+kRate().toFixed(1)+" price updates/s per coin":""})()):kalshiStatus==="unreachable"?"Kalshi: not connected":"Kalshi: connecting");setC(kk,"pill "+(ok?"ok":kalshiStatus==="unreachable"?"bad":""))}
 
   // popups (left side): only for the selected coin. Other coins still feed the track record and calibration.
-  const shown=s.signals.filter(x=>x.sym===s.selected&&!dismissed.has(x.w+"|"+x.sym+"|"+x.side));
+  const shown=(s.fired||[]).filter(x=>x.sym===s.selected&&!dismissed.has(x.w+"|"+x.sym+"|"+x.side));      // only signals that have fired this window, as they were when they fired; they stay until closed or the window ends
   const fc=(s.finalCall&&s.finalCall.sym===s.selected&&!dismissed.has("fin|"+s.finalCall.w+"|"+s.finalCall.sym))?s.finalCall:null;
   let html="";
   if(fc)html+=`<div class="sigrow fin"><button class="x" data-k="fin|${fc.w}|${fc.sym}" title="dismiss">&times;</button>
@@ -1278,9 +1278,10 @@ function render(s){
       <span>${b.real?`Bought <b>${b.fc}</b> contracts for <b>${$$(b.stake)}</b>${b.mult?` · <b>${mx(b.mult)}</b>`:""}`:`Stake <b>${$$(b.stake)}</b> @ <b>${mx(b.mult)}</b>`}</span>`).join("")+
       (aa.bets[0].sym!==s.selected?`<button class="swbtn" data-sw="${aa.bets[0].sym}" data-k="auto|${aa.w}">Switch to ${aa.bets[0].sym}</button>`:"")+`</div>`;
   html+=shown.map(x=>`<div class="sigrow ${x.side==="UP"?"up":"dn"}"><button class="x" data-k="${x.w}|${x.sym}|${x.side}" title="dismiss">&times;</button>
-      <b>${Math.round(s.thr*1000)/10}% SIGNAL · ${mmss(x.tau)} left</b>
+      <b>${Math.round(s.thr*1000)/10}% SIGNAL · fired with ${mmss(x.tau)} left</b>
       <span class="big ${x.side==="UP"?"up":"dn"}">${x.sym} ${x.side==="UP"?"ABOVE":"BELOW"} target</span>
-      ${x.yes_ask!=null?(()=>{const lq=liveQ(x.sym,s)||x,m=mults(lq.yes_ask,lq.yes_bid,lq.no_ask),v=x.side==="UP"?m.up:m.dn;return v?`<span>Kalshi <b>${mx(v)}</b></span>`:""})():""}</div>`).join("");
+      <span>Confidence when it fired <b>${pc(x.p)}</b></span>
+      ${(()=>{const lq=liveQ(x.sym,s);if(!lq)return "";const m=mults(lq.yes_ask,lq.yes_bid,lq.no_ask),v=x.side==="UP"?m.up:m.dn;return v?`<span>Kalshi now <b>${mx(v)}</b></span>`:""})()}</div>`).join("");
   syncSig(html);
   if(soundOn){if(s.newSignal&&shown.length)beep("sig");if(s.newFinal&&fc)beep("fin",s.newSignal&&shown.length?0.7:0);if(s.newAutoAlert&&aa)beep("auto",(s.newSignal&&shown.length?0.7:0)+(s.newFinal&&fc?1.0:0)+(s.newPicks&&s.newPicks.length&&pks.length?1.0:0));if(s.newPicks&&s.newPicks.length&&pks.length)beep("pick",(s.newSignal&&shown.length?0.7:0)+(s.newFinal&&fc?1.0:0))}
 

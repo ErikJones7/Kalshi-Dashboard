@@ -118,6 +118,9 @@ ON SCREEN
 ---------
   - Kalshi live multipliers card: always shown. It shows the listed price's age when it is 6-20 s old, and "waiting for
     Kalshi's price" when there is none for this window.
+  - Signal: a notification for the selected coin only when its signal fires (confidence reaches the threshold), showing the time left
+    and confidence at that moment and Kalshi's current multiplier. It stays until you close it or the window ends, and doesn't come and
+    go with the live confidence.
   - Best pick: a notification at your chosen times left. A new one replaces the old one, and closing it (X or "Switch to")
     never brings an older one back. The Best pick record card keeps every pick.
   - Real bet history (one per card): only bets that went through, with UP/DOWN, time left when bought, multiplier, result,
@@ -157,6 +160,7 @@ Timed bets were removed on 2026-11-25. Their saved data is kept unchanged in sim
 
 CHANGELOG (newest first; details are in the GitHub history)
 ---------
+2026-11-26ao  signal notification shows only fired signals
 2026-11-26an  market-blend test on fake Auto (shadow only)
 2026-11-26am  nothing for sale: Auto drops that coin and looks for another one at once
 2026-11-26al  real early-selling table on the bet history
