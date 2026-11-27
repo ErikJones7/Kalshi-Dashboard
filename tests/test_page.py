@@ -52,10 +52,10 @@ with sync_playwright() as p:
 
     setup(new)
     r = pg.evaluate("""async()=>{
-      lvPlan=(sym,side,stake)=>({ticker:'KXTEST',side,count:Math.floor(stake/0.9),price:90,cost:stake,cap:stake});
+      window.__lvPlan=window.__lvPlan||lvPlan;lvPlan=(sym,side,stake)=>({ticker:'KXTEST',side,count:Math.floor(stake/0.9),price:90,cost:stake,cap:stake});
       let posts=0;apost=async()=>{posts++;return {ok:false,error:'Kalshi returned HTTP 400: insufficient balance'}};
       const r=await realMirror('auto','ETH','yes',20,{w:Date.now()/1000+300,p:0.95,agree:0,opp:0});
-      return {r,posts,cap:balG.cap,txt:real.events[0]}}""")
+      lvPlan=window.__lvPlan;return {r,posts,cap:balG.cap,txt:real.events[0]}}""")
     ok(r["r"] == "stop" and r["posts"] == 1, "a refused-for-balance bet is not retried: %s" % r["r"])
     ok("insufficient balance" in r["txt"] and "capped" in r["txt"], "the event line says why: " + r["txt"][-110:])
     pg.evaluate("o=>{acct.orders=o;balG.seeded=false;balG.cap=null;balG.n=0;balG.minRef=null;balSeedOnce()}", new)
@@ -219,6 +219,44 @@ with sync_playwright() as p:
     ok((r0[3], r1[3], r2[3]) == ("1:43", "1:35", "6:40"), "time left in the window when each bet was bought (m:ss): %s" % [r0[3], r1[3], r2[3]])
     ok(r0[8].startswith("Tried 2") and "not sold" in r0[8] and "54" in r0[8] and r1[8].startswith("Sold 15.00 for $9.50") and r2[8] == "–", "the Selling column shows tries with the reason, sales with the cash back, or a dash: %s / %s" % (r0[8], r1[8]))
     ok("tried to sell early" in hv["status"] and "HYPE DOWN" in hv["status"], "the real Auto card's status line shows a try to sell")
+    # ---- Auto prices a bet from the live order book; the listed price (which lags) is not needed and is never used on its own
+    AB = """async()=>{
+  sim=false;const out={},now=()=>Date.now()/1000,_rsw=realSellWatch,_acw=autoCashWatch,_rb=refreshBook,_rm=refreshMarket,_hb=hBase,_ra=real.auto;
+  realSellWatch=()=>{};autoCashWatch=()=>{};let rb=[];refreshBook=(s,t)=>rb.push(t);refreshMarket=async()=>{};real.auto=false;
+  const wEnd=Math.floor(now())+120,wStart=wEnd-900,TK=windowTicker("BTC",wEnd);
+  const run=(label,o)=>{o=o||{};rb=[];pendAuto=[];autoDone=false;autoG=0;autoNote="";hBase=o.nohelper?null:"http://x";
+    for(const s of syms)if(s!=="BTC")delete res[s];
+    const tick=Math.floor(now());res.BTC={pCal:0.97,tick,tau:120,anchorLn:11,asrc:"kalshi"};autoStab.BTC={side:"UP",n:9,t:tick-1};
+    delete quoteBy.BTC;if(o.q)quoteBy.BTC=Object.assign({tk:TK,close:wEnd,yes_ask:0.80,yes_bid:0.78,no_ask:0.22,no_bid:0.20},o.q);
+    delete bookBy.BTC;if(o.bk)bookBy.BTC=Object.assign({tk:TK,ts:now(),ok:true,yes:90,no:12},o.bk);
+    autoStep(tick,120,wStart,wEnd);
+    out[label]={bets:pendAuto.map(b=>({tk:b.tk,mult:Math.round(b.mult*1000)/1000,ask:b.ask,bid:b.bid})),book_reads:rb.length,note:autoNote}};
+  run("stale_listed_fresh_book",{q:{ts:now()-60},bk:{}});
+  run("no_listed_fresh_book",{bk:{}});
+  run("fresh_listed_no_book",{q:{ts:now()},bk:null});
+  run("fresh_listed_book_unreadable",{q:{ts:now()},bk:{ok:false}});
+  run("book_nothing_for_sale",{q:{ts:now()},bk:{yes:null}});
+  run("no_helper_fresh_listed",{nohelper:true,q:{ts:now()}});
+  run("no_helper_stale_listed",{nohelper:true,q:{ts:now()-60}});
+  pendAuto=[];autoDone=false;
+  // lvPlan for an Auto bet: the order book only
+  hBase="http://x";acct.sum={ok:true,balance:100};rb=[];
+  bookBy.BTC={tk:TK,ts:now(),ok:true,yes:90,no:12};quoteBy.BTC={tk:TK,close:wEnd,ts:now()-60,yes_ask:0.50,yes_bid:0.48,no_ask:0.52,no_bid:0.50};
+  const p1=lvPlan("BTC","UP",20,{cushion:3,max:96,tk:TK,end:wEnd});out.lv_book={ticker:p1.ticker,ask:p1.ask,price:p1.price,err:p1.err||null};
+  bookBy.BTC.ts=now()-5;const p2=lvPlan("BTC","UP",20,{cushion:3,max:96,tk:TK,end:wEnd});out.lv_stale_book={err:p2.err,reads:rb.length};
+  bookBy.BTC={tk:TK,ts:now(),ok:true,yes:97,no:4};const p3=lvPlan("BTC","UP",20,{cushion:3,max:96,tk:TK,end:wEnd});out.lv_book_too_dear=p3.err;
+  quoteBy.BTC.ts=now();const p4=lvPlan("BTC","UP",20,{cushion:3});out.lv_click_listed={ticker:p4.ticker,ask:p4.ask};
+  realSellWatch=_rsw;autoCashWatch=_acw;refreshBook=_rb;refreshMarket=_rm;hBase=_hb;real.auto=_ra;delete res.BTC;delete bookBy.BTC;delete quoteBy.BTC;autoDone=false;pendAuto=[];
+  return out}"""
+    ab = pg.evaluate(AB)
+    ok(len(ab["stale_listed_fresh_book"]["bets"]) == 1 and ab["stale_listed_fresh_book"]["bets"][0]["ask"] == 0.9 and len(ab["no_listed_fresh_book"]["bets"]) == 1,
+       "Auto bets from a fresh order book even when the listed price is a minute old or missing, at the book's price: %s" % ab["stale_listed_fresh_book"])
+    ok(ab["no_listed_fresh_book"]["bets"][0]["tk"] == ab["stale_listed_fresh_book"]["bets"][0]["tk"], "without a listed price the market is found by its name")
+    ok(ab["fresh_listed_no_book"]["bets"] == [] and ab["fresh_listed_no_book"]["book_reads"] == 1 and ab["fresh_listed_book_unreadable"]["bets"] == [] and ab["book_nothing_for_sale"]["bets"] == [],
+       "a fresh listed price alone never places an Auto bet: no order book means it reads one and waits, an unreadable or empty book means no bet")
+    ok(len(ab["no_helper_fresh_listed"]["bets"]) == 1 and ab["no_helper_stale_listed"]["bets"] == [], "with no helper running (fake money only) the fresh listed price is still used, and a stale one is not")
+    ok(ab["lv_book"] == {"ticker": ab["lv_book"]["ticker"], "ask": 90, "price": 93, "err": None} and ab["lv_click_listed"]["ask"] == 50, "a real Auto order is sized from the order book (90c), not the listed 50c; a manual click still uses the listed quote: %s" % ab["lv_book"])
+    ok(ab["lv_stale_book"]["err"].endswith("stale") and ab["lv_stale_book"]["reads"] == 1 and "above the 96" in ab["lv_book_too_dear"], "a stale book refreshes and retries instead of falling back; a book price above what the bet is worth is refused")
     # ---- a new best pick notification replaces the old one
     pk = pg.evaluate("""()=>{const mk=T=>({w:77,T,tau:T,min:0.9,top:null,more:[],closest:null});const cnt=()=>[...document.querySelectorAll('#sig .sigrow.pick')].filter(e=>!e.classList.contains('leaving')).map(e=>e.innerText);
       const base=Object.assign({},lastS),o={};render(Object.assign({},base,{picks:[mk(300)]}));o.a=cnt();render(Object.assign({},base,{picks:[mk(300),mk(180)]}));o.b=cnt();render(Object.assign({},base,{picks:[mk(300),mk(180),mk(60)]}));o.c=cnt();return o}""")

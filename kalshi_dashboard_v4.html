@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26ag</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26ah</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1390,6 +1390,10 @@ function refreshBook(sym,tk){      // Kalshi's real best asking prices for this 
   if(bookBusy[sym])return;bookBusy[sym]=1;
   aget("/account/ask?ticker="+encodeURIComponent(tk)).then(d=>{bookBy[sym]={tk,ts:Date.now()/1000,ok:!!(d&&d.ok),yes:d&&d.yes_ask,no:d&&d.no_ask,yq:d&&d.yes_qty,nq:d&&d.no_qty,yl:d&&d.yes_lv,nl:d&&d.no_lv}})
     .catch(()=>{bookBy[sym]={tk,ts:Date.now()/1000,ok:false}}).finally(()=>{bookBusy[sym]=0})}
+async function bookNow(sym,tk,ms){      // ask for a new order-book read and wait (up to ms) until it arrives
+  const t0=Date.now()/1000;refreshBook(sym,tk);
+  for(let i=0;i<Math.ceil(ms/100);i++){const b=bookBy[sym];if(b&&b.tk===tk&&b.ts>=t0)return b;await new Promise(r=>setTimeout(r,100));if(!bookBusy[sym]&&!(bookBy[sym]&&bookBy[sym].ts>=t0))refreshBook(sym,tk)}
+  return bookBy[sym]}
 function bookBid(sym,tk,side){      // what a sale of `side` would get right now: the best bid on that side, from Kalshi's live order book (null if unknown or older than 3 s).
   // The market quote Kalshi lists (yes_bid, no_bid ...) can stay frozen for 10 to 25 seconds while the order book moves every second, so sales are never judged from it.
   const b=bookBy[sym];if(!b||!b.ok||b.tk!==tk||Date.now()/1000-b.ts>3)return null;
@@ -1512,20 +1516,24 @@ function autoStep(tick,tau,wStart,wEnd){
     else if(st.t!==r.tick){st.n++;st.t=r.tick}
     if(!okc||autoStab[sym].n<4){continue}
     waiting++;
-    const q=quoteBy[sym];
-    if(!q||Math.abs(q.close-wEnd)>5||q.yes_ask==null||now-q.ts>3){
-      if(refr<2&&now-(autoRefr[sym]||0)>2){refr++;autoRefr[sym]=now;refreshMarket(sym,wEnd,sym===selected).catch(()=>{})}continue}
-    const m=mults(q.yes_ask,q.yes_bid,q.no_ask);let mult=side==="UP"?m.up:m.dn;
-    if(!sim&&hBase&&q.tk){      // the price an order would really match against (Kalshi's order book, via the helper) decides; the market quote is only the fallback
+    const q=quoteBy[sym],qw=q&&Math.abs(q.close-wEnd)<=5?q:null;      // Kalshi's listed price for this window (any age): only its market name is needed when the helper can read the order book
+    let mult=null,ask=null,bid=null,tk=qw&&qw.tk;
+    if(!sim&&hBase){      // the live order book (what an order would really match against) prices the bet; the listed price, which can lag by 10-25 s, is never used here
+      if(!tk){tk=windowTicker(sym,wEnd);if(!qw&&refr<2&&now-(autoRefr[sym]||0)>2){refr++;autoRefr[sym]=now;refreshMarket(sym,wEnd,sym===selected).catch(()=>{})}}
       const bk=bookBy[sym];
-      if(!bk||bk.tk!==q.tk||now-bk.ts>3){refreshBook(sym,q.tk);continue}
-      if(now-bk.ts>1.2)refreshBook(sym,q.tk);      // keep it fresh without ever leaving a gap
-      if(bk.ok){const a=side==="UP"?bk.yes:bk.no;if(!(a>0&&a<100)){autoBookSkip=sym+" "+side+": nothing is for sale right now";autoBookSkipT=now;continue}mult=100/a}}
+      if(!bk||bk.tk!==tk||now-bk.ts>3){refreshBook(sym,tk);continue}
+      if(now-bk.ts>1.2)refreshBook(sym,tk);      // keep it fresh without ever leaving a gap
+      if(!bk.ok){autoBookSkip=sym+" "+side+": Kalshi's order book can't be read right now";autoBookSkipT=now;continue}
+      const a=side==="UP"?bk.yes:bk.no;if(!(a>0&&a<100)){autoBookSkip=sym+" "+side+": nothing is for sale right now";autoBookSkipT=now;continue}
+      mult=100/a;ask=bk.yes>0&&bk.yes<100?bk.yes/100:null;bid=bk.no>0&&bk.no<100?(100-bk.no)/100:null}      // kept with the bet in the listed price's YES terms
+    else{      // practice run, or no helper (fake money only): the listed price, which must be fresh
+      if(!qw||qw.yes_ask==null||now-qw.ts>3){if(refr<2&&now-(autoRefr[sym]||0)>2){refr++;autoRefr[sym]=now;refreshMarket(sym,wEnd,sym===selected).catch(()=>{})}continue}
+      const m=mults(qw.yes_ask,qw.yes_bid,qw.no_ask);mult=side==="UP"?m.up:m.dn;ask=qw.yes_ask;bid=qw.yes_bid}
     if(!mult)continue;
     const c=1/mult,cost=c+0.07*c*(1-c),e=autoEst(sym,conf,r.tau),edge=e.lb-cost;
     if(edge<AUTO_EDGE)continue;
     const f=edge/(1-cost)*AUTO_KELLY,g=e.lb*Math.log(1+f*(1-cost)/cost)+(1-e.lb)*Math.log(1-f);
-    cands.push({sym,side,conf,e,cost,edge,f,g,tau:r.tau,anchorLn:r.anchorLn,ask:q.yes_ask,bid:q.yes_bid,tk:q.tk})}
+    cands.push({sym,side,conf,e,cost,edge,f,g,tau:r.tau,anchorLn:r.anchorLn,ask,bid,tk})}
   if(!cands.length){autoNote=waiting?(autoBookSkip&&now-autoBookSkipT<5?autoBookSkip:"Checking prices"):"Waiting for a steady, confident signal";return}
   cands.sort((a,b)=>b.g-a.g);for(const c of cands){c.agree=cands.filter(o=>o!==c&&o.side===c.side).length;c.opp=cands.filter(o=>o.side!==c.side).length}      // how many other coins qualify the same way / the opposite way right now (kept with each bet, to check later whether lone signals do worse)
   const best=cands[0];autoG=Math.max(autoG,best.g);
@@ -1817,13 +1825,19 @@ setInterval(async()=>{if(!hBase)return;try{const x=await fetch(hBase+"/ping",{ca
 setTimeout(()=>acctRefresh(false),4000);
 
 // ---- live betting card
-function lvPlan(sym,side,stake,opt){      // what a click (or an automatic mirror) would buy right now, from the live Kalshi quote
+function lvPlan(sym,side,stake,opt){      // what a click (or an automatic mirror) would buy right now: Auto bets from Kalshi's live order book, clicks from the live Kalshi quote
   opt=opt||{};
-  const q=quoteBy[sym],now=Date.now()/1000;
-  if(!q||!q.tk)return{err:"No Kalshi market for "+sym+" yet"};
-  if(now-q.ts>12)return{err:"Kalshi price is stale"};
-  const left=q.close-now;if(left<10)return{err:"Window is about to close"};
-  const a=side==="UP"?q.yes_ask:(q.no_ask!=null?q.no_ask:(q.yes_bid!=null?1-q.yes_bid:null));
+  const q=quoteBy[sym],now=Date.now()/1000;let a,tkr,left;
+  if(opt.tk&&!sim&&hBase){      // Auto: the market Auto chose, priced from the order book only (the listed quote can lag by 10-25 s)
+    const bk=bookBy[sym];tkr=opt.tk;left=(opt.end||0)-now;
+    if(!bk||bk.tk!==tkr||!bk.ok||now-bk.ts>3){refreshBook(sym,tkr);return{err:"Kalshi's order book price is stale"}}
+    if(left<10)return{err:"Window is about to close"};
+    const c=side==="UP"?bk.yes:bk.no;a=c>0&&c<100?c/100:null}
+  else{
+    if(!q||!q.tk)return{err:"No Kalshi market for "+sym+" yet"};
+    if(now-q.ts>12)return{err:"Kalshi price is stale"};
+    tkr=q.tk;left=q.close-now;if(left<10)return{err:"Window is about to close"};
+    a=side==="UP"?q.yes_ask:(q.no_ask!=null?q.no_ask:(q.yes_bid!=null?1-q.yes_bid:null))}
   if(a==null||!(a>0)||a>=1)return{err:"No price available"};
   const ask=Math.min(99,Math.ceil(a*100-1e-9));
   if(opt.max!=null&&ask>opt.max)return{err:"Kalshi's price ("+ask+"¢) is above the "+opt.max+"¢ this bet is worth"};
@@ -1831,7 +1845,7 @@ function lvPlan(sym,side,stake,opt){      // what a click (or an automatic mirro
   const cash=sm&&sm.ok&&sm.balance!=null?sm.balance:stake;
   const cap=Math.min(stake,cash),count=Math.floor((cap-0.01)/per);
   if(count<1)return{err:cap<stake-1e-9?"Not enough cash":"Stake is too small for this price"};
-  return{ticker:q.tk,side:side==="UP"?"yes":"no",label:side,price,count,cost:count*per,cap,left,mult:1/(ask/100),ask};
+  return{ticker:tkr,side:side==="UP"?"yes":"no",label:side,price,count,cost:count*per,cap,left,mult:1/(ask/100),ask};
 }
 function renderLive(s){      // real-money parts of the page, once a second
   renderAcctCard();realGuard(s);
@@ -1910,7 +1924,7 @@ function realAuto(best,two,picks,wEnd){          // the same sizing rule as fake
   if(cu>1)realEvent("Auto: behind the weekly pace (+"+GO.W.pct.toFixed(1)+"% so far, +"+GO.need.toFixed(1)+"% needed by now), so bets are ×"+cu+" the normal size");
   const wS=winStart;
   balSeedOnce();const gc=balG.cap;
-  for(const x of picks){let st=Math.floor(b.avail*tot/picks.length*100)/100;if(gc!=null&&st>gc/picks.length)st=Math.max(1,Math.floor(gc/picks.length*100)/100);if(!(st>=1)){fakeKeep(wEnd+"|"+x.sym+"|"+x.side);autoStat(x.sym,x.side,"not placed (the share of the real bankroll for this bet is under $1)")}if(st>=1)realMirror("auto",x.sym,x.side,st,{w:wEnd,p:x.conf,agree:x.agree,opp:x.opp}).then(o=>{if(o==="retry")autoRetry(x,st,wS,wEnd,1)})}
+  for(const x of picks){let st=Math.floor(b.avail*tot/picks.length*100)/100;if(gc!=null&&st>gc/picks.length)st=Math.max(1,Math.floor(gc/picks.length*100)/100);if(!(st>=1)){fakeKeep(wEnd+"|"+x.sym+"|"+x.side);autoStat(x.sym,x.side,"not placed (the share of the real bankroll for this bet is under $1)")}if(st>=1)realMirror("auto",x.sym,x.side,st,{w:wEnd,p:x.conf,agree:x.agree,opp:x.opp,tk:x.tk}).then(o=>{if(o==="retry")autoRetry(x,st,wS,wEnd,1)})}
 }
 const RETRY_MS=1000;      // a refused bet looks again after this long (it was 3 s: in your logs the price moved by 6¢ on average in that time)
 function autoRetry(x,stake,wS,wEnd,n){      // the real order was refused only because the price wasn't there yet: look again every few seconds while the signal still holds and the price is worth it
@@ -1923,8 +1937,8 @@ function autoRetry(x,stake,wS,wEnd,n){      // the real order was refused only b
     const sd=r.pCal>=0.5?"UP":"DOWN",conf=sd==="UP"?r.pCal:1-r.pCal;
     if(sd!==x.side||!autoAllow(conf,r.tau)){stop("the signal changed");return}
     const b=budOf("auto","*"),st=Math.min(stake,b?Math.floor(b.avail*100)/100:0);if(!(st>=1)){stop("not enough bankroll left",true);return}
-    try{await refreshMarket(x.sym,wEnd,false)}catch(e){}
-    const o=await realMirror("auto",x.sym,x.side,st,{w:wEnd,p:conf,retry:n,agree:x.agree,opp:x.opp});
+    if(x.tk&&hBase&&!sim)await bookNow(x.sym,x.tk,1500);else try{await refreshMarket(x.sym,wEnd,false)}catch(e){}      // a fresh order-book price for the next try
+    const o=await realMirror("auto",x.sym,x.side,st,{w:wEnd,p:conf,retry:n,agree:x.agree,opp:x.opp,tk:x.tk});
     if(o==="retry")autoRetry(x,stake,wS,wEnd,n+1)}),RETRY_MS);
 }
 const mxc=c=>"×"+(100/Math.max(1,+c)).toFixed(2);      // a price in cents shown as the payout multiplier it gives
@@ -1960,7 +1974,7 @@ function realMirror(src,sym,side,stake,meta){
   if(au&&!meta.retry)autoStat(sym,side,"checking Kalshi's price"+(real.qn>0?" (another order is being placed first)":""));      // shown until the order itself reports
   real.qn=(real.qn||0)+1;
   const job=real.q.then(async()=>{       // one at a time, each with the freshest quote
-    const maxPx=meta.p>0?Math.min(99,Math.floor(meta.p*100-1)+overpay(src)):null,pl=lvPlan(sym,side,stake,{cushion:3,max:maxPx});      // pay up to 3¢ over the live ask, but never more than its estimated chance minus 1¢
+    const maxPx=meta.p>0?Math.min(99,Math.floor(meta.p*100-1)+overpay(src)):null,pl=lvPlan(sym,side,stake,{cushion:3,max:maxPx,tk:au?meta.tk:null,end:au?meta.w:null});      // pay up to 3¢ over the live ask, but never more than its estimated chance minus 1¢
     if(pl.err){const rt=/stale|is above the|No price available/.test(pl.err);note("not placed ("+pl.err+")"+(au&&rt&&!meta.retry?", will keep looking":""));if(!rt)fakeDrop(rk,pl.err);return rt?"retry":"stop"}
     note("placing "+pl.count+" contracts"+(au?", paying out at least "+mxc(pl.price)+" each":", paying up to "+pl.price+"¢ each")+" (about "+money(pl.cost)+")",{tk:pl.ticker,price:pl.price,pending:true});
     try{
