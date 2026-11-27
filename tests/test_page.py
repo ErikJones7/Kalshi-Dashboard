@@ -266,7 +266,7 @@ with sync_playwright() as p:
   acct.info={env:"prod",ready:true,trading:true,selling:true,build:HELPER_EXPECT};
   acct.orders=[{filled:true,src:"auto",env:"prod",order_id:"o1",ticker:TK,sym:"BTC",side:"yes",fill_count:10,cost_total:9,w:end,t:T-30}];
   pendAuto=[{w:end-900,sym:"BTC",side:"UP",tk:TK,rk:end+"|BTC|UP",tau:130,stake:9,mult:1/0.9}];
-  const put=(p,yb)=>{res.BTC={pCal:p,pRaw:p+0.01,tick:T,P:60000.5};bookBy.BTC={tk:TK,ts:now(),ok:true,yes:100-(100-yb)+2,no:100-yb};quoteBy.BTC={tk:TK,ts:now()-12,yes_bid:0.95,no_bid:0.04,yes_ask:0.96,no_ask:0.05,close:end}};
+  const put=(p,yb)=>{res.BTC={pCal:p,pRaw:p+0.01,tick:T,P:60000.5,tau:100,an:{sigma:0.0005},q:[59900,59950,60000,60060,60100]};bookBy.BTC={tk:TK,ts:now(),ok:true,yes:100-(100-yb)+2,no:100-yb};quoteBy.BTC={tk:TK,ts:now()-12,yes_bid:0.95,no_bid:0.04,yes_ask:0.96,no_ask:0.05,close:end}};
   put(0.90,94);res.BTC.tick=T-30;exitWatch(T-30);put(0.85,93);res.BTC.tick=T-15;exitWatch(T-15);put(0.80,93);exitWatch(T);exitWatch(T);
   const e=exitPos["real|o1"],f=exitPos["fake|"+end+"|BTC|UP"];
   out.rows=e&&e.rows.length;out.row=e&&e.rows[2];out.fake_rows=f&&f.rows.length;out.fake_entry=f&&Math.round(f.entry*1000)/1000;
@@ -292,7 +292,7 @@ with sync_playwright() as p:
   realSellWatch=sv.rsw;autoCashWatch=sv.acw;refreshBook=sv.rb;kalshiGet=sv.kg;hpost=sv.hp;hBase=sv.hb;pendAuto=[];acct.orders=[];exitQ=[];exitSent=0;exitErr="";for(const k in exitPos)delete exitPos[k];delete res.BTC;delete bookBy.BTC;delete quoteBy.BTC;
   return out}"""
     ex = pg.evaluate(EX)
-    ok(ex["rows"] == 3 and ex["fake_rows"] == 3 and ex["row"][2] == 0.8 and ex["row"][4] == 93 and ex["row"][5] == 5 and ex["row"][7] == 0.95 and ex["fake_entry"] == 0.9, "every second of a real and a fake Auto position is recorded once (model chance, live bids, listed quote): %s" % ex["row"])
+    ok(ex["rows"] == 3 and ex["fake_rows"] == 3 and ex["row"][2] == 0.8 and ex["row"][4] == 93 and ex["row"][5] == 5 and ex["row"][7] == 0.95 and len(ex["row"]) == 15 and ex["row"][11] == 0.0005 and abs(ex["row"][12] - 55 / 60000.5) < 1e-6 and ex["row"][13] is not None and ex["fake_entry"] == 0.9, "every second of a real and a fake Auto position is recorded once (model chance, live bids, listed quote, volatility, model range and uncertainty): %s" % ex["row"])
     sn = ex["snap"]
     ok(sn and sn["model"] == 0.8 and sn["bid"] == 0.93 and sn["gap"] == 0.125 and sn["left"] >= 98 and sn["upnl_per"] == 0.025 and sn["upnl"] == 0.254 and sn["move15"] == -0.05 and sn["move30"] == -0.1,
        "a sale's snapshot has the model chance, the market price, the gap, time left, unrealized P&L and how the model moved: %s" % sn)

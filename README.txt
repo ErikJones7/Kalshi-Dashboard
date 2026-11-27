@@ -283,3 +283,6 @@ BUILD 2026-11-26ai (HELPER 2026-11-26m): EXIT LOG FOR EVERY AUTO POSITION
 - After the close it adds the highest bid seen after each sale, and once Kalshi settles the market, the result, Kalshi's settlement value and the target. The finished position is then saved by the helper to data/exit_log.jsonl (one line per position).
 - The helper changed (build 2026-11-26m). Close and reopen the app to start it. Until then the old helper keeps trading and selling as before, and finished positions wait in the browser (up to 100); the early-selling note shows how many are saved or waiting.
 - Purpose: with enough positions, test exit rules that sell fewer eventual winners while keeping the current share of eventual losers sold, on the same live prices the bot really saw.
+
+BUILD 2026-11-26aj: EXIT LOG ALSO RECORDS VOLATILITY AND MODEL UNCERTAINTY
+- Each second of the exit log now also has the coin's current volatility, the width of the model's predicted end-price range (68%, as a share of the price), and how uncertain the learned win-chance estimate is (1 standard deviation, plus how many past samples it rests on). These are what volatility-adjusted and confidence-adjusted sell rules need to be tested later. Nothing about buying or selling changes. The helper is unchanged (2026-11-26m).

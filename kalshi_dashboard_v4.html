@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26ai</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26aj</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1464,9 +1464,12 @@ function exitWatch(tick){
     const bk=bookBy[e.sym],bo=bk&&bk.ok&&bk.tk===e.tk&&now-bk.ts<=5?bk:null,q=quoteBy[e.sym],qo=q&&q.tk===e.tk&&now-q.ts<=30?q:null;
     const ps=r&&r.pCal!=null&&r.tick>=tick-8?(yes?r.pCal:1-r.pCal):null,last=e.rows[e.rows.length-1];
     if(last&&last[0]===tick)continue;
-    // [second, seconds left, model win chance (bet side), model before calibration, live YES bid c, live NO bid c, order-book age s, listed YES bid, listed NO bid, listed price age s, coin price]
+    // [second, seconds left, model win chance (bet side), model before calibration, live YES bid c, live NO bid c, order-book age s, listed YES bid, listed NO bid, listed price age s, coin price,
+    //  coin volatility (per-second, log), the model's 68% end-price range as a share of the price, learned-estimate uncertainty (1 sd), learned samples behind it]
+    const est=ps!=null?autoEst(e.sym,Math.max(ps,1-ps),r.tau):null,rng=r&&r.q&&r.P?(r.q[3]-r.q[1])/2/r.P:null;
     e.rows.push([tick,Math.round(e.end-tick),r3(ps),r&&r.pRaw!=null?r3(yes?r.pRaw:1-r.pRaw):null,bo&&bo.no!=null?r3(100-bo.no):null,bo&&bo.yes!=null?r3(100-bo.yes):null,bo?Math.round((now-bo.ts)*10)/10:null,
-      qo?qo.yes_bid:null,qo?qo.no_bid:null,qo?Math.round(now-qo.ts):null,r?r.P||null:null])}
+      qo?qo.yes_bid:null,qo?qo.no_bid:null,qo?Math.round(now-qo.ts):null,r?r.P||null:null,
+      r&&r.an&&isFinite(r.an.sigma)?+r.an.sigma.toPrecision(4):null,rng!=null&&isFinite(rng)?+rng.toPrecision(4):null,est?r3(est.p-est.lb):null,est?est.n:null])}
   exitClose(now)}
 function exitPs(e,t){let best=null;for(const x of e.rows){if(x[0]>t)break;if(x[2]!=null)best=x}return best?best[2]:null}      // the model's chance at (or just before) second t
 function exitSale(key,rule,ps,bid){      // snapshot when a sale is tried (real) or a rule fires (fake cash-out test)
