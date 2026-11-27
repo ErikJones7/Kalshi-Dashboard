@@ -98,6 +98,9 @@ EARLY SELLING (real Auto bets)
     contracts one of this app's own Auto bets bought.
   - Money: a fully sold bet is settled at once by the cash it brought back (a win if more than it cost). A part-sold bet keeps
     the rest until the market settles. The bet history shows "Sold early: profit/loss · would have won/lost if held".
+  - The real bet history has an "Early selling, real bets" table: for each rule ticked now, only the sales Auto really made, after
+    fees: bets sold, losers saved and winners sold (judged on Kalshi's result), money per bet, the average price sold at, net
+    against holding, and how many markets haven't settled yet.
   - Fake Auto keeps testing all six rules on every fake bet (the cash-out table on the fake Auto card). It never sells.
 
 
@@ -144,6 +147,7 @@ Timed bets were removed on 2026-11-25. Their saved data is kept unchanged in sim
 
 CHANGELOG (newest first; details are in the GitHub history)
 ---------
+2026-11-26al  real early-selling table on the bet history
 2026-11-26ak  skip log saved for every window; Auto buys take what is for sale instead of all-or-nothing (helper 2026-11-26n)
 2026-11-26aj  exit log also records volatility, the model's range and its uncertainty
 2026-11-26ai  exit log for every Auto position (helper 2026-11-26m)

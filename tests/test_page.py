@@ -333,6 +333,31 @@ with sync_playwright() as p:
     ok(sk["posted"] and sk["posted"]["path"] == "/data/skips" and sk["posted"]["res"]["BTC"]["res"] == "yes" and sk["posted"]["coins"] == ["BTC", "ETH", "DOGE"] and sk["queue_after"] == 0,
        "after the close each coin gets Kalshi's result and the window goes to the helper's skip log: %s" % sk["posted"])
     ok(sk["sim"] is True, "nothing is recorded in a practice run")
+    # ---- the real early-selling table on the bet history: only real fills, only ticked rules, judged on Kalshi's result
+    ST = """()=>{
+  const sv={s:acct.sells,i:acct.info,r:Object.assign({},liveRes),rules:sellRules,src:rhSrc};
+  acct.info=Object.assign({},acct.info||{},{env:"prod"});sellRules={f65:true,m10:true};
+  liveRes["T1"]="no";liveRes["T2"]="yes";liveRes["T3"]="yes";delete liveRes["T4"];
+  acct.sells=[
+    {env:"prod",src:"auto",rule:"m10",filled:true,fill_count:10,net:9.2,gross:9.3,ticker:"T1",side:"yes",buy_oid:"b1"},      // loser saved: +9.20
+    {env:"prod",src:"auto",rule:"m10",filled:true,fill_count:5,net:4.7,gross:4.75,ticker:"T2",side:"yes",buy_oid:"b2"},      // winner sold in two parts: 4.70+4.60-10 = -0.70
+    {env:"prod",src:"auto",rule:"m10",filled:true,fill_count:5,net:4.6,gross:4.65,ticker:"T2",side:"yes",buy_oid:"b2"},
+    {env:"prod",src:"auto",rule:"f65",filled:true,fill_count:8,net:2.4,gross:2.45,ticker:"T3",side:"yes",buy_oid:"b3"},      // flip sold a winner cheap: 2.40-8 = -5.60
+    {env:"prod",src:"auto",rule:"m10",filled:true,fill_count:4,net:3.6,gross:3.62,ticker:"T4",side:"no",buy_oid:"b4"},       // market not settled yet
+    {env:"prod",src:"auto",rule:"m10",filled:false,fill_count:0,ticker:"T1",side:"yes",buy_oid:"b1"},                       // a try that didn't fill: not a sale
+    {env:"prod",src:"auto",rule:"m05",filled:true,fill_count:3,net:2.8,ticker:"T1",side:"yes",buy_oid:"b9"},                 // a rule that is off now
+    {env:"demo",src:"auto",rule:"m10",filled:true,fill_count:3,net:2.8,ticker:"T1",side:"yes",buy_oid:"b8"}];               // the other account
+  const st=sellStats();rhSrc="auto";renderRHSell();
+  const out={S:st.S,off:st.off,rows:[...document.querySelectorAll("#rhSellTbl tr")].map(tr=>[...tr.children].map(td=>td.textContent)),txt:$("rhSellTxt").textContent,shown:$("rhSell").style.display};
+  sellRules={};renderRHSell();out.none=$("rhSellTxt").textContent;
+  acct.sells=sv.s;acct.info=sv.i;for(const k in liveRes)delete liveRes[k];Object.assign(liveRes,sv.r);sellRules=sv.rules;rhSrc=sv.src;renderRHSell();
+  return out}"""
+    st = pg.evaluate(ST)
+    rows = {r[0]: r for r in st["rows"][1:]}
+    ok(rows["Market +10 pts"] == ["Market +10 pts", "3", "1", "+$9.20", "1", "-$0.70", "93\u00a2", "+$8.50", "1"] and rows["Flip 65%+"][1:] == ["1", "0", "\u2013", "1", "-$5.60", "31\u00a2", "-$5.60", "0"],
+       "per ticked rule: bets sold, losers saved and winners sold (a sale in two parts counts once), money per bet, price sold at, net vs holding, unsettled: %s" % st["rows"][1:])
+    ok(len(st["rows"]) == 3 and st["off"] == 1 and "not counted" in st["txt"] and st["shown"] == "block", "a try that didn't fill, the other account and a rule that is off now are left out")
+    ok("No early-selling rule is ticked" in st["none"], "with no rule ticked the table says so")
     # ---- a new best pick notification replaces the old one
     pk = pg.evaluate("""()=>{const mk=T=>({w:77,T,tau:T,min:0.9,top:null,more:[],closest:null});const cnt=()=>[...document.querySelectorAll('#sig .sigrow.pick')].filter(e=>!e.classList.contains('leaving')).map(e=>e.innerText);
       const base=Object.assign({},lastS),o={};render(Object.assign({},base,{picks:[mk(300)]}));o.a=cnt();render(Object.assign({},base,{picks:[mk(300),mk(180)]}));o.b=cnt();render(Object.assign({},base,{picks:[mk(300),mk(180),mk(60)]}));o.c=cnt();return o}""")
