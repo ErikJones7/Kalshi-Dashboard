@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26aq</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26ar</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -210,6 +210,7 @@ body{transition:margin-left .14s ease-out}
     <div id="autoCo" style="margin:8px 0"></div>
     <div id="autoRc" style="margin:8px 0"></div>
     <div id="autoBl" style="margin:8px 0"></div>
+    <div id="autoSz" style="margin:8px 0"></div>
   </details>
 </div>
 
@@ -898,7 +899,7 @@ function settleAutoRows(rows){      // the Auto bets of one window
   let wp=0;
   for(const b of rows){b.hit=(b.side==="UP")===b.up;b.payout=b.hit?b.stake*b.mult:0;b.pnl=b.payout-b.stake;wp+=b.pnl;
     autoSt.net+=b.pnl;autoSt.bank+=b.pnl;if(b.hit)autoSt.w++;else autoSt.l++;autoSt.windows++;
-    cashBook(b);rcBook(b);blBook(b);b.bank=autoSt.bank;b.cp="AUTO";simLog.push(b);if(!sim)hOutbox.sim.push(b)}
+    cashBook(b);rcBook(b);blBook(b);szBook(b);b.bank=autoSt.bank;b.cp="AUTO";simLog.push(b);if(!sim)hOutbox.sim.push(b)}
   autoSt.peak=Math.max(autoSt.peak,autoSt.bank);
   if(wp<0){autoSt.streak++;if(autoSt.streak>=3){autoSt.pause=2;autoSt.streak=0}}else if(wp>0)autoSt.streak=0;
   if(autoSt.bank<1){autoSt.bank=autoSt.start;autoSt.peak=autoSt.start;autoSt.streak=0;autoNote="Fake bankroll used up, restarted from the start amount"}}
@@ -1328,7 +1329,7 @@ function render(s){
   if(T.recent.length){tr+='<table class="mini"><tr><th>Window</th><th>Coin</th><th>Call</th><th>Model</th><th>Kalshi multiplier</th><th>Result</th></tr>'+
     T.recent.map(x=>`<tr><td>${new Date((x.w+900)*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</td><td>${x.sym}</td><td>${x.side}</td><td>${pc(x.p)} @${mmss(x.tau)}</td><td>${mx(sideMult(x))}</td><td class="${x.pending?"":x.hit?"hit":"miss"}">${x.pending?"LIVE":x.hit?"HIT":"MISS"}</td></tr>`).join("")+"</table>"}
   setH($("track"),tr);
-  safe("real-money cards",()=>renderLive(s));safe("auto mode and picks cards",()=>{renderAuto();renderCash();renderRc();renderBl();renderPicks()});
+  safe("real-money cards",()=>renderLive(s));safe("auto mode and picks cards",()=>{renderAuto();renderCash();renderRc();renderBl();renderSz();renderPicks()});
   const C=s.calib;
   let cb=`<div class="s">${C.n} scored samples</div>`;
   cb+='<table class="mini"><tr><th>Confidence</th><th>Samples</th><th>Model said</th><th>Actually right</th></tr>'+
@@ -1608,6 +1609,22 @@ function renderBl(){
   setH(el,'<div class="s" style="margin:6px 0 4px">Market-blend test on '+a.n+' settled fake Auto bets'+(bl.real?" ("+bl.real.n+" followed a real fill)":"")+' (shadow only, nothing is skipped). Average chance at the bet: model '+(100*a.ps/a.n).toFixed(1)+'%, market '+(100*a.ms/a.n).toFixed(1)+'%, blended '+(100*a.bs/a.n).toFixed(1)+'%; they won '+(100*a.w/a.n).toFixed(1)+'%. The rule: blend the chance two-thirds toward Kalshi\'s price and only bet when it beats the price paid (with the fee) by at least the points shown. Return = profit divided by money staked.</div>'+
     '<table class="mini"><tr><th style="text-align:left">Bets</th><th>Min. edge</th><th>Would keep</th><th>Kept: hit rate</th><th>Kept: return</th><th>Would drop</th><th>Dropped: hit rate</th><th>Dropped: return</th></tr>'+
     Object.keys(BL_T).map(k=>row("all","All fake bets",k)).join("")+Object.keys(BL_T).map(k=>row("real","Real-fill bets",k)).join("")+'</table>')}
+/* Sizing test (shadow only, no stake changes). The biggest stakes went on the 95-99c bets, which win about as often as their price needs, because the
+   sizing rule is fed the model's too-confident chance. Each fake Auto bet records the stake a corrected chance would have given it (ss, above); at
+   settlement the page books the profit each way (corrected profit = corrected stake x the bet's own return per dollar), for all fake bets and for the
+   ones that followed a real fill, and for each half of the bets so far. */
+function szBook(b){if(!(b.ss!=null)||!(b.stake>0)||b.pnl==null)return;
+  const sz=autoSt.sz=autoSt.sz||{rows:[]};sz.rows.push([Math.round(b.pnl*100)/100,Math.round(b.ss*b.pnl/b.stake*100)/100||0,b.stake,b.ss,b.px==="real"?1:0]);
+  if(sz.rows.length>4000)sz.rows=sz.rows.slice(-4000)}
+function renderSz(){
+  const sz=autoSt.sz,el=$("autoSz");if(!el)return;
+  if(!sz||!sz.rows.length){setH(el,'<div class="s">Sizing test: collecting data. No stake is changed; each bet records the stake a corrected win chance would have given it.</div>');return}
+  const sg=v=>(v>=0?"+":"")+$$(v),cl=v=>v>0.005?"hit":v<-0.005?"miss":"",pc1=(p,s)=>s?(p>=0?"+":"")+(100*p/s).toFixed(1)+"%":"–";
+  const row=(lab,R)=>{if(!R.length)return"";const h=Math.floor(R.length/2),sum=(L,i)=>L.reduce((t,r)=>t+r[i],0),a=sum(R,0),c=sum(R,1),as=sum(R,2),cs=sum(R,3);
+    return `<tr><td style="text-align:left">${lab}</td><td>${R.length}</td><td>${$$(as)}</td><td class="${cl(a)}">${sg(a)}</td><td>${pc1(a,as)}</td><td>${$$(cs)}</td><td class="${cl(c)}">${sg(c)}</td><td>${pc1(c,cs)}</td><td>${sg(sum(R.slice(0,h),0))} / ${sg(sum(R.slice(h),0))}</td><td>${sg(sum(R.slice(0,h),1))} / ${sg(sum(R.slice(h),1))}</td></tr>`};
+  setH(el,'<div class="s" style="margin:6px 0 4px">Sizing test on '+sz.rows.length+' settled fake Auto bets (shadow only, no stake is changed). Current: quarter-Kelly on the model\'s safe estimate. Corrected: the same rule fed 0.65 x Kalshi\'s price + 0.35 x the safe estimate, which gives near-certain 95-99c bets much smaller stakes (often none). Same bankroll either way, so compare the profit columns.</div>'+
+    '<table class="mini"><tr><th style="text-align:left">Bets</th><th>Count</th><th>Current: staked</th><th>Current: profit</th><th>Current: return</th><th>Corrected: staked</th><th>Corrected: profit</th><th>Corrected: return</th><th>Current profit, 1st / 2nd half</th><th>Corrected profit, 1st / 2nd half</th></tr>'+
+    row("All fake bets",sz.rows)+row("Real-fill bets",sz.rows.filter(r=>r[4]))+'</table>')}
 function renderRc(){
   const rc=autoSt.rc,el=$("autoRc");if(!el)return;
   if(!rc||!rc.all||!rc.all.n){setH(el,'<div class="s">Shrink-and-edge test: collecting data. Nothing is ever skipped; each bet records whether the rule would have kept it.</div>');return}
@@ -1675,7 +1692,10 @@ function autoStep(tick,tau,wStart,wEnd){
   autoDone=true;
   if(!place.length){autoNote="Edge too small to bet";return}
   for(const {x,stake} of place){const mk=x.side==="UP"?x.ask:(x.bid!=null?1-x.bid:null),bp=mk>0&&mk<1?BL_W*mk+(1-BL_W)*x.conf:null;
-  pendAuto.push({w:wStart,sym:x.sym,side:x.side,p:x.e.p,rp:rcP(x.e.p),re:Math.round((rcP(x.e.p)-x.cost)*1000)/1000,conf:x.conf,mk:mk!=null?Math.round(mk*1000)/1000:null,bp:bp!=null?Math.round(bp*1000)/1000:null,be:bp!=null?Math.round((bp-x.cost)*1000)/1000:null,lb:x.e.lb,edge:x.edge,tau:x.tau,anchorLn:x.anchorLn,ask:x.ask,bid:x.bid,mult:1/x.cost,stake,split:place.length>1,tk:x.tk,rk:wEnd+"|"+x.sym+"|"+x.side,rw:real.auto?1:0,rs:SESSION,agree:x.agree,opp:x.opp})}
+    // shadow sizing: the same quarter-Kelly rule fed a corrected safe estimate (0.65 x market + 0.35 x model's safe estimate); the stake is scaled by
+    // corrected / current Kelly fraction, so the cap, drawdown and split adjustments carry over, and it never exceeds the Max bet share
+    const slb=mk>0&&mk<1?BL_W*mk+(1-BL_W)*x.e.lb:null,sf=slb!=null?Math.max(0,(slb-x.cost)/(1-x.cost))*AUTO_KELLY:null,ss=sf!=null&&x.f>0?Math.round(Math.min(stake*sf/x.f,autoSt.bank*(autoSt.cap||0.2))*100)/100:null;
+  pendAuto.push({w:wStart,sym:x.sym,side:x.side,p:x.e.p,rp:rcP(x.e.p),re:Math.round((rcP(x.e.p)-x.cost)*1000)/1000,conf:x.conf,sf:sf!=null?Math.round(sf*10000)/10000:null,ss,mk:mk!=null?Math.round(mk*1000)/1000:null,bp:bp!=null?Math.round(bp*1000)/1000:null,be:bp!=null?Math.round((bp-x.cost)*1000)/1000:null,lb:x.e.lb,edge:x.edge,tau:x.tau,anchorLn:x.anchorLn,ask:x.ask,bid:x.bid,mult:1/x.cost,stake,split:place.length>1,tk:x.tk,rk:wEnd+"|"+x.sym+"|"+x.side,rw:real.auto?1:0,rs:SESSION,agree:x.agree,opp:x.opp})}
   if(real.auto)safe("real auto bet",()=>realAuto(best,two,picks,wEnd));
   if(!real.auto){curAutoAlert={w:wStart,end:wEnd,tau,bets:place.map(({x,stake})=>({sym:x.sym,side:x.side,stake,mult:1/x.cost,conf:x.conf,lb:x.e.lb,edge:x.edge}))};autoNewFlag=true}      // with real Auto betting on, the popup and sound come from the real bet instead (see realMirror)
   autoNote="Bet placed";autoSave()}

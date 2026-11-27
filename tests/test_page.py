@@ -393,7 +393,7 @@ with sync_playwright() as p:
   autoNoSale("BTC","UP",wS,wEnd);
   out.after_drop={pend:pendAuto.length,done:autoDone,note:autoNote,excl:[...autoNS.s]};
   autoStep(T,120,wS,wEnd);
-  out.new_pick=pendAuto.map(b=>b.sym+" "+b.side);out.stamp=pendAuto.map(b=>[b.conf,b.mk,b.bp,b.be]);
+  out.new_pick=pendAuto.map(b=>b.sym+" "+b.side);out.stamp=pendAuto.map(b=>[b.conf,b.mk,b.bp,b.be]);out.size=pendAuto.map(b=>[b.sf,b.ss,b.stake]);
   // c. with the window's other bet still standing, nothing new is picked
   pendAuto=[{w:wS,sym:"ETH",side:"DOWN",rk:wEnd+"|ETH|DOWN",stake:10,mult:1.1},{w:wS,sym:"SOL",side:"UP",rk:wEnd+"|SOL|UP",stake:10,mult:1.1}];autoDone=true;
   autoNoSale("SOL","UP",wS,wEnd);out.other_leg={pend:pendAuto.map(b=>b.sym),done:autoDone};
@@ -437,6 +437,17 @@ with sync_playwright() as p:
     ok(sf["above_not_fired"] == [] and len(sf["fired"]) == 1 and "fired with 03:25 left" in sf["fired"][0] and "91.2%" in sf["fired"][0] and sf["after_drop"] == sf["fired"],
        "no popup for a coin that is above the threshold but hasn't fired; a fired one shows its time and confidence at firing and stays when the live confidence drops: %s" % sf["fired"])
     ok(sf["other_coin"] == [] and sf["closed"] == [], "another coin's signal and a closed one don't show")
+    ok(ns["size"] and ns["size"][0][0] == 0.0379 and 0 < ns["size"][0][1] < ns["size"][0][2], "each fake bet records a corrected Kelly fraction and a smaller shadow stake when the market is below the model: %s" % ns["size"])
+    # ---- sizing test (shadow only): profit with the current stakes vs the corrected stakes
+    SZ = """()=>{const sv=autoSt.sz,out={};autoSt.sz={rows:[]};
+  szBook({ss:2,stake:10,pnl:1,px:"real"});      // a winner: current +1.00, corrected +0.20
+  szBook({ss:0,stake:20,pnl:-20});               // a loser the corrected sizing wouldn't have bet: current -20, corrected 0
+  szBook({ss:null,stake:5,pnl:1});               // no market price recorded: left out
+  out.rows=autoSt.sz.rows;renderSz();out.txt=$("autoSz").textContent;
+  autoSt.sz=sv;renderSz();return out}"""
+    sz = pg.evaluate(SZ)
+    ok(sz["rows"] == [[1, 0.2, 10, 2, 1], [-20, 0, 20, 0, 0]] and "$30.00-$19.00" in sz["txt"] and "$2.00+$0.20" in sz["txt"],
+       "the sizing table books each bet's profit at its current stake and at the corrected stake; bets with no market price are left out: %s" % sz["rows"])
     # ---- a new best pick notification replaces the old one
     pk = pg.evaluate("""()=>{const mk=T=>({w:77,T,tau:T,min:0.9,top:null,more:[],closest:null});const cnt=()=>[...document.querySelectorAll('#sig .sigrow.pick')].filter(e=>!e.classList.contains('leaving')).map(e=>e.innerText);
       const base=Object.assign({},lastS),o={};render(Object.assign({},base,{picks:[mk(300)]}));o.a=cnt();render(Object.assign({},base,{picks:[mk(300),mk(180)]}));o.b=cnt();render(Object.assign({},base,{picks:[mk(300),mk(180),mk(60)]}));o.c=cnt();return o}""")

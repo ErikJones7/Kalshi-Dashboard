@@ -88,8 +88,12 @@ Fake money
     fake bet records the market's chance (the ask for its side), a blended chance (0.65 x market + 0.35 x model) and that minus the
     price paid with the fee. At settlement the table shows what "only bet when the blend beats the price by 0/2/4 points" would have
     kept and dropped, with hit rates and returns, for all fake bets and for those that followed a real fill.
-  - Resetting the fake bankroll resets only the bankroll and its win/loss counts. The cash-out, shrink-and-edge and market-blend
-    tables, and what Auto has learned, are kept.
+  - Sizing test (table on the fake Auto card, shadow only, no stake changes): the biggest stakes go on 95-99c bets, which win about as
+    often as their price needs, because the sizing rule is fed the model's too-confident chance. Each fake bet also records the stake
+    the same quarter-Kelly rule gives when fed 0.65 x Kalshi's price + 0.35 x the model's safe estimate. The table compares profit
+    with the current stakes and with those corrected stakes, for all fake bets and those that followed a real fill, and by half.
+  - Resetting the fake bankroll resets only the bankroll and its win/loss counts. The cash-out, shrink-and-edge, market-blend and
+    sizing tables, and what Auto has learned, are kept.
 
 
 EARLY SELLING (real Auto bets)
@@ -162,6 +166,7 @@ Timed bets were removed on 2026-11-25. Their saved data is kept unchanged in sim
 
 CHANGELOG (newest first; details are in the GitHub history)
 ---------
+2026-11-26ar  sizing test on fake Auto (shadow only)
 2026-11-26aq  bet histories show just the window's end time
 2026-11-26ap  fake bet history laid out like the real one; both show the window bought
 2026-11-26ao  signal notification shows only fired signals
