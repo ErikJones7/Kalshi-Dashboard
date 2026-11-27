@@ -123,8 +123,10 @@ ON SCREEN
     go with the live confidence.
   - Best pick: a notification at your chosen times left. A new one replaces the old one, and closing it (X or "Switch to")
     never brings an older one back. The Best pick record card keeps every pick.
-  - Real bet history (one per card): only bets that went through, with UP/DOWN, time left when bought, multiplier, result,
-    a Selling column (sold, tried and why, or a dash), and 12-hour times. Every attempt is still in data\live_orders.jsonl.
+  - Real bet history (one per card): only bets that went through, with the window each was bought in (12-hour clock), UP/DOWN,
+    time left when bought, contracts, price paid, multiplier, result, a Selling column (sold, tried and why, or a dash), cost,
+    payout and net. The fake Auto bet history uses the same columns (its price paid includes the fee; fake bets never sell),
+    and its CSV download has them too. Every attempt is still in data\live_orders.jsonl.
   - While real Auto betting is on, the Auto popup and sound come from the real bet once it is bought.
   - Prices: Coinbase whenever it has had a price in the last 15 seconds; Kraken, OKX or Hyperliquid only while it hasn't.
     Each coin is corrected by its own small, learned gap to Kalshi's reference index (CF Benchmarks). The graph's green dotted
@@ -160,6 +162,7 @@ Timed bets were removed on 2026-11-25. Their saved data is kept unchanged in sim
 
 CHANGELOG (newest first; details are in the GitHub history)
 ---------
+2026-11-26ap  fake bet history laid out like the real one; both show the window bought
 2026-11-26ao  signal notification shows only fired signals
 2026-11-26an  market-blend test on fake Auto (shadow only)
 2026-11-26am  nothing for sale: Auto drops that coin and looks for another one at once
