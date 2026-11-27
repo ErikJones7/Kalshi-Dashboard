@@ -300,6 +300,39 @@ with sync_playwright() as p:
     ok(ex["posted"] == ["/data/exits", 2] and ex["after_flush"] == {"q": 0, "sent": 2}, "finished positions go to the helper's exit log: %s" % ex["posted"])
     ok(ex["old_helper"]["q"] == 1 and "updated helper" in ex["old_helper"]["err"], "with the old helper they wait in the browser and the note says why")
     ok(ex["sim_rows"] == 0 and ex["fake_snap_rules"] == "f55,f65,m05,m10", "nothing is recorded in a practice run; the fake cash-out test leaves a snapshot for each rule that fires: %s" % ex["fake_snap_rules"])
+    # ---- skip log: every 2 s while Auto looks, each coin at 70%+ with the first check that stopped it; saved after Kalshi's results, never shown
+    SK = """async()=>{
+  const out={},now=()=>Date.now()/1000,sv={rb:refreshBook,kg:kalshiGet,hp:hpost,hb:hBase,learn:autoSt.learn};
+  hBase="http://x";sim=false;kalshiSlowUntil=0;autoSt.learn={};skipW=null;skipDone=[];skipQ=[];for(const k in skipRead)delete skipRead[k];
+  let reads=[];refreshBook=(s,t)=>reads.push(s);
+  const wEnd=Math.floor(now()/900)*900+900,wStart=wEnd-900,T=Math.floor(now()/2)*2,TK=windowTicker("BTC",wEnd);
+  for(const s of syms)delete res[s];
+  res.BTC={pCal:0.97,tick:T,tau:120,asrc:"kalshi"};res.ETH={pCal:0.15,tick:T,tau:120,asrc:"kalshi"};res.DOGE={pCal:0.75,tick:T,tau:120,asrc:"kalshi"};res.SOL={pCal:0.55,tick:T,tau:120,asrc:"kalshi"};
+  autoStab.BTC={side:"UP",n:9,t:T};autoStab.ETH={side:"DOWN",n:9,t:T};
+  bookBy.BTC={tk:TK,ts:now(),ok:true,yes:90,no:12};delete bookBy.ETH;
+  pendAuto=[{w:wStart,sym:"BTC",side:"UP",tau:120,edge:0.05,lb:0.95,mult:1/0.906,stake:10,tk:TK,rk:wEnd+"|BTC|UP",rw:0}];
+  autoNote="Best so far: BTC UP";
+  skipWatch(T,120,wStart,wEnd);skipWatch(T,120,wStart,wEnd);skipWatch(T+1,119,wStart,wEnd);
+  const w=skipW;out.rows=w.rows.map(x=>[x[2],x[3],x[4],x[5],x[7],x[13]]);out.reads=reads.slice();out.bets=w.bets.map(b=>b.sym+" "+b.side);out.notes=w.notes.length;out.btc=w.rows.find(x=>x[2]==="BTC");
+  skipWatch(T+2,300,wStart,wEnd);out.too_early=w.rows.length;      // more than 4:00 left: nothing recorded
+  // the window ends: the record waits for Kalshi's result for each coin, then goes to the helper
+  w.end=now()-3;let asks=[];kalshiGet=async p=>{asks.push(p);return {market:{result:p.includes("BTC")?"yes":"no",expiration_value:"1.5",floor_strike:1}}};
+  let posted=null;hpost=async(p,o)=>{posted=[p,o.rows.length,o.rows[0]];return {ok:true}};
+  skipWatch(T+4,890,wStart+900,wEnd+900);
+  for(let i=0;i<4;i++){skipDone.forEach(x=>x.lastAsk=0);skipClose(now());await new Promise(r=>setTimeout(r,20))}
+  skipLastFlush=0;skipClose(now());await new Promise(r=>setTimeout(r,20));
+  out.asks=asks.length;out.posted=posted&&{path:posted[0],n:posted[1],res:posted[2].res,coins:posted[2].coins,bets:posted[2].bets.length,key:posted[2].key.startsWith("skip|")};out.queue_after=skipQ.length;
+  // practice runs record nothing
+  skipW=null;sim=true;skipWatch(T,120,wStart,wEnd);out.sim=skipW===null;sim=false;
+  refreshBook=sv.rb;kalshiGet=sv.kg;hpost=sv.hp;hBase=sv.hb;autoSt.learn=sv.learn;skipW=null;skipDone=[];skipQ=[];pendAuto=[];for(const s of ["BTC","ETH","DOGE","SOL"]){delete res[s];delete autoStab[s];delete bookBy[s]}
+  return out}"""
+    sk = pg.evaluate(SK)
+    ok(sk["rows"] == [["BTC", 1, 0.97, 1, 90, "ok"], ["ETH", 0, 0.85, 0, None, "band"], ["DOGE", 1, 0.75, 0, None, "band"]] and sk["btc"][11] == 0.906,
+       "each coin at 70 percent or more is recorded once per 2 s with its confidence, band, live ask, cost, edge and the check that stopped it (coins under 70 percent are left out): %s" % sk["rows"])
+    ok(sk["reads"] == ["ETH"] and sk["bets"] == ["BTC UP"] and sk["too_early"] == 3, "an 80 percent coin with no order-book price gets one read; Auto's bet is kept; nothing is recorded with more than 4:00 left")
+    ok(sk["posted"] and sk["posted"]["path"] == "/data/skips" and sk["posted"]["res"]["BTC"]["res"] == "yes" and sk["posted"]["coins"] == ["BTC", "ETH", "DOGE"] and sk["queue_after"] == 0,
+       "after the close each coin gets Kalshi's result and the window goes to the helper's skip log: %s" % sk["posted"])
+    ok(sk["sim"] is True, "nothing is recorded in a practice run")
     # ---- a new best pick notification replaces the old one
     pk = pg.evaluate("""()=>{const mk=T=>({w:77,T,tau:T,min:0.9,top:null,more:[],closest:null});const cnt=()=>[...document.querySelectorAll('#sig .sigrow.pick')].filter(e=>!e.classList.contains('leaving')).map(e=>e.innerText);
       const base=Object.assign({},lastS),o={};render(Object.assign({},base,{picks:[mk(300)]}));o.a=cnt();render(Object.assign({},base,{picks:[mk(300),mk(180)]}));o.b=cnt();render(Object.assign({},base,{picks:[mk(300),mk(180),mk(60)]}));o.c=cnt();return o}""")

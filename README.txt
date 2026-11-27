@@ -65,7 +65,8 @@ Real money
     the rest of your Kalshi cash is never touched. Type a smaller number to send money back to your cash, 0 to take it all
     back. It can't go below what is in an unsettled bet.
   - A real bet is placed when the fake-money Auto bets, sized from the real bankroll. Its price limit is the estimated chance
-    minus 1 cent, plus "Pay up to N cents extra" (default 1). Orders are fill-or-kill and can use fractions of a contract.
+    minus 1 cent, plus "Pay up to N cents extra" (default 1). Orders are immediate-or-cancel: they buy what is for sale at that limit, up to the size, and cancel the rest, so a thin
+    book gives a smaller bet instead of none. Hand-placed orders stay fill-or-kill. Fractions of a contract can be bought.
     A bet refused only on price is tried again every second while the signal holds, until about 15 seconds are left.
   - If Kalshi refuses a bet for "insufficient balance", real bets are capped below that size and a red warning appears on the
     Auto card until a bet that big goes through ("Clear this limit" clears it by hand).
@@ -126,6 +127,10 @@ SAVED DATA (data\ folder)
                              order-book bids, listed quote, coin price, volatility, model range and uncertainty), a snapshot
                              at every sale or rule firing, the highest bid after it, and Kalshi's result and settlement value.
                              It changes no decision; it exists to test better sell rules on the prices the bot really saw.
+  skip_log.jsonl             one line per window: every 2 s while Auto is looking (4:00 to 0:25 left), each coin the model gives
+                             70%+ (confidence, whether its band is trusted, steadiness, live order-book price, learned estimate,
+                             cost, edge, and the first check that stopped a bet), Auto's notes and bets, and Kalshi's result per coin.
+                             Saved only, never shown; it exists to test which checks can be loosened so fewer windows are skipped.
   sim_trades.jsonl / .csv    fake bets (Auto, and the old Timed bets), with each cash-out rule's firing ("co")
   sim_state.json             fake bankrolls and what Auto has learned
   signals, final_calls, calibration (.csv/.jsonl, calibration_summary.json)   model records used for calibration
@@ -139,6 +144,7 @@ Timed bets were removed on 2026-11-25. Their saved data is kept unchanged in sim
 
 CHANGELOG (newest first; details are in the GitHub history)
 ---------
+2026-11-26ak  skip log saved for every window; Auto buys take what is for sale instead of all-or-nothing (helper 2026-11-26n)
 2026-11-26aj  exit log also records volatility, the model's range and its uncertainty
 2026-11-26ai  exit log for every Auto position (helper 2026-11-26m)
 2026-11-26ah  Auto prices and sizes bets from the live order book; no fresh listed price needed

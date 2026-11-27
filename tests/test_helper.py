@@ -108,7 +108,7 @@ d = order("auto", tk(), "yes", 100, 61); ok(not d["ok"] and "bankroll" in d["err
 
 # ---- order format and money bookkeeping
 T1 = tk(); d = order("auto", T1, "yes", 10, 61); b = STATE["orders"][-1]
-ok(d["ok"] and d["filled"] and b["side"] == "bid" and b["price"] == "0.61" and b["count"] == "10.00" and b["time_in_force"] == "fill_or_kill", "YES buy goes out as a V2 bid at 0.61 x10 fill-or-kill")
+ok(d["ok"] and d["filled"] and b["side"] == "bid" and b["price"] == "0.61" and b["count"] == "10.00" and b["time_in_force"] == "immediate_or_cancel", "an Auto YES buy goes out as a V2 bid at 0.61 x10, immediate-or-cancel")
 ok(abs(d["cost"] - (10 * 0.61 + 10 * 0.01)) < 0.001, "YES cost = contracts x price + fee = %.2f" % d["cost"])
 d2 = order("auto", tk(), "no", 10, 40); b = STATE["orders"][-1]
 ok(d2["ok"] and d2["filled"] and b["side"] == "ask" and b["price"] == "0.60", "NO buy at 40c goes out as a V2 ask at 0.60 (the YES price)")
@@ -186,12 +186,23 @@ ok(any(r.get("refused") for r in sl) and any(r.get("filled") for r in sl) and no
 ok(all(r.get("kind") != "sell" for r in [json.loads(l) for l in open(os.path.join(H.DATA, "live_orders.jsonl"))]), "sales never appear in the bet log")
 st, d = call("/account/config", {"trading": False}); st, d2 = call("/account/status"); ok(d2["selling"] is False and H.load_settings().get("kalshi_selling") is False, "switching betting off also switches Early selling off")
 
+# ---- Auto buys take what is for sale (immediate-or-cancel); a hand-placed bet stays all-or-nothing
+call("/account/config", {"trading": True}); STATE["book"] = None; set_mode("partial"); TP = tk(); d = order("auto", TP, "yes", 10, 61); b = STATE["orders"][-1]
+rows = {r["ticker"]: r for r in call("/account/orders")[1]}
+ok(d["ok"] and d["filled"] and abs(d["fill_count"] - 5) < 0.001 and abs(d["cost"] - (5 * 0.61 + 5 * 0.01)) < 0.001 and "part filled" in (rows[TP].get("note") or ""),
+   "an Auto buy that only half fills keeps the half, costs only that, and the log says it part filled: %s / %s" % (d["fill_count"], rows[TP].get("note")))
+set_mode("fill"); time.sleep(1.6); d = order("manual", tk(), "yes", 2, 61); b = STATE["orders"][-1]
+ok(b["time_in_force"] == "fill_or_kill", "a hand-placed bet is still fill-or-kill"); call("/account/config", {"trading": False})
+
 # ---- exit log: each Auto position the page sends is appended once to data/exit_log.jsonl
 rec = {"key": "real|o1", "kind": "real", "tk": "KXBTC15M-X", "rows": [[1, 60, 0.9, 0.91, 94, 5, 0, 0.95, 0.04, 12, 60000.5]], "sales": [{"rule": "m10", "gap": 0.125}], "res": "yes"}
 st, d = call("/data/exits", {"rows": [rec, {"key": "fake|1|BTC|UP", "rows": []}]}); ok(st == 200 and d["ok"] and d["added"] == 2, "the exit log takes the page's positions: %s" % d)
 st, d = call("/data/exits", {"rows": [rec, {"nokey": 1}]}); ok(d["ok"] and d["added"] == 0, "a position already saved (or one without a key) is not written twice")
 el = [json.loads(l) for l in open(os.path.join(H.DATA, "exit_log.jsonl"))]
 ok(len(el) == 2 and el[0]["rows"][0][4] == 94 and el[0]["sales"][0]["rule"] == "m10", "exit_log.jsonl holds each position once, with its rows and sales")
+
+st, d = call("/data/skips", {"rows": [{"key": "skip|1", "rows": [[1, 120, "BTC", 1, 0.97, 1, 9, 90, 0, 0.97, 0.937, 0.906, 0.03, "ok"]]}, {"key": "skip|1"}]})
+ok(d["ok"] and d["added"] == 1 and len(open(os.path.join(H.DATA, "skip_log.jsonl")).read().splitlines()) == 1, "the skip log saves each window once, to its own file: %s" % d)
 
 shutil.rmtree(TMP, ignore_errors=True)
 print("\n%d failed" % len(FAILS) if FAILS else "\nall passed")

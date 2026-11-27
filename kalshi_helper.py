@@ -40,7 +40,7 @@ import http.client
 import json
 import math
 
-HELPER_BUILD = "2026-11-26m"      # the page compares this with its own build to spot a helper that was updated but not restarted
+HELPER_BUILD = "2026-11-26n"      # the page compares this with its own build to spot a helper that was updated but not restarted
 import os
 import platform
 import re
@@ -241,36 +241,41 @@ PRICE_KEEP_DAYS = 14
 
 
 EXIT_LOG = "exit_log.jsonl"      # one record per Auto position: its second-by-second path (model, live order book, listed quote), any sales, the result
-_exit_seen = set()
-_exit_loaded = [False]
+SKIP_LOG = "skip_log.jsonl"      # one record per window: what Auto saw for each coin every 2 s, why it did or didn't bet, and Kalshi's result per coin
+_log_seen = {}
 
 
-def save_exits(body):
-    """Exit research log (data/exit_log.jsonl). The page sends each Auto position (real or fake) once its window has settled:
-    every second from the buy to the close (the model's win chance, Kalshi's live order-book bids, the listed quote) plus
-    a snapshot of every sale or try to sell. Nothing in the app reads it back; it exists so exit rules can be tested on exactly what the page saw."""
+def save_log(fname, body):
+    """Append the page's records to data/<fname> (JSON lines), each one once (by its "key"). Research logs only: nothing in the app reads them back."""
     rows = [r for r in (body.get("rows") or []) if isinstance(r, dict) and isinstance(r.get("key"), str) and len(r["key"]) < 200]
     added = 0
     with lock:
         os.makedirs(DATA, exist_ok=True)
-        path = os.path.join(DATA, EXIT_LOG)
-        if not _exit_loaded[0]:
-            _exit_loaded[0] = True
+        path = os.path.join(DATA, fname)
+        seen = _log_seen.get(fname)
+        if seen is None:
+            seen = _log_seen[fname] = set()
             if os.path.isfile(path):
                 with open(path, encoding="utf-8") as f:
                     for line in f:
                         try:
-                            _exit_seen.add(json.loads(line).get("key"))
+                            seen.add(json.loads(line).get("key"))
                         except Exception:
                             pass
         with open(path, "a", encoding="utf-8") as f:
             for r in rows:
-                if r["key"] in _exit_seen:
+                if r["key"] in seen:
                     continue
-                _exit_seen.add(r["key"])
+                seen.add(r["key"])
                 f.write(json.dumps(r, separators=(",", ":")) + "\n")
                 added += 1
-    return {"ok": True, "added": added, "known": len(_exit_seen)}
+    return {"ok": True, "added": added, "known": len(seen)}
+
+
+def save_exits(body):
+    """Exit research log (data/exit_log.jsonl): each Auto position (real or fake) once its window has settled, every second from the buy to the
+    close (the model's win chance, Kalshi's live order-book bids, the listed quote) plus a snapshot of every sale or try to sell."""
+    return save_log(EXIT_LOG, body)
 
 
 def save_prices(body):
@@ -1784,7 +1789,10 @@ def _place_order(body):
         if ask is not None and price > ask + 5:
             raise TradeError("Your price (%d¢) is well above the current ask (%d¢). Refresh and try again." % (price, ask))
         # Kalshi's V2 orders are always quoted on the YES side: buying YES is a "bid" at the YES price, and buying NO is an "ask" (selling
-        # YES) at 100 minus the NO price, which is the same position. Fill-or-kill: it fills completely at this price or better, or not at all.
+        # YES) at 100 minus the NO price, which is the same position. Hand-placed bets are fill-or-kill (all at this price or better, or nothing).
+        # Automatic bets are immediate-or-cancel: they buy whatever is for sale at this price or better, up to the size, and the rest is cancelled at
+        # once. Same price limit, so each contract is exactly as safe; a book that thinned out in the split second before the order just gives a
+        # smaller bet instead of no bet (fill-or-kill killed 19 Auto orders that way between 11-23 and 11-26).
         yes_px = price if side == "yes" else 100 - price
         depth = depth_at(levels, price)
         if depth is not None:
@@ -1812,7 +1820,7 @@ def _place_order(body):
                 cost = fcount * price / 100.0 + est_fee(fcount, price)
                 row["est_cost"] = round(cost, 4)
         order = {"ticker": ticker, "side": "bid" if side == "yes" else "ask", "count": "%.2f" % fcount, "price": "%.2f" % (yes_px / 100.0),
-                 "time_in_force": "fill_or_kill", "self_trade_prevention_type": "taker_at_cross",
+                 "time_in_force": "fill_or_kill" if row["src"] == "manual" else "immediate_or_cancel", "self_trade_prevention_type": "taker_at_cross",
                  "client_order_id": "kd-%d-%s" % (int(time.time() * 1000), os.urandom(3).hex())}
         row["client_order_id"] = order["client_order_id"]
         base = _bases(env)[0]
@@ -1850,10 +1858,12 @@ def _place_order(body):
                 per = avg if side == "yes" else 1.0 - avg
                 if side == "no" and per > lim + 0.005 and avg <= lim + 0.005:
                     per = avg                                   # reported in NO terms instead
-                spend = fc * min(per, lim)                      # a fill-or-kill limit order can never cost more than its limit
+                spend = fc * min(per, lim)                      # a limit order can never cost more than its limit
             else:
                 spend = fc * lim
             fees = fc * per_fee if per_fee is not None else est_fee(int(fc), price)
+        if 0 < fc < fcount - 1e-9:
+            row["note"] = ((row.get("note") + "; ") if row.get("note") else "") + "part filled: %g of %g contracts were for sale" % (fc, fcount)
         row.update(order_id=o.get("order_id"), status="executed" if fc > 0 else "not filled", filled=bool(fc > 0), fill_count=fc,
                    cost=round(spend, 4), fees=round(fees, 4), cost_total=round(spend + fees, 4))
         if row["filled"]:                       # shortly after a fill, pick up Kalshi's own record of the price and fee actually paid
@@ -2243,6 +2253,15 @@ class Handler(BaseHTTPRequestHandler):
             threading.Thread(target=self.server.shutdown, daemon=True).start()
             return
         last_active[0] = time.time()
+        if self.path.startswith("/data/skips"):
+            try:
+                n = int(self.headers.get("Content-Length", "0"))
+                if n > 16 * 1024 * 1024:
+                    return self._send(413, json.dumps({"error": "too large"}))
+                return self._send(200, json.dumps(save_log(SKIP_LOG, json.loads(self.rfile.read(n).decode("utf-8") or "{}"))))
+            except Exception as e:
+                log("skip log failed: %s" % e)
+                return self._send(400, json.dumps({"error": str(e)}))
         if self.path.startswith("/data/exits"):
             try:
                 n = int(self.headers.get("Content-Length", "0"))

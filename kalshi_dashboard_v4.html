@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26aj</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26ak</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1494,6 +1494,52 @@ function exitFlush(now){
   if(!exitQ.length||exitBusy||!hBase||now-exitLastFlush<30&&exitQ.length<5)return;exitBusy=true;exitLastFlush=now;const batch=exitQ.slice(0,40);
   hpost("/data/exits",{rows:batch}).then(d=>{if(d&&d.ok){exitQ=exitQ.slice(batch.length);exitSent+=batch.length;exitErr="";ls.set("k15exitq",exitQ);ls.set("k15exitn",exitSent)}})
     .catch(e=>{exitErr=/404/.test(e.message)?"waiting for the updated helper (close and reopen the app)":e.message||"failed"}).finally(()=>{exitBusy=false})}
+/* Skip log (research only, nothing is shown and no decision changes). Every 2 s while Auto is looking (4:00 to 0:25 left), for every coin
+   the model gives 70%+ one way: its confidence, whether its confidence band is trusted yet, how steady the signal is, the live order-book
+   price, the learned estimate and its safe lower bound, the cost with the fee, the edge, and the first check that stopped a bet
+   ("target" no Kalshi target yet, "band" band not trusted, "steady" signal not steady yet, "book" no fresh order book, "nosale" nothing for
+   sale, "edge" edge under 3 points, "ok" passed every check). Coins at 80%+ that Auto itself isn't pricing get an order-book read at most every
+   4 s so their price is known too. After the close it adds Auto's bets in the window and Kalshi's result for each coin, then the helper saves
+   the window to data/skip_log.jsonl. */
+let skipW=null,skipDone=[],skipQ=ls.get("k15skipq",[]),skipBusy=false,skipLastFlush=0;const skipRead={};
+function skipWatch(tick,tau,wStart,wEnd){
+  if(sim||!hBase)return;
+  const now=Date.now()/1000;
+  if(skipW&&skipW.end!==wEnd){skipDone.push(skipW);skipW=null}
+  skipClose(now);
+  if(tau>240||tau<25||tick%2)return;
+  const w=skipW=skipW||{key:"skip|"+wEnd,v:1,start:wStart,end:wEnd,rows:[],notes:[],bets:[]};
+  if(w.lastT===tick)return;w.lastT=tick;
+  if(autoNote!==w.lastNote){w.lastNote=autoNote;w.notes.push([tick,Math.round(tau),autoNote])}
+  for(const b of pendAuto)if(b.w===wStart&&!w.bets.some(x=>x.rk===b.rk))w.bets.push({rk:b.rk,sym:b.sym,side:b.side,tau:b.tau,edge:r3(b.edge),lb:r3(b.lb),cost:r3(1/b.mult),stake:b.stake,tk:b.tk,real:b.rw?1:0});
+  for(const sym of syms){const r=res[sym];if(!r||r.pCal==null||r.tick<tick-8)continue;
+    const side=r.pCal>=0.5?"UP":"DOWN",conf=side==="UP"?r.pCal:1-r.pCal;if(conf<0.70)continue;
+    const okc=autoAllow(conf,r.tau),st=autoStab[sym],n=st&&st.side===side?st.n:0,tk=(quoteBy[sym]&&Math.abs(quoteBy[sym].close-wEnd)<=5&&quoteBy[sym].tk)||windowTicker(sym,wEnd);
+    const bk=bookBy[sym],bo=bk&&bk.ok&&bk.tk===tk&&now-bk.ts<=3?bk:null;
+    if(!bo&&conf>=0.80&&now-(skipRead[sym]||0)>=4){skipRead[sym]=now;refreshBook(sym,tk)}
+    const a=bo?(side==="UP"?bo.yes:bo.no):null,buy=a>0&&a<100;let cost=null,e=null,edge=null;
+    if(buy){const c=a/100;cost=c+0.07*c*(1-c);e=autoEst(sym,conf,r.tau);edge=e.lb-cost}
+    const why=r.asrc!=="kalshi"?"target":!okc?"band":n<4?"steady":!bo?"book":!buy?"nosale":edge<AUTO_EDGE?"edge":"ok";
+    // [second, seconds left, coin, side (1 = UP), confidence, band trusted (1/0), steady seconds, live ask c for that side, order-book age s, learned estimate, its safe lower bound, cost with fee, edge, first check that stopped it]
+    w.rows.push([tick,Math.round(r.tau),sym,side==="UP"?1:0,r3(conf),okc?1:0,n,buy?a:null,bk&&bk.tk===tk?Math.round((now-bk.ts)*10)/10:null,e?r3(e.p):null,e?r3(e.lb):null,r3(cost),r3(edge),why]);
+    if(w.rows.length>4000)break}}
+function skipClose(now){
+  for(const w of skipDone){
+    if(w.done||now<w.end+2)continue;
+    if(!w.closedAt){w.closedAt=Math.round(now);w.res={};w.coins=[...new Set(w.rows.map(x=>x[2]).concat(w.bets.map(b=>b.sym)))];
+      const env=acct.info&&acct.info.env;w.real=(acct.orders||[]).filter(o=>o.src==="auto"&&o.env===env&&Math.abs(o.w-w.end)<=5).map(o=>({sym:o.sym||symOf(o),side:o.side,filled:!!o.filled,fill_count:o.fill_count||0,cost:o.cost_total||0,refused:o.refused||o.error||null}))}
+    const left=w.coins.filter(c=>!(c in w.res));
+    if(left.length&&now-w.closedAt<1200){
+      if(now-(w.lastAsk||0)>=3&&now>=kalshiSlowUntil){w.lastAsk=now;const sym=left[0],tk=windowTicker(sym,w.end);
+        kalshiGet("/markets/"+encodeURIComponent(tk)).then(d=>{const m=d&&d.market,r=m?String(m.result||"").toLowerCase():"";
+          if(r==="yes"||r==="no")w.res[sym]={res:r,value:m.expiration_value!=null&&m.expiration_value!==""?+m.expiration_value:null,strike:m.floor_strike!=null?+m.floor_strike:null};
+          else if(now-w.closedAt>600)w.res[sym]=null}).catch(()=>{})}
+      continue}
+    w.done=true;const rec=Object.assign({},w);delete rec.lastAsk;delete rec.done;delete rec.lastT;delete rec.lastNote;skipQ.push(rec);
+    if(skipQ.length>40)skipQ=skipQ.slice(-40);try{ls.set("k15skipq",skipQ)}catch(err){}}
+  skipDone=skipDone.filter(w=>!w.done);
+  if(skipQ.length&&!skipBusy&&hBase&&(now-skipLastFlush>=30||skipQ.length>=5)){skipBusy=true;skipLastFlush=now;const batch=skipQ.slice(0,10);
+    hpost("/data/skips",{rows:batch}).then(d=>{if(d&&d.ok){skipQ=skipQ.slice(batch.length);try{ls.set("k15skipq",skipQ)}catch(err){}}}).catch(()=>{}).finally(()=>{skipBusy=false})}}
 function sellStatus(o,text){      // the Auto card's status line for this coin shows the sale (or the try) too
   const sym=o.sym||symOf(o),side=o.side==="yes"?"UP":"DOWN",txt=sym+" "+side+": "+text;
   real.autoLast={t:Date.now(),win:winStart,sym,side,text:txt};(real.autoSet=real.autoSet||{})[sym+"|"+side]={t:Date.now(),win:winStart,text:txt}}
@@ -1561,6 +1607,7 @@ function autoStep(tick,tau,wStart,wEnd){
   autoCashWatch(tick,tau);
   safe("early selling watch",()=>realSellWatch(tick));
   safe("exit log",()=>exitWatch(tick));
+  safe("skip log",()=>skipWatch(tick,tau,wStart,wEnd));
   if(!autoSt.on||autoDone||tau>240)return;
   if(tau<25){autoDone=true;autoNote="No good bet this window";return}
   const now=Date.now()/1000,cands=[];let refr=0,waiting=0;
@@ -1748,7 +1795,7 @@ let acct={info:null,sum:null,orders:[],bud:{},err:"",busy:false};
 // real-money mirrors: in memory only, so they are always OFF after a restart and have to be switched on on purpose
 let real={auto:false,autoView:true,events:[],evT:[],autoLast:null,q:Promise.resolve()};
 let liveRes={};
-const HELPER_EXPECT="2026-11-26m",HELPER_OK=["2026-11-26l",HELPER_EXPECT];      // the helper build this page needs (changes only when the helper program itself changes)
+const HELPER_EXPECT="2026-11-26n",HELPER_OK=["2026-11-26l","2026-11-26m",HELPER_EXPECT];      // the helper build this page needs (changes only when the helper program itself changes)
 const staleMsg="The helper program that is running is older than this page. Fully close it (Ctrl+Shift+Esc, end pythonw.exe / python.exe) and reopen the dashboard from its icon, or some real-money controls won't work right.";
 const oldHelper="The helper that is running is an older version that doesn't know about Kalshi accounts. Fully close it and reopen the dashboard from its icon: press Ctrl+Shift+Esc, open the Details tab, end every pythonw.exe (or python.exe) entry, then double-click the Kalshi Dashboard icon.";
 const acctNeed="Open the dashboard from its icon (the address starts with http://127.0.0.1) to use your Kalshi account.";
