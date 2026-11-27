@@ -212,10 +212,10 @@ with sync_playwright() as p:
   winStart=winStart||0;const o=acct.orders[0];sellStatus(o,"tried to sell early (Market +10 pts), not sold: The bid is now 54¢, below the 88¢ minimum for this sale; still held");acct.bud={auto:{'*':{bank:227.89,avail:222,open:0,net:0,w:0,l:0,peak:230,since:1}}};real.auto=true;renderRealAuto();
   return {head,rows,status:$("arStats").innerText.replace(/\\\\n+/g," | ")}}"""
     hv = pg.evaluate(H2)
-    ok([x.upper() for x in hv["head"]] == ["WINDOW BOUGHT", "COIN", "SIDE", "TIME LEFT WHEN BOUGHT", "CONTRACTS", "AVG PAID", "MULTIPLIER", "RESULT", "SELLING", "COST", "PAYOUT", "NET"], "the bet history columns: no Limit column, a time-left column and a Selling column: %s" % hv["head"])
+    ok([x.upper() for x in hv["head"]] == ["WINDOW END", "COIN", "SIDE", "TIME LEFT WHEN BOUGHT", "CONTRACTS", "AVG PAID", "MULTIPLIER", "RESULT", "SELLING", "COST", "PAYOUT", "NET"], "the bet history columns: no Limit column, a time-left column and a Selling column: %s" % hv["head"])
     r0, r1, r2 = hv["rows"]
     ok((r0[2], r1[2], r2[2]) == ("DOWN", "UP", "UP"), "sides read UP / DOWN instead of YES / NO")
-    ok(re.match(r"^[A-Z][a-z]{2} \d+, \d+:\d\d.\d+:\d\d (AM|PM)$", r0[0]) is not None and r0[0].endswith("7:30 PM"), "each real bet shows the window it was bought in, on a 12-hour clock: %s" % r0[0])
+    ok(re.match(r"^[A-Z][a-z]{2} \d+, \d+:\d\d (AM|PM)$", r0[0]) is not None and r0[0].endswith("7:30 PM"), "each real bet shows the end time of the window it was bought in, on a 12-hour clock: %s" % r0[0])
     FH = """()=>{const sv=avRows;avRows=[{w:1795653000,sym:"HYPE",side:"DOWN",p:0.97,lb:0.95,tau:103,tgt:30,mult:1/0.9,stake:20,pnl:2.22,bank:500,up:false,split:false,res:"WIN"},
       {w:1795652100,sym:"BTC",side:"UP",p:0.95,lb:0.93,tau:95,tgt:1,mult:1.25,stake:10,pnl:-10,bank:480,up:false,split:true,res:"LOSS"},{w:1795653900,sym:"ETH",side:"UP",p:0.96,lb:0.94,tau:200,tgt:1,mult:1.1,stake:5,pnl:null,bank:null,up:null,split:false,res:"OPEN"}];
       $("avCoin").innerHTML='<option value="">All coins</option>';$("avRes").value="";$("avMin").value="0";renderAutoHistory();

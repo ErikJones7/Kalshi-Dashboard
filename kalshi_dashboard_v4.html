@@ -159,7 +159,7 @@ body{transition:margin-left .14s ease-out}
       <label title="Seconds before the window ends when a best-pick alert appears; separate several with commas">Best pick at <input type="text" id="pickS" value="300, 180, 60" style="width:118px">s left</label>
       <button id="tSig" title="Play the signal sound">&#9654; Signal</button><button id="tFin" title="Play the final prediction sound">&#9654; Final</button><button id="tPick" title="Play the best pick sound">&#9654; Pick</button>
     </div>
-    <div class="grp right"><span class="bld" id="build">build 2026-11-26ap</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
+    <div class="grp right"><span class="bld" id="build">build 2026-11-26aq</span><button id="simBtn" title="Use fake correlated prices to test the page">Simulate: Off</button></div>
   </div>
 </header>
 
@@ -1811,8 +1811,8 @@ function avView(r){      // a fake bet in the real bet history's terms: time lef
     result:r.res==="WIN"?"Won":r.res==="LOSS"?"Lost":"Waiting",pay:r.pnl==null?"–":money(Math.max(0,r.stake+r.pnl))}}
 function autoHistCsv(){
   const rows=autoHistFiltered(),esc=v=>v==null?"":String(v);
-  const lines=[["window_bought","window_end","coin","side","time_left_when_bought","contracts","avg_paid_cents","multiplier","result","selling","cost","payout","net","win_chance","safe_estimate","bankroll_after"].join(",")]
-    .concat(rows.map(r=>{const v=avView(r),c=r.mult>0?r.stake*r.mult:null;return [winTxt(r.w).replace(/,/g,""),new Date(r.w*1000).toISOString(),r.sym,r.side,v.left,c==null?"":Math.round(c*100)/100,r.mult>0?Math.round(10000/r.mult)/100:"",r.mult?Math.round(r.mult*1000)/1000:"",v.result,"",
+  const lines=[["window_end","coin","side","time_left_when_bought","contracts","avg_paid_cents","multiplier","result","selling","cost","payout","net","win_chance","safe_estimate","bankroll_after"].join(",")]
+    .concat(rows.map(r=>{const v=avView(r),c=r.mult>0?r.stake*r.mult:null;return [new Date(r.w*1000).toISOString(),r.sym,r.side,v.left,c==null?"":Math.round(c*100)/100,r.mult>0?Math.round(10000/r.mult)/100:"",r.mult?Math.round(r.mult*1000)/1000:"",v.result,"",
       Math.round(r.stake*100)/100,r.pnl==null?"":Math.round(Math.max(0,r.stake+r.pnl)*100)/100,r.pnl==null?"":Math.round(r.pnl*100)/100,r.p,r.lb,r.bank==null?"":Math.round(r.bank*100)/100].map(esc).join(",")}));
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([lines.join("\n")],{type:"text/csv"}));a.download="auto_bet_history.csv";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
 }
@@ -1885,8 +1885,8 @@ function renderRHGoal(){      // Auto's daily / weekly minimum returns, in its b
   setH($("rhGoalTbl"),'<tr><th>Day</th><th>Bets settled</th><th>Net</th><th>Return</th><th>Daily min</th></tr>'+G.days.map(d=>`<tr><td>${escH(nm(d.t))}</td><td>${d.n}</td><td class="${d.n?cls(d.net):""}">${d.n?$$(d.net):"–"}</td><td class="${d.n?cls(d.net):""}">${d.n?sg(d.pct):"–"}</td><td class="${!d.n?"dim":d.pct>=G.gd?"hit":"miss"}">${!d.n||!G.gd?"–":d.pct>=G.gd?"Met":"Not met"}</td></tr>`).join(""));
 }
 const t12=ts=>new Date(ts*1000).toLocaleString(undefined,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit",second:"2-digit",hour12:true});      // 12-hour clock
-const winTxt=wEnd=>{if(!(wEnd>0))return "–";const a=new Date((wEnd-WINDOW)*1000),b=new Date(wEnd*1000),hm=d=>d.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit",hour12:true});
-  return a.toLocaleDateString(undefined,{month:"short",day:"numeric"})+", "+hm(a).replace(/\s?(AM|PM)$/i,"")+"–"+hm(b)};      // the 15-minute window a bet was bought in, e.g. "Nov 27, 10:30–10:45 AM"
+const winTxt=wEnd=>{if(!(wEnd>0))return "–";const b=new Date(wEnd*1000);
+  return b.toLocaleDateString(undefined,{month:"short",day:"numeric"})+", "+b.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit",hour12:true})};      // the end time of the 15-minute window a bet was bought in, e.g. "Nov 27, 10:45 AM"
 const leftTxt=r=>r.w&&r.t&&r.w>r.t?Math.floor((r.w-r.t)/60)+":"+String(Math.floor((r.w-r.t)%60)).padStart(2,"0"):"–";      // time left in the window when the bet was bought (m:ss)
 function sellTxt(r){      // what happened with early selling on this bet, from the helper's sale log
   const L=(acct.sells||[]).filter(x=>x.ticker===r.ticker&&x.side===r.side&&x.env===r.env).sort((a,b)=>a.t-b.t);
@@ -1914,7 +1914,7 @@ function renderRHSell(){
   const h=["Rule","Bets sold","Losers saved","Money saved per loser","Winners sold","Money given up per winner","Avg price sold at","Net vs holding","Market not settled yet"];
   setH($("rhSellTbl"),'<tr>'+h.map(x=>`<th>${x}</th>`).join("")+'</tr>'+on.map(k=>{const s=S[k];
     return `<tr><td>${escH(SELL_LAB[k])}</td><td>${s.bets}</td><td>${s.sv}</td><td class="${s.sv?cls(s.svd):""}">${per(s.svd,s.sv)}</td><td>${s.ws}</td><td class="${s.ws?cls(s.wsd):""}">${per(s.wsd,s.ws)}</td><td>${s.c?Math.round(100*s.gross/s.c)+"¢":"–"}</td><td class="${s.sv+s.ws?cls(s.net):""}">${s.sv+s.ws?sg(s.net):"–"}</td><td>${s.wait}</td></tr>`}).join(""))}
-const RH_COLS=["Window bought","Coin","Side","Time left when bought","Contracts","Avg paid","Multiplier","Result","Selling","Cost","Payout","Net"];      // the real and the fake bet histories use the same columns
+const RH_COLS=["Window end","Coin","Side","Time left when bought","Contracts","Avg paid","Multiplier","Result","Selling","Cost","Payout","Net"];      // the real and the fake bet histories use the same columns
 function renderRH(){      // real bets of one mode, using Kalshi's own price, multiplier and payout once they are in
   if(!rhSrc)return;const rows=(acct.orders||[]).filter(r=>r.filled&&r.src===rhSrc&&r.env===((acct.info&&acct.info.env)||r.env));      // only bets that went through; the attempts that didn't are still kept in the helper's order log (data/live_orders.jsonl)
   let w=0,l=0,net=0,open=0;
